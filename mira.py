@@ -42,14 +42,14 @@ def deregister_client(client_id: str):
     return status
 
 
-@app.post("/enable")
+@app.patch("/enable")
 def enable_service():
     status["enabled"] = True
     print("Mira enabled")
     return status
 
 
-@app.post("/disable")
+@app.patch("/disable")
 def disable_service():
     status["enabled"] = False
     print("Mira disabled")
@@ -57,9 +57,9 @@ def disable_service():
 
 
 @app.post("/register_interaction")
-def register_interaction(interaction):
+def register_interaction(interaction: dict):
     new_interaction = Interaction(
-        user_id=interaction.user_id, text=interaction.text
+        user_id=interaction["user_id"], text=interaction["text"]
     )
 
     db = get_db_session()
@@ -67,7 +67,7 @@ def register_interaction(interaction):
     db.commit()
     db.refresh(new_interaction)
 
-    return {"user_id": new_interaction.user_id, "text": new_interaction.text}
+    return new_interaction
 
 @app.post("/inference")
 def inference_endpoint(interaction_id):
