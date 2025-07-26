@@ -3,6 +3,7 @@ from run_inference import send_prompt
 from models import Interaction
 from db import get_db_session
 import uvicorn
+from sentence_processor import transcribe_interaction
 
 
 if __name__ == "__main__":
@@ -56,18 +57,17 @@ def disable_service():
     return status
 
 
-@app.post("/register_interaction")
-def register_interaction(interaction: dict):
-    new_interaction = Interaction(
-        user_id=interaction["user_id"], text=interaction["text"]
-    )
+@app.post("/process_interaction")
+def process_interaction(sentence_buf: bytearray):
+    interaction = Interaction(**transcribe_interaction(sentence_buf))
 
     db = get_db_session()
-    db.add(new_interaction)
+    db.add(interaction)
     db.commit()
-    db.refresh(new_interaction)
+    db.refresh(interaction)
 
-    return new_interaction
+    return interaction
+
 
 @app.post("/inference")
 def inference_endpoint(interaction_id):
