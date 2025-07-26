@@ -1,0 +1,4 @@
+FastAPI==0.116.1
+pydantic==2.11.7
+sqlalchemy==2.0.41
+uvicorn==0.35.0
