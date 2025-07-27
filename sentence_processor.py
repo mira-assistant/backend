@@ -144,7 +144,7 @@ def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray]) -> int:
 
 def transcribe_interaction(sentence_buf: bytearray) -> dict:
     """
-    Process a complete sentence buffer with real-time audio denoising:
+    Process a complete sentence buffer with real-time audio denoising and enhanced speaker recognition.
     """
 
     asr_model = whisper.load_model("base")
@@ -182,6 +182,9 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
 
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text
+        interaction["voice_embedding"] = (
+            embedding.tolist() if hasattr(embedding, "tolist") else embedding
+        )
 
         return interaction
     else:
