@@ -46,15 +46,7 @@ class Person(Base):
 
 
 class Interaction(Base):
-    """
-    Represents an interaction entity in the database.
-    Attributes:
-        id (UUID): Unique identifier for the interaction.
-        speaker (int): Identifier for the speaker involved in the interaction.
-        text (str): Text content of the interaction.
-        timestamp (datetime): Timestamp of when the interaction occurred.
-        conversation_id (UUID): Foreign key referencing the associated conversation.
-    """
+    """Interaction entity for storing conversation interactions."""
 
     __tablename__ = "interactions"
 
@@ -81,15 +73,15 @@ class Interaction(Base):
     conversation = relationship("Conversation", back_populates="interactions")
 
     # Property for backward compatibility
-    @property
-    def speaker(self):
-        """Backward compatibility property."""
-        return self.user_id
+    # @property
+    # def speaker(self):
+    #     """Backward compatibility property."""
+    #     return self.user_id
 
-    @speaker.setter
-    def speaker(self, value):
-        """Backward compatibility setter."""
-        self.user_id = value
+    # @speaker.setter
+    # def speaker(self, value):
+    #     """Backward compatibility setter."""
+    #     self.user_id = value
 
 
 class Conversation(Base):

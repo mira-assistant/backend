@@ -182,8 +182,10 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
 
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text
-        interaction["voice_embedding"] = embedding.tolist() if hasattr(embedding, 'tolist') else embedding
-        
+        interaction["voice_embedding"] = (
+            embedding.tolist() if hasattr(embedding, "tolist") else embedding
+        )
+
         return interaction
     else:
         raise ValueError("No text transcribed from audio buffer; check audio quality.")

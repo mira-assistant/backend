@@ -1,5 +1,5 @@
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from run_inference import send_prompt
 from models import Interaction, Person
 from db import get_db_session
@@ -7,8 +7,6 @@ import uvicorn
 from sentence_processor import transcribe_interaction
 from enhanced_context_processor import create_enhanced_context_processor, process_interaction_enhanced
 from context_config import DEFAULT_CONFIG
-import numpy as np
-from datetime import datetime
 import logging
 import json
 
@@ -76,14 +74,14 @@ def disable_service():
 
 
 @app.post("/process_interaction")
-def process_interaction(sentence_buf: bytes):  # Change from bytearray to bytes
+def process_interaction(sentence_buf_raw: bytes = Body(...)):
     """Process interaction - transcribe sentence and identify speaker only."""
+
+    sentence_buf = bytearray(sentence_buf_raw)
+
     try:
-        # Convert bytes to bytearray for processing
-        sentence_buf_array = bytearray(sentence_buf)
-        
         # Transcribe with voice embedding
-        transcription_result = transcribe_interaction(sentence_buf_array)
+        transcription_result = transcribe_interaction(sentence_buf)
         
         # Create database interaction
         interaction = Interaction(
@@ -104,15 +102,7 @@ def process_interaction(sentence_buf: bytes):  # Change from bytearray to bytes
         db.refresh(interaction)
         db.close()
 
-        # Return basic transcription result
-        response = {
-            "id": str(interaction.id),
-            "speaker": interaction.speaker,  # This uses the property
-            "text": interaction.text,
-            "timestamp": interaction.timestamp.isoformat(),
-        }
-        
-        return response
+        return interaction
         
     except Exception as e:
         logger.error(f"Error processing interaction: {e}")
@@ -183,8 +173,9 @@ def identify_speaker(speaker_index: int, name: str):
         person = db.query(Person).filter_by(speaker_index=speaker_index).first()
         
         if person:
-            person.name = name
-            person.is_identified = True
+            setattr(person, "name", name)
+            setattr(person, "is_identified", True)
+            
             db.commit()
             
             # Update context processor

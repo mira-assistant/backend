@@ -3,7 +3,7 @@ Configuration system for the enhanced context processor.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import json
 import os
 

@@ -23,29 +23,9 @@ import uuid
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
-
-# NLP imports
-try:
-    import spacy
-    from transformers import pipeline
-    from sentence_transformers import SentenceTransformer
-    ADVANCED_NLP_AVAILABLE = True
-except ImportError:
-    ADVANCED_NLP_AVAILABLE = False
-    logging.warning("Advanced NLP features not available. Install spacy, transformers, and sentence-transformers.")
-    
-    # Mock classes for when dependencies aren't available
-    class MockPipeline:
-        def __call__(self, *args, **kwargs):
-            return [{'label': 'NEUTRAL', 'score': 0.5}]
-    
-    class MockSentenceTransformer:
-        def encode(self, *args, **kwargs):
-            return np.random.random(384)
-    
-    pipeline = lambda *args, **kwargs: MockPipeline()
-    SentenceTransformer = lambda *args, **kwargs: MockSentenceTransformer()
-
+import spacy
+from transformers.pipelines import pipeline
+from sentence_transformers import SentenceTransformer
 from models import Person, Interaction as DBInteraction, Conversation as DBConversation
 from context_config import ContextProcessorConfig, DEFAULT_CONFIG
 from db import get_db_session
@@ -97,10 +77,7 @@ class EnhancedContextProcessor:
         self.speaker_profiles: Dict[int, SpeakerProfile] = {}
         self.keyword_index: Dict[str, List[int]] = defaultdict(list)
         self.conversation_cache: deque = deque(maxlen=100)
-        
-        # Initialize NLP components
-        self._init_nlp_components()
-        
+                
         # Clustering components
         self.dbscan = DBSCAN(
             eps=self.config.dbscan_eps,
@@ -115,14 +92,13 @@ class EnhancedContextProcessor:
         # Setup logging
         logging.basicConfig(level=getattr(logging, self.config.log_level))
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize NLP components
+        self._init_nlp_components()
 
     def _init_nlp_components(self):
         """Initialize NLP components based on configuration."""
         self.nlp_components = {}
-        
-        if not ADVANCED_NLP_AVAILABLE:
-            self.logger.warning("Advanced NLP features disabled - dependencies not available")
-            return
             
         try:
             if self.config.enable_ner or self.config.enable_coreference:
@@ -130,9 +106,9 @@ class EnhancedContextProcessor:
                 
             if self.config.enable_sentiment_analysis:
                 self.nlp_components['sentiment'] = pipeline(
-                    "sentiment-analysis",
+                    task="text-classification",
                     model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                    return_all_scores=True
+                    top_k=None
                 )
                 
             if self.config.enable_topic_modeling:
@@ -191,8 +167,6 @@ class EnhancedContextProcessor:
 
     def _process_nlp_features(self, interaction: Interaction):
         """Process NLP features for an interaction."""
-        if not ADVANCED_NLP_AVAILABLE or not self.nlp_components:
-            return
             
         try:
             # Named Entity Recognition
@@ -661,16 +635,6 @@ class EnhancedContextProcessor:
             if clean_word and clean_word not in stop_words and len(clean_word) > 2:
                 keywords.append(clean_word)
 
-        # Add entity-based keywords if NLP is available
-        if ADVANCED_NLP_AVAILABLE and 'spacy' in self.nlp_components:
-            try:
-                doc = self.nlp_components['spacy'](text)
-                entity_keywords = [ent.text.lower() for ent in doc.ents 
-                                 if ent.label_ in ['PERSON', 'ORG', 'GPE', 'EVENT']]
-                keywords.extend(entity_keywords)
-            except Exception as e:
-                self.logger.error(f"Entity extraction failed: {e}")
-
         return list(set(keywords))  # Remove duplicates
 
     def classify_intent(self, text: str) -> bool:
@@ -694,26 +658,6 @@ class EnhancedContextProcessor:
 
         if has_keywords:
             return True
-
-        # Enhanced intent detection using entities
-        if ADVANCED_NLP_AVAILABLE and 'spacy' in self.nlp_components:
-            try:
-                doc = self.nlp_components['spacy'](text)
-                
-                # Check for action-related entities
-                action_entities = ['TIME', 'DATE', 'PERSON', 'ORG']
-                has_action_entities = any(ent.label_ in action_entities for ent in doc.ents)
-                
-                # Check for imperative mood or future tense
-                has_action_grammar = any(
-                    token.pos_ == 'VERB' and token.tag_ in ['VB', 'VBZ', 'MD']
-                    for token in doc
-                )
-                
-                return has_action_entities and has_action_grammar
-                
-            except Exception as e:
-                self.logger.error(f"Enhanced intent classification failed: {e}")
 
         return False
 
