@@ -18,7 +18,8 @@ import logging
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any, Set
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+import uuid
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ from sqlalchemy.orm import Session
 # NLP imports
 try:
     import spacy
-    from transformers import pipeline
+    from transformers.pipelines import pipeline
     from sentence_transformers import SentenceTransformer
     ADVANCED_NLP_AVAILABLE = True
 except ImportError:
@@ -65,15 +66,11 @@ class SpeakerProfile:
     person_id: str
     speaker_index: int
     name: Optional[str] = None
-    voice_embeddings: List[np.ndarray] = None
+    voice_embeddings: List[np.ndarray] = field(default_factory=list)
     cluster_id: Optional[int] = None
     confidence: float = 0.0
     interaction_count: int = 0
     is_identified: bool = False
-
-    def __post_init__(self):
-        if self.voice_embeddings is None:
-            self.voice_embeddings = []
 
 
 class EnhancedContextProcessor:
@@ -100,7 +97,7 @@ class EnhancedContextProcessor:
         self.voice_embedding_cache: Dict[str, np.ndarray] = {}
         
         # Conversation tracking
-        self.current_conversation_id: Optional[str] = None
+        self.current_conversation_id: Optional[uuid.UUID] = None
         self.current_participants: Set[str] = set()
         
         # Setup logging
@@ -308,12 +305,10 @@ class EnhancedContextProcessor:
                 timestamp=datetime.fromtimestamp(interaction.timestamp, tz=timezone.utc),
                 entities=interaction.entities,
                 topics=interaction.topics,
-                sentiment=interaction.sentiment
+                sentiment=interaction.sentiment,
+                conversation_id=self.current_conversation_id if self.current_conversation_id else None
             )
             
-            # Link to current conversation
-            if self.current_conversation_id:
-                db_interaction.conversation_id = self.current_conversation_id
                 
             session.add(db_interaction)
             session.commit()
@@ -462,11 +457,11 @@ class EnhancedContextProcessor:
                 )
                 similarities.append(sim)
                 
-        return np.mean(similarities) if similarities else 1.0
+        return float(np.mean(similarities)) if similarities else 1.0
 
     def get_long_term_context(
         self, keywords: List[str], current_interaction: Optional[Interaction] = None, 
-        max_results: int = None
+        max_results: Optional[int] = None
     ) -> List[Interaction]:
         """Enhanced long-term context retrieval with semantic similarity."""
         max_results = max_results or self.config.long_term_context_max_results
@@ -756,7 +751,7 @@ class EnhancedContextProcessor:
             session.commit()
             session.refresh(conversation)
             
-            self.current_conversation_id = str(conversation.id)
+            self.current_conversation_id = getattr(conversation, "id", None)
             self.current_participants = {interaction.person_id} if interaction.person_id else set()
             
             session.close()

@@ -1,6 +1,7 @@
+import uuid
 from fastapi import FastAPI, HTTPException
 from run_inference import send_prompt
-from models import Interaction
+from models import Interaction, Person
 from db import get_db_session
 import uvicorn
 from sentence_processor import transcribe_interaction
@@ -9,6 +10,8 @@ from context_config import DEFAULT_CONFIG
 import numpy as np
 from datetime import datetime
 import logging
+import json
+
 
 # Initialize enhanced context processor
 context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
@@ -136,7 +139,7 @@ def inference_endpoint(interaction_id):
     """Enhanced inference endpoint with context integration."""
     try:
         interaction = (
-            get_db_session().query(Interaction).filter_by(id=interaction_id).first()
+            get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
         )
 
         if not interaction:
@@ -161,15 +164,15 @@ def inference_endpoint(interaction_id):
             return {"message": "Intent not recognized, no inference performed."}
 
         # Send enhanced prompt with context
-        enhanced_prompt = f"{interaction.text}\n\nContext:\n{context}" if context else interaction.text
+        enhanced_prompt = f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
         response = send_prompt(prompt=enhanced_prompt, context=context)
         
         # Add context information to response
-        response["context_used"] = bool(context)
-        response["enhanced_features"] = {
+        response["context_used"] = str(bool(context))
+        response["enhanced_features"] = json.dumps({
             "entities": getattr(context_processor.interaction_history[-1], 'entities', None) if context_processor.interaction_history else None,
             "sentiment": getattr(context_processor.interaction_history[-1], 'sentiment', None) if context_processor.interaction_history else None
-        }
+        })
         
         return response
         
@@ -216,23 +219,3 @@ def identify_speaker(speaker_index: int, name: str):
     except Exception as e:
         logger.error(f"Error identifying speaker: {e}")
         raise HTTPException(status_code=500, detail=f"Speaker identification failed: {str(e)}")
-
-
-@app.get("/context/config")
-def get_context_config():
-    """Get current context processor configuration."""
-    return context_processor.config.to_dict()
-
-
-@app.post("/context/config")
-def update_context_config(config_updates: dict):
-    """Update context processor configuration."""
-    try:
-        context_processor.config.update(**config_updates)
-        return {"message": "Configuration updated successfully", "config": context_processor.config.to_dict()}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Configuration update failed: {str(e)}")
-
-
-# Import Person model for speaker identification endpoint
-from models import Person
