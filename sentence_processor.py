@@ -24,7 +24,6 @@ import warnings
 from typing import List
 
 import numpy as np
-import pyaudio
 import whisper
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
@@ -38,15 +37,9 @@ warnings.filterwarnings(
 )
 
 # ---------- Constants ----------
-CHANNELS = 1
-FORMAT = pyaudio.paInt16
 SAMPLE_RATE = 16_000
-FRAME_MS = 30
-FRAME_BYTES = int(SAMPLE_RATE * FRAME_MS / 1000) * 2
-MAX_SILENCE_BREAK = 0.6
-SIM_THRESHOLD = 0.75  # cosine similarity threshold for same speaker
+SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
-enabled = False
 
 
 def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
@@ -153,7 +146,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
     """
     Process a complete sentence buffer with real-time audio denoising:
     """
-    
+
     asr_model = whisper.load_model("base")
     spk_encoder = VoiceEncoder()
     speaker_centroids = []  # type: List[np.ndarray]
@@ -186,10 +179,10 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
             else embedding_result
         )
         spk_idx = assign_speaker(embedding, speaker_centroids)
-        
+
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text
-        
+
         return interaction
     else:
         raise ValueError("No text transcribed from audio buffer; check audio quality.")
