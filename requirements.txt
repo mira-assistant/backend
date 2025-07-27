@@ -1,6 +1,6 @@
-FastAPI==0.116.1
-pydantic==2.11.7
-sqlalchemy==2.0.41
+FastAPI==0.115.6
+pydantic==2.10.4
+sqlalchemy==2.0.37
 uvicorn==0.35.0
 git+https://github.com/openai/whisper.git
 noisereduce>=3.0.0
