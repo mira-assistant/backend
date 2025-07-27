@@ -27,12 +27,24 @@ from sqlalchemy.orm import Session
 # NLP imports
 try:
     import spacy
-    from transformers.pipelines import pipeline
+    from transformers import pipeline
     from sentence_transformers import SentenceTransformer
     ADVANCED_NLP_AVAILABLE = True
 except ImportError:
     ADVANCED_NLP_AVAILABLE = False
     logging.warning("Advanced NLP features not available. Install spacy, transformers, and sentence-transformers.")
+    
+    # Mock classes for when dependencies aren't available
+    class MockPipeline:
+        def __call__(self, *args, **kwargs):
+            return [{'label': 'NEUTRAL', 'score': 0.5}]
+    
+    class MockSentenceTransformer:
+        def encode(self, *args, **kwargs):
+            return np.random.random(384)
+    
+    pipeline = lambda *args, **kwargs: MockPipeline()
+    SentenceTransformer = lambda *args, **kwargs: MockSentenceTransformer()
 
 from models import Person, Interaction as DBInteraction, Conversation as DBConversation
 from context_config import ContextProcessorConfig, DEFAULT_CONFIG
@@ -799,10 +811,13 @@ def create_enhanced_context_processor(config: Optional[ContextProcessorConfig] =
     return EnhancedContextProcessor(config)
 
 
-def process_whisper_output_enhanced(
+def process_interaction_enhanced(
     processor: EnhancedContextProcessor, 
-    whisper_output: str,
+    interaction: DBInteraction,
     voice_embedding: Optional[np.ndarray] = None
 ) -> Tuple[str, bool]:
-    """Convenience function to process whisper output with enhanced features."""
-    return processor.process_input(whisper_output, voice_embedding)
+    """Process a database interaction with enhanced features."""
+    # Format the interaction as the processor expects
+    timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    formatted_input = f"({timestamp_str}) Person {interaction.speaker}: {interaction.text}"
+    return processor.process_input(formatted_input, voice_embedding)

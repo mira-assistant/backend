@@ -5,7 +5,7 @@ from models import Interaction, Person
 from db import get_db_session
 import uvicorn
 from sentence_processor import transcribe_interaction
-from enhanced_context_processor import create_enhanced_context_processor, process_whisper_output_enhanced
+from enhanced_context_processor import create_enhanced_context_processor, process_interaction_enhanced
 from context_config import DEFAULT_CONFIG
 import numpy as np
 from datetime import datetime
@@ -77,7 +77,7 @@ def disable_service():
 
 @app.post("/process_interaction")
 def process_interaction(sentence_buf: bytes):  # Change from bytearray to bytes
-    """Process interaction with enhanced context processing."""
+    """Process interaction - transcribe sentence and identify speaker only."""
     try:
         # Convert bytes to bytearray for processing
         sentence_buf_array = bytearray(sentence_buf)
@@ -85,16 +85,18 @@ def process_interaction(sentence_buf: bytes):  # Change from bytearray to bytes
         # Transcribe with voice embedding
         transcription_result = transcribe_interaction(sentence_buf_array)
         
-        # Extract voice embedding if available
-        voice_embedding = None
-        if "voice_embedding" in transcription_result:
-            voice_embedding = np.array(transcription_result["voice_embedding"])
-        
         # Create database interaction
         interaction = Interaction(
             user_id=transcription_result["speaker"],  # Use user_id for backward compatibility
             text=transcription_result["text"]
         )
+
+        # Check for shutdown command first (moved here for immediate response)
+        if "mira" in interaction.text.lower() and any(
+            cancelCMD in interaction.text.lower() for cancelCMD in ("cancel", "exit")
+        ):
+            disable_service()
+            return status
 
         db = get_db_session()
         db.add(interaction)
@@ -102,29 +104,12 @@ def process_interaction(sentence_buf: bytes):  # Change from bytearray to bytes
         db.refresh(interaction)
         db.close()
 
-        # Process with enhanced context processor
-        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        whisper_output = f"({timestamp_str}) Person {transcription_result['speaker']}: {transcription_result['text']}"
-        
-        context, has_intent = process_whisper_output_enhanced(
-            context_processor, 
-            whisper_output, 
-            voice_embedding
-        )
-        
-        # Add enhanced information to response
+        # Return basic transcription result
         response = {
             "id": str(interaction.id),
             "speaker": interaction.speaker,  # This uses the property
             "text": interaction.text,
             "timestamp": interaction.timestamp.isoformat(),
-            "context": context,
-            "has_intent": has_intent,
-            "enhanced_features": {
-                "entities": getattr(context_processor.interaction_history[-1], 'entities', None) if context_processor.interaction_history else None,
-                "sentiment": getattr(context_processor.interaction_history[-1], 'sentiment', None) if context_processor.interaction_history else None,
-                "speaker_summary": context_processor.get_speaker_summary()
-            }
         }
         
         return response
@@ -145,19 +130,15 @@ def inference_endpoint(interaction_id):
         if not interaction:
             raise HTTPException(status_code=404, detail="Interaction not found")
 
-        if "mira" in interaction.text.lower() and any(
-            cancelCMD in interaction.text.lower() for cancelCMD in ("cancel", "exit")
-        ):
-            disable_service()
-            return status
-
-        # Use enhanced context processing
-        timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        whisper_output = f"({timestamp_str}) Person {interaction.speaker}: {interaction.text}"
+        # Extract voice embedding if available from transcription
+        voice_embedding = None
+        # Note: voice_embedding would come from the transcription step
         
-        context, has_intent = process_whisper_output_enhanced(
+        # Use enhanced context processing with the new function
+        context, has_intent = process_interaction_enhanced(
             context_processor, 
-            whisper_output
+            interaction, 
+            voice_embedding
         )
 
         if not has_intent:
