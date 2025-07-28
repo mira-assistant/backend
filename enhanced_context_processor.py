@@ -99,6 +99,17 @@ class EnhancedContextProcessor:
     def _init_nlp_components(self):
         """Initialize NLP components based on configuration."""
         self.nlp_components = {}
+        
+        # Suppress transformer warnings during model loading
+        import warnings
+        import logging
+        warnings.filterwarnings("ignore", message=".*not used when initializing.*")
+        warnings.filterwarnings("ignore", message=".*This IS expected.*")
+        warnings.filterwarnings("ignore", message=".*This IS NOT expected.*")
+        
+        # Suppress verbose transformer logging
+        logging.getLogger("transformers").setLevel(logging.WARNING)
+        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
             
         try:
             if self.config.enable_ner or self.config.enable_coreference:

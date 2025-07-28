@@ -51,14 +51,10 @@ def get_models():
     global _asr_model, _spk_encoder
     
     if _asr_model is None:
-        print("Loading Whisper ASR model...")
         _asr_model = whisper.load_model("base")
-        print("✅ Whisper model loaded")
     
     if _spk_encoder is None:
-        print("Loading voice encoder model...")
         _spk_encoder = VoiceEncoder()
-        print("✅ Voice encoder model loaded")
     
     return _asr_model, _spk_encoder
 

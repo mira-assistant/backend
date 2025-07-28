@@ -97,9 +97,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_current_status():
-    """Get current status - requires advanced features"""
-    # Ensure features are loaded at startup
-    load_advanced_features()
+    """Get current status - features should already be loaded at startup"""
     return {
         "version": "2.3.9",  # Removed simple mode fallback
         "listening_clients": status.get("listening_clients", []),
@@ -202,10 +200,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
         
-        # Ensure advanced features are loaded
-        load_advanced_features()
-        
-        # Use advanced processing
+        # Use advanced processing (features should already be loaded)
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = transcribe_interaction(sentence_buf)
         logger.info("Advanced transcription successful")
@@ -293,9 +288,7 @@ def get_recent_interactions(limit: int = 10):
 def inference_endpoint(interaction_id: str):
     """Enhanced inference endpoint with context integration."""
     try:
-        # Ensure advanced features are loaded
-        load_advanced_features()
-        
+        # Features should already be loaded at startup
         interaction = (
             get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
         )
