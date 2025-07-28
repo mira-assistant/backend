@@ -16,15 +16,6 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
 )
 
-# Only show initialization messages once
-_INITIALIZATION_DONE = False
-
-def log_once(message):
-    """Log a message only once during initialization"""
-    global _INITIALIZATION_DONE
-    if not _INITIALIZATION_DONE:
-        print(message)
-
 # Lazy loading variables to prevent duplicate initialization
 _advanced_modules_loaded = False
 _context_processor_initialized = False
@@ -37,8 +28,9 @@ def log_once(message, flag_name=None):
     elif flag_name == 'context' and not globals().get('_context_logged', False):
         print(message)
         globals()['_context_logged'] = True
-    elif flag_name is None and not _INITIALIZATION_DONE:
+    elif flag_name is None and not globals().get('_general_logged', False):
         print(message)
+        globals()['_general_logged'] = True
 
 def load_advanced_features():
     """Lazily load advanced features only when needed"""
@@ -111,16 +103,6 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Initialize enhanced context processor only if advanced features are available
-context_processor = initialize_context_processor()
-
-# Update ADVANCED_FEATURES_AVAILABLE after lazy loading
-if not _advanced_modules_loaded:
-    load_advanced_features()
-
-# Mark initialization as complete
-_INITIALIZATION_DONE = True
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -129,7 +111,7 @@ def get_current_status():
     """Get current status with updated feature availability"""
     load_advanced_features()  # Ensure features are checked
     return {
-        "version": "2.3.7",  # Fixed duplicate initialization messages
+        "version": "2.3.8",  # Fixed module-level initialization causing duplicate messages
         "listening_clients": status.get("listening_clients", []),
         "enabled": status.get("enabled", False),
         "mode": "advanced" if ADVANCED_FEATURES_AVAILABLE else "simple",
@@ -143,7 +125,7 @@ def get_current_status():
     }
 
 status: dict = {
-    "version": "2.3.7",  # Fixed duplicate initialization messages
+    "version": "2.3.8",  # Fixed module-level initialization causing duplicate messages
     "listening_clients": list(),
     "enabled": False,
     "mode": "simple",  # Will be updated by get_current_status
