@@ -21,7 +21,7 @@ How it works
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import whisper
@@ -139,7 +139,7 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray] = None) -> int:
+def assign_speaker(embedding: np.ndarray, centroids: Optional[List[np.ndarray]]) -> int:
     """Assign embedding to a speaker index; update centroids online."""
     global _speaker_centroids
     
@@ -165,7 +165,7 @@ def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray] = None) ->
     return best_idx
 
 
-def transcribe_interaction(sentence_buf: bytearray) -> dict:
+def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and enhanced speaker recognition.
     """
@@ -175,11 +175,9 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
     interaction = dict()
 
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
-    if len(audio_f32) < SAMPLE_RATE * 1.5:
-        # Not enough float32 samples (1.5 seconds worth)
-        raise ValueError(
-            "Audio buffer too short for processing; must be at least 1.5 seconds."
-        )
+    if len(audio_f32) < SAMPLE_RATE * 1:
+        # Not enough float32 samples (1 second worth)
+        return None
 
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
@@ -199,7 +197,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
             if isinstance(embedding_result, tuple)
             else embedding_result
         )
-        spk_idx = assign_speaker(embedding)
+        spk_idx = assign_speaker(embedding, None)
 
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text
@@ -209,4 +207,4 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
 
         return interaction
     else:
-        raise ValueError("No text transcribed from audio buffer; check audio quality.")
+        return None

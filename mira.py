@@ -1,6 +1,5 @@
 import uuid
 import warnings
-import os
 from datetime import datetime, timedelta
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +9,7 @@ import uvicorn
 import logging
 import json
 from difflib import SequenceMatcher
+from contextlib import asynccontextmanager
 
 # Suppress webrtcvad deprecation warnings as early as possible
 warnings.filterwarnings(
@@ -35,19 +35,22 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# FastAPI startup event to ensure features are loaded when uvicorn starts
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Ensure advanced features are loaded when the FastAPI app starts"""
     try:
         load_advanced_features()
         initialize_context_processor()
-        print("✅ Mira backend initialized successfully via startup event")
+        print("✅ Mira backend initialized successfully via lifespan event")
+        yield
     except SystemExit as e:
         print(f"\n{e}")
         print("⛔ Mira backend cannot start without required AI features.")
         print("Please install all dependencies and try again.")
         raise e
+
+app = FastAPI(lifespan=lifespan)
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -237,6 +240,10 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         # Use advanced processing (features should already be loaded)
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = transcribe_interaction(sentence_buf)
+
+        if transcription_result is None:
+            return
+
         logger.info("Advanced transcription successful")
 
         # Check for duplicate transcription before saving
@@ -267,19 +274,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
             db.refresh(interaction)
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
 
-            # Return interaction data for the frontend
-            result = {
-                "id": str(interaction.id),
-                "user_id": interaction.user_id,
-                "speaker": interaction.user_id,
-                "text": interaction.text,
-                "timestamp": interaction.timestamp.isoformat()
-                if getattr(interaction, "timestamp")
-                else None,
-            }
-
-            logger.info(f"Returning interaction data: {result}")
-            return result
+            return interaction
 
         except Exception as db_error:
             logger.error(f"Database error: {db_error}")
@@ -527,5 +522,5 @@ if __name__ == "__main__":
         exit(1)
 
     # Use reload only in development, not when launched via script
-    reload_mode = os.getenv("MIRA_DEV_MODE", "false").lower() == "true"
+    reload_mode = False
     uvicorn.run("mira:app", host="0.0.0.0", port=8000, reload=reload_mode)
