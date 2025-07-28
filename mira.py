@@ -1,5 +1,6 @@
 import uuid
 import warnings
+import os
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Interaction, Person
@@ -8,6 +9,20 @@ import uvicorn
 import logging
 import json
 
+# Suppress webrtcvad deprecation warnings as early as possible
+warnings.filterwarnings(
+    "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
+)
+
+# Only show initialization messages once
+_INITIALIZATION_DONE = False
+
+def log_once(message):
+    """Log a message only once during initialization"""
+    global _INITIALIZATION_DONE
+    if not _INITIALIZATION_DONE:
+        print(message)
+
 # Try to import advanced features, fall back to simple processing if they fail
 try:
     from run_inference import send_prompt
@@ -15,10 +30,10 @@ try:
     from enhanced_context_processor import create_enhanced_context_processor, process_interaction_enhanced
     from context_config import DEFAULT_CONFIG
     ADVANCED_FEATURES_AVAILABLE = True
-    print("✅ Advanced AI features loaded successfully")
+    log_once("✅ Advanced AI features loaded successfully")
 except ImportError as e:
-    print(f"⚠️  Advanced AI features unavailable: {e}")
-    print("🔄 Falling back to simple processing mode")
+    log_once(f"⚠️  Advanced AI features unavailable: {e}")
+    log_once("🔄 Falling back to simple processing mode")
     from simple_audio_processor import process_audio_simple
     ADVANCED_FEATURES_AVAILABLE = False
 
@@ -44,20 +59,23 @@ app.add_middleware(
 if ADVANCED_FEATURES_AVAILABLE:
     try:
         context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
-        print("✅ Enhanced context processor initialized")
+        log_once("✅ Enhanced context processor initialized")
     except Exception as e:
-        print(f"⚠️  Enhanced context processor failed to initialize: {e}")
+        log_once(f"⚠️  Enhanced context processor failed to initialize: {e}")
         context_processor = None
         ADVANCED_FEATURES_AVAILABLE = False
 else:
     context_processor = None
+
+# Mark initialization as complete
+_INITIALIZATION_DONE = True
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 status: dict = {
-    "version": "2.3.5",  # Fixed duplicate transcriptions and added processing mode indicators
+    "version": "2.3.6",  # Fixed launcher timing and duplicate print issues
     "listening_clients": list(),
     "enabled": False,
     "mode": "advanced" if ADVANCED_FEATURES_AVAILABLE else "simple",
@@ -321,4 +339,6 @@ def identify_speaker(speaker_index: int, name: str):
 
 # Main entry point
 if __name__ == "__main__":
-    uvicorn.run("mira:app", host="0.0.0.0", port=8000, reload=True)
+    # Use reload only in development, not when launched via script
+    reload_mode = os.getenv("MIRA_DEV_MODE", "false").lower() == "true"
+    uvicorn.run("mira:app", host="0.0.0.0", port=8000, reload=reload_mode)
