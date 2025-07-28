@@ -35,6 +35,20 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# FastAPI startup event to ensure features are loaded when uvicorn starts
+@app.on_event("startup")
+async def startup_event():
+    """Ensure advanced features are loaded when the FastAPI app starts"""
+    try:
+        load_advanced_features()
+        initialize_context_processor()
+        print("✅ Mira backend initialized successfully via startup event")
+    except SystemExit as e:
+        print(f"\n{e}")
+        print("⛔ Mira backend cannot start without required AI features.")
+        print("Please install all dependencies and try again.")
+        raise e
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -215,6 +229,10 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
 
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
 
+        # Ensure advanced features are loaded before processing
+        if not _advanced_modules_loaded:
+            load_advanced_features()
+
         # Use advanced processing (features should already be loaded)
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = transcribe_interaction(sentence_buf)
@@ -350,7 +368,10 @@ def clear_all_interactions():
 def inference_endpoint(interaction_id: str):
     """Enhanced inference endpoint with context integration."""
     try:
-        # Features should already be loaded at startup
+        # Ensure advanced features are loaded before processing
+        if not _advanced_modules_loaded:
+            load_advanced_features()
+
         interaction = (
             get_db_session()
             .query(Interaction)
@@ -439,7 +460,7 @@ def get_interaction_history(limit: int = 10):
                         "speaker": interaction.user_id,
                         "text": interaction.text,
                         "timestamp": interaction.timestamp.isoformat()
-                        if getattr("interaction", "timestamp")
+                        if getattr(interaction, "timestamp")
                         else None,
                     }
                     for interaction in interactions
