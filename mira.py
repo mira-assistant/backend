@@ -98,19 +98,7 @@ logger = logging.getLogger(__name__)
 
 def get_current_status():
     """Get current status - features should already be loaded at startup"""
-    return {
-        "version": "2.3.9",  # Removed simple mode fallback
-        "listening_clients": status.get("listening_clients", []),
-        "enabled": status.get("enabled", False),
-        "mode": "advanced",  # Always advanced mode
-        "features": {
-            "advanced_nlp": True,           # Always available
-            "speaker_clustering": True,     # Always available
-            "context_summarization": True,  # Always available
-            "database_integration": True,   # Always available
-            "audio_processing": True        # Always available
-        }
-    }
+    return status
 
 status: dict = {
     "version": "2.3.9",  # Removed simple mode fallback
