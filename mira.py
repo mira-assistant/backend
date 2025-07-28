@@ -93,6 +93,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         if "mira" in interaction.text.lower() and any(
             cancelCMD in interaction.text.lower() for cancelCMD in ("cancel", "exit")
         ):
+            print("Mira interrupted.")
             disable_service()
             return status
 
