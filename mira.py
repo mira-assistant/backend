@@ -38,7 +38,7 @@ def load_advanced_features():
     global send_prompt, transcribe_interaction, create_enhanced_context_processor, process_interaction_enhanced, DEFAULT_CONFIG
     
     if _advanced_modules_loaded:
-        return True
+        return
     
     try:
         from run_inference import send_prompt
@@ -47,7 +47,6 @@ def load_advanced_features():
         from context_config import DEFAULT_CONFIG
         log_once("✅ Advanced AI features loaded successfully", 'advanced')
         _advanced_modules_loaded = True
-        return True
     except ImportError as e:
         error_msg = f"❌ Failed to load required AI features: {e}"
         log_once(error_msg, 'advanced')
@@ -59,25 +58,21 @@ def initialize_context_processor():
     """Initialize context processor - required for Mira to function"""
     global _context_processor_initialized, context_processor
     
-    if _context_processor_initialized:
-        return context_processor
-    
     # Ensure advanced features are loaded first
     load_advanced_features()
+    
+    if _context_processor_initialized:
+        return
     
     try:
         context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
         log_once("✅ Enhanced context processor initialized", 'context')
         _context_processor_initialized = True
-        return context_processor
     except Exception as e:
         error_msg = f"❌ Failed to initialize context processor: {e}"
         log_once(error_msg, 'context')
         log_once("💥 Mira requires context processor to function properly.", 'context')
         raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
-
-# Initialize with defaults
-context_processor = None
 
 # Suppress webrtcvad deprecation warnings
 warnings.filterwarnings(
@@ -248,7 +243,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
                 "user_id": interaction.user_id,
                 "speaker": interaction.user_id,
                 "text": interaction.text,
-                "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None
+                "timestamp": interaction.timestamp.isoformat() if getattr("interaction", "timestamp") else None
             }
             
             logger.info(f"Returning interaction data: {result}")
@@ -283,7 +278,7 @@ def get_recent_interactions(limit: int = 10):
                     "user_id": interaction.user_id,
                     "speaker": interaction.user_id,
                     "text": interaction.text,
-                    "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None
+                    "timestamp": interaction.timestamp.isoformat() if getattr("interaction", "timestamp") else None
                 })
             
             return result
@@ -312,7 +307,8 @@ def inference_endpoint(interaction_id: str):
         voice_embedding = None
         
         # Use enhanced context processing
-        context_processor = initialize_context_processor()
+        
+        initialize_context_processor()
         context, has_intent = process_interaction_enhanced(
             context_processor, 
             interaction, 
@@ -343,7 +339,7 @@ def inference_endpoint(interaction_id: str):
 @app.get("/context/speakers")
 def get_speaker_summary():
     """Get summary of all tracked speakers."""
-    context_processor = initialize_context_processor()
+    initialize_context_processor()
     return context_processor.get_speaker_summary()
 
 
@@ -351,7 +347,7 @@ def get_speaker_summary():
 def get_interaction_history(limit: int = 10):
     """Get recent interaction history."""
     try:
-        context_processor = initialize_context_processor()
+        initialize_context_processor()
         recent_interactions = context_processor.interaction_history[-limit:]
         return [interaction.to_dict() for interaction in recent_interactions]
     except Exception as e:
@@ -369,7 +365,7 @@ def get_interaction_history(limit: int = 10):
                         "id": str(interaction.id),
                         "speaker": interaction.user_id,
                         "text": interaction.text,
-                        "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None
+                        "timestamp": interaction.timestamp.isoformat() if getattr("interaction", "timestamp") else None
                     }
                     for interaction in interactions
                 ]
@@ -395,7 +391,7 @@ def identify_speaker(speaker_index: int, name: str):
                 db.commit()
                 
                 # Update context processor
-                context_processor = initialize_context_processor()
+                initialize_context_processor()
                 if speaker_index in context_processor.speaker_profiles:
                     context_processor.speaker_profiles[speaker_index].name = name
                     context_processor.speaker_profiles[speaker_index].is_identified = True
@@ -417,7 +413,7 @@ if __name__ == "__main__":
     try:
         load_advanced_features()
         initialize_context_processor()
-        print("🚀 Mira backend initialized successfully with all required features")
+        print("✅ Mira backend initialized successfully with all required features")
     except SystemExit as e:
         print(f"\n{e}")
         print("⛔ Mira backend cannot start without required AI features.")
