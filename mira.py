@@ -284,6 +284,37 @@ def get_recent_interactions(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
 
 
+@app.delete("/interactions")
+def clear_all_interactions():
+    """Clear all interactions from the database."""
+    try:
+        db = get_db_session()
+        try:
+            # Delete all interactions
+            deleted_count = db.query(Interaction).delete()
+            db.commit()
+            
+            logger.info(f"Cleared {deleted_count} interactions from database")
+            
+            # Also clear from context processor if initialized
+            if _context_processor_initialized and 'context_processor' in globals():
+                context_processor.interaction_history.clear()
+                logger.info("Cleared interactions from context processor")
+            
+            return {
+                "message": f"Successfully cleared {deleted_count} interactions",
+                "deleted_count": deleted_count
+            }
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error clearing interactions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
+
+
 @app.post("/inference")
 def inference_endpoint(interaction_id: str):
     """Enhanced inference endpoint with context integration."""
