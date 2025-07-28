@@ -33,42 +33,37 @@ def log_once(message, flag_name=None):
         globals()['_general_logged'] = True
 
 def load_advanced_features():
-    """Lazily load advanced features only when needed"""
-    global _advanced_modules_loaded, ADVANCED_FEATURES_AVAILABLE
+    """Load advanced features - required for Mira to function"""
+    global _advanced_modules_loaded
     global send_prompt, transcribe_interaction, create_enhanced_context_processor, process_interaction_enhanced, DEFAULT_CONFIG
     
     if _advanced_modules_loaded:
-        return ADVANCED_FEATURES_AVAILABLE
+        return True
     
     try:
         from run_inference import send_prompt
         from sentence_processor import transcribe_interaction
         from enhanced_context_processor import create_enhanced_context_processor, process_interaction_enhanced
         from context_config import DEFAULT_CONFIG
-        ADVANCED_FEATURES_AVAILABLE = True
         log_once("✅ Advanced AI features loaded successfully", 'advanced')
         _advanced_modules_loaded = True
         return True
     except ImportError as e:
-        log_once(f"⚠️  Advanced AI features unavailable: {e}", 'advanced')
-        log_once("🔄 Falling back to simple processing mode", 'advanced')
-        from simple_audio_processor import process_audio_simple
-        globals()['process_audio_simple'] = process_audio_simple
-        ADVANCED_FEATURES_AVAILABLE = False
-        _advanced_modules_loaded = True
-        return False
+        error_msg = f"❌ Failed to load required AI features: {e}"
+        log_once(error_msg, 'advanced')
+        log_once("💥 Mira requires advanced AI features to function properly.", 'advanced')
+        log_once("Please ensure all dependencies are installed and try again.", 'advanced')
+        raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
 
 def initialize_context_processor():
-    """Lazily initialize context processor only when needed"""
+    """Initialize context processor - required for Mira to function"""
     global _context_processor_initialized, context_processor
     
     if _context_processor_initialized:
         return context_processor
     
-    if not load_advanced_features():
-        context_processor = None
-        _context_processor_initialized = True
-        return None
+    # Ensure advanced features are loaded first
+    load_advanced_features()
     
     try:
         context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
@@ -76,13 +71,12 @@ def initialize_context_processor():
         _context_processor_initialized = True
         return context_processor
     except Exception as e:
-        log_once(f"⚠️  Enhanced context processor failed to initialize: {e}", 'context')
-        context_processor = None
-        _context_processor_initialized = True
-        return None
+        error_msg = f"❌ Failed to initialize context processor: {e}"
+        log_once(error_msg, 'context')
+        log_once("💥 Mira requires context processor to function properly.", 'context')
+        raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
 
 # Initialize with defaults
-ADVANCED_FEATURES_AVAILABLE = False
 context_processor = None
 
 # Suppress webrtcvad deprecation warnings
@@ -108,33 +102,34 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_current_status():
-    """Get current status with updated feature availability"""
-    load_advanced_features()  # Ensure features are checked
+    """Get current status - requires advanced features"""
+    # Ensure features are loaded at startup
+    load_advanced_features()
     return {
-        "version": "2.3.8",  # Fixed module-level initialization causing duplicate messages
+        "version": "2.3.9",  # Removed simple mode fallback
         "listening_clients": status.get("listening_clients", []),
         "enabled": status.get("enabled", False),
-        "mode": "advanced" if ADVANCED_FEATURES_AVAILABLE else "simple",
+        "mode": "advanced",  # Always advanced mode
         "features": {
-            "advanced_nlp": ADVANCED_FEATURES_AVAILABLE,
-            "speaker_clustering": ADVANCED_FEATURES_AVAILABLE,
-            "context_summarization": ADVANCED_FEATURES_AVAILABLE,
-            "database_integration": True,  # Always available
-            "audio_processing": True      # Always available
+            "advanced_nlp": True,           # Always available
+            "speaker_clustering": True,     # Always available
+            "context_summarization": True,  # Always available
+            "database_integration": True,   # Always available
+            "audio_processing": True        # Always available
         }
     }
 
 status: dict = {
-    "version": "2.3.8",  # Fixed module-level initialization causing duplicate messages
+    "version": "2.3.9",  # Removed simple mode fallback
     "listening_clients": list(),
     "enabled": False,
-    "mode": "simple",  # Will be updated by get_current_status
+    "mode": "advanced",  # Always advanced mode
     "features": {
-        "advanced_nlp": False,  # Will be updated by get_current_status
-        "speaker_clustering": False,
-        "context_summarization": False,
-        "database_integration": True,  # Always available
-        "audio_processing": True      # Always available
+        "advanced_nlp": True,           # Always available
+        "speaker_clustering": True,     # Always available
+        "context_summarization": True,  # Always available
+        "database_integration": True,   # Always available
+        "audio_processing": True        # Always available
     }
 }
 
@@ -212,19 +207,13 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
         
-        # Try advanced processing first, fall back to simple processing
-        load_advanced_features()  # Ensure features are loaded
-        if ADVANCED_FEATURES_AVAILABLE:
-            try:
-                sentence_buf = bytearray(sentence_buf_raw)
-                transcription_result = transcribe_interaction(sentence_buf)
-                logger.info("Advanced transcription successful")
-            except Exception as e:
-                logger.warning(f"Advanced transcription failed: {e}, falling back to simple processing")
-                transcription_result = process_audio_simple(sentence_buf_raw)
-        else:
-            transcription_result = process_audio_simple(sentence_buf_raw)
-            logger.info("Simple transcription completed")
+        # Ensure advanced features are loaded
+        load_advanced_features()
+        
+        # Use advanced processing
+        sentence_buf = bytearray(sentence_buf_raw)
+        transcription_result = transcribe_interaction(sentence_buf)
+        logger.info("Advanced transcription successful")
         
         # Check for duplicate transcription before saving
         if is_duplicate_transcription(transcription_result["text"], transcription_result["speaker"]):
@@ -309,9 +298,8 @@ def get_recent_interactions(limit: int = 10):
 def inference_endpoint(interaction_id: str):
     """Enhanced inference endpoint with context integration."""
     try:
-        load_advanced_features()  # Ensure features are loaded
-        if not ADVANCED_FEATURES_AVAILABLE:
-            return {"message": "Advanced inference features not available in simple mode"}
+        # Ensure advanced features are loaded
+        load_advanced_features()
         
         interaction = (
             get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
@@ -323,7 +311,7 @@ def inference_endpoint(interaction_id: str):
         # Extract voice embedding if available from transcription
         voice_embedding = None
         
-        # Use enhanced context processing with the new function
+        # Use enhanced context processing
         context_processor = initialize_context_processor()
         context, has_intent = process_interaction_enhanced(
             context_processor, 
@@ -355,20 +343,20 @@ def inference_endpoint(interaction_id: str):
 @app.get("/context/speakers")
 def get_speaker_summary():
     """Get summary of all tracked speakers."""
-    load_advanced_features()
     context_processor = initialize_context_processor()
-    if not ADVANCED_FEATURES_AVAILABLE or not context_processor:
-        return {"message": "Speaker tracking not available in simple mode"}
     return context_processor.get_speaker_summary()
 
 
 @app.get("/context/history")
 def get_interaction_history(limit: int = 10):
     """Get recent interaction history."""
-    load_advanced_features()
-    context_processor = initialize_context_processor()
-    if not ADVANCED_FEATURES_AVAILABLE or not context_processor:
-        # Fall back to database query
+    try:
+        context_processor = initialize_context_processor()
+        recent_interactions = context_processor.interaction_history[-limit:]
+        return [interaction.to_dict() for interaction in recent_interactions]
+    except Exception as e:
+        # Fallback to database query if context processor fails
+        logger.warning(f"Context processor unavailable, falling back to database: {e}")
         try:
             db = get_db_session()
             try:
@@ -387,12 +375,9 @@ def get_interaction_history(limit: int = 10):
                 ]
             finally:
                 db.close()
-        except Exception as e:
-            logger.error(f"Error fetching interaction history: {e}")
-            return []
-    
-    recent_interactions = context_processor.interaction_history[-limit:]
-    return [interaction.to_dict() for interaction in recent_interactions]
+        except Exception as db_error:
+            logger.error(f"Error fetching interaction history from database: {db_error}")
+            raise HTTPException(status_code=500, detail=f"Failed to fetch interaction history: {str(db_error)}")
 
 
 @app.post("/context/identify_speaker")
@@ -409,10 +394,9 @@ def identify_speaker(speaker_index: int, name: str):
                 
                 db.commit()
                 
-                # Update context processor if available
-                load_advanced_features()
+                # Update context processor
                 context_processor = initialize_context_processor()
-                if ADVANCED_FEATURES_AVAILABLE and context_processor and speaker_index in context_processor.speaker_profiles:
+                if speaker_index in context_processor.speaker_profiles:
                     context_processor.speaker_profiles[speaker_index].name = name
                     context_processor.speaker_profiles[speaker_index].is_identified = True
                     
@@ -429,6 +413,17 @@ def identify_speaker(speaker_index: int, name: str):
 
 # Main entry point
 if __name__ == "__main__":
+    # Validate advanced features at startup to fail fast
+    try:
+        load_advanced_features()
+        initialize_context_processor()
+        print("🚀 Mira backend initialized successfully with all required features")
+    except SystemExit as e:
+        print(f"\n{e}")
+        print("⛔ Mira backend cannot start without required AI features.")
+        print("Please install all dependencies and try again.")
+        exit(1)
+    
     # Use reload only in development, not when launched via script
     reload_mode = os.getenv("MIRA_DEV_MODE", "false").lower() == "true"
     uvicorn.run("mira:app", host="0.0.0.0", port=8000, reload=reload_mode)
