@@ -41,6 +41,27 @@ SAMPLE_RATE = 16_000
 SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
 
+# ---------- Global model instances (loaded once) ----------
+_asr_model = None
+_spk_encoder = None
+_speaker_centroids = []
+
+def get_models():
+    """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
+    global _asr_model, _spk_encoder
+    
+    if _asr_model is None:
+        print("Loading Whisper ASR model...")
+        _asr_model = whisper.load_model("base")
+        print("✅ Whisper model loaded")
+    
+    if _spk_encoder is None:
+        print("Loading voice encoder model...")
+        _spk_encoder = VoiceEncoder()
+        print("✅ Voice encoder model loaded")
+    
+    return _asr_model, _spk_encoder
+
 
 def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
     """Convert 16-bit PCM to float32 in [-1,1]."""
@@ -122,8 +143,14 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray]) -> int:
+def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray] = None) -> int:
     """Assign embedding to a speaker index; update centroids online."""
+    global _speaker_centroids
+    
+    # Use global centroids if none provided
+    if centroids is None:
+        centroids = _speaker_centroids
+    
     if not centroids:
         centroids.append(embedding.copy())
         return 0
@@ -146,10 +173,8 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
     """
     Process a complete sentence buffer with real-time audio denoising and enhanced speaker recognition.
     """
-
-    asr_model = whisper.load_model("base")
-    spk_encoder = VoiceEncoder()
-    speaker_centroids = []  # type: List[np.ndarray]
+    # Use cached models instead of loading them each time
+    asr_model, spk_encoder = get_models()
 
     interaction = dict()
 
@@ -178,7 +203,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
             if isinstance(embedding_result, tuple)
             else embedding_result
         )
-        spk_idx = assign_speaker(embedding, speaker_centroids)
+        spk_idx = assign_speaker(embedding)
 
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text

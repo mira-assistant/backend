@@ -1,6 +1,7 @@
 import uuid
 import warnings
 import os
+from datetime import datetime, timedelta
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Interaction, Person
@@ -8,6 +9,7 @@ from db import get_db_session
 import uvicorn
 import logging
 import json
+from difflib import SequenceMatcher
 
 # Suppress webrtcvad deprecation warnings as early as possible
 warnings.filterwarnings(
@@ -192,6 +194,32 @@ def disable_service():
     return status
 
 
+def is_duplicate_transcription(text: str, speaker: int, similarity_threshold: float = 0.85, time_window_minutes: int = 2) -> bool:
+    """Check if a transcription is a duplicate of a recent one."""
+    try:
+        db = get_db_session()
+        try:
+            # Get recent interactions from the same speaker within time window
+            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
+            recent_interactions = db.query(Interaction).filter(
+                Interaction.user_id == speaker,
+                Interaction.timestamp >= cutoff_time
+            ).all()
+            
+            # Check similarity with recent transcriptions
+            for interaction in recent_interactions:
+                similarity = SequenceMatcher(None, text.lower().strip(), interaction.text.lower().strip()).ratio()
+                if similarity >= similarity_threshold:
+                    logger.info(f"Duplicate transcription detected (similarity: {similarity:.2f}): '{text}' vs '{interaction.text}'")
+                    return True
+            
+            return False
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Error checking for duplicate transcription: {e}")
+        return False
+
 @app.post("/process_interaction")
 def process_interaction(sentence_buf_raw: bytes = Body(...)):
     """Process interaction - transcribe sentence and identify speaker."""
@@ -215,6 +243,11 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         else:
             transcription_result = process_audio_simple(sentence_buf_raw)
             logger.info("Simple transcription completed")
+        
+        # Check for duplicate transcription before saving
+        if is_duplicate_transcription(transcription_result["text"], transcription_result["speaker"]):
+            logger.info("Skipping duplicate transcription")
+            return {"message": "Duplicate transcription skipped"}
         
         # Create database interaction
         interaction = Interaction(
