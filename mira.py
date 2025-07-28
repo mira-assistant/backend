@@ -510,17 +510,4 @@ def identify_speaker(speaker_index: int, name: str):
 
 # Main entry point
 if __name__ == "__main__":
-    # Validate advanced features at startup to fail fast
-    try:
-        load_advanced_features()
-        initialize_context_processor()
-        print("✅ Mira backend initialized successfully with all required features")
-    except SystemExit as e:
-        print(f"\n{e}")
-        print("⛔ Mira backend cannot start without required AI features.")
-        print("Please install all dependencies and try again.")
-        exit(1)
-
-    # Use reload only in development, not when launched via script
-    reload_mode = False
-    uvicorn.run("mira:app", host="0.0.0.0", port=8000, reload=reload_mode)
+    uvicorn.run("mira:app", host="0.0.0.0", port=8000)
