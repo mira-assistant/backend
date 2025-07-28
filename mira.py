@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 status: dict = {
-    "version": "2.3.4",  # Updated version for stability improvements
+    "version": "2.3.5",  # Fixed duplicate transcriptions and added processing mode indicators
     "listening_clients": list(),
     "enabled": False,
     "mode": "advanced" if ADVANCED_FEATURES_AVAILABLE else "simple",
@@ -135,22 +135,30 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
             disable_service()
             return status
 
-        # Save to database
+        # Save to database with better error handling
         db = get_db_session()
         try:
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
-            logger.info(f"Interaction saved to database: {interaction.id}")
+            logger.info(f"Interaction saved to database with ID: {interaction.id}")
             
             # Return interaction data for the frontend
-            return {
+            result = {
                 "id": str(interaction.id),
                 "user_id": interaction.user_id,
                 "speaker": interaction.user_id,
                 "text": interaction.text,
                 "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None
             }
+            
+            logger.info(f"Returning interaction data: {result}")
+            return result
+            
+        except Exception as db_error:
+            logger.error(f"Database error: {db_error}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         finally:
             db.close()
         
