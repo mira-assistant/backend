@@ -154,7 +154,6 @@ def root():
 @app.post("/register_client")
 def register_client(client_id: str):
     status["listening_clients"].append(client_id)
-    print("Client registered:", client_id)
     return status
 
 
@@ -180,7 +179,6 @@ def enable_service():
 @app.patch("/disable")
 def disable_service():
     status["enabled"] = False
-    print("Mira disabled")
     return status
 
 
@@ -245,13 +243,6 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
             return
 
         logger.info("Advanced transcription successful")
-
-        # Check for duplicate transcription before saving
-        if is_duplicate_transcription(
-            transcription_result["text"], transcription_result["speaker"]
-        ):
-            logger.info("Skipping duplicate transcription")
-            return {"message": "Duplicate transcription skipped"}
 
         # Create database interaction
         interaction = Interaction(
