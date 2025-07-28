@@ -16,9 +16,6 @@ warnings.filterwarnings(
     "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
 )
 
-# Only show initialization messages once
-_INITIALIZATION_DONE = False
-
 # Lazy loading variables to prevent duplicate initialization
 _advanced_modules_loaded = False
 _context_processor_initialized = False
