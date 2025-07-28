@@ -1,4 +1,5 @@
 import uuid
+import warnings
 from fastapi import Body, FastAPI, HTTPException
 from run_inference import send_prompt
 from models import Interaction, Person
@@ -9,6 +10,11 @@ from enhanced_context_processor import create_enhanced_context_processor, proces
 from context_config import DEFAULT_CONFIG
 import logging
 import json
+
+# Suppress webrtcvad deprecation warnings
+warnings.filterwarnings(
+    "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
+)
 
 
 # Initialize enhanced context processor
