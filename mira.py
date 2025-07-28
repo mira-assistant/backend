@@ -243,7 +243,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
                 "user_id": interaction.user_id,
                 "speaker": interaction.user_id,
                 "text": interaction.text,
-                "timestamp": interaction.timestamp.isoformat() if getattr("interaction", "timestamp") else None
+                "timestamp": interaction.timestamp.isoformat() if getattr(interaction, "timestamp") else None
             }
             
             logger.info(f"Returning interaction data: {result}")
@@ -278,7 +278,7 @@ def get_recent_interactions(limit: int = 10):
                     "user_id": interaction.user_id,
                     "speaker": interaction.user_id,
                     "text": interaction.text,
-                    "timestamp": interaction.timestamp.isoformat() if getattr("interaction", "timestamp") else None
+                    "timestamp": interaction.timestamp.isoformat() if getattr(interaction, "timestamp") else None
                 })
             
             return result
