@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import json
 import logging
-from collections import defaultdict, deque
+from collections import deque
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple, Any, Set
 import uuid
@@ -46,9 +46,6 @@ class ContextProcessor:
         """Initialize the context processor."""
         self.config = config or DEFAULT_CONFIG
         # Remove in-memory structures - all data now comes from database
-        self.keyword_index: Dict[str, List[int]] = defaultdict(
-            list
-        )  # Keep for backward compatibility
         self.conversation_cache: deque = deque(maxlen=100)  # Keep for caching recent conversations
 
         # Clustering components
@@ -361,21 +358,7 @@ class ContextProcessor:
         finally:
             session.close()
 
-    def _update_keyword_index(self, interaction: Interaction):
-        """Update keyword index."""
-        words = interaction.text.lower().split()
-        interaction_index = len(self.interaction_history) - 1
 
-        for word in words:
-            clean_word = re.sub(r"[^\w]", "", word)
-            if clean_word and len(clean_word) > 2:
-                self.keyword_index[clean_word].append(interaction_index)
-
-        # Add entities as keywords
-        if hasattr(interaction, "entities"):
-            for entity in interaction.entities:
-                entity_text = entity["text"].lower().replace(" ", "_")
-                self.keyword_index[entity_text].append(interaction_index)
 
     def detect_conversation_boundary_db(self, current_interaction: Interaction, session) -> bool:
         """Conversation boundary detection using database queries."""
