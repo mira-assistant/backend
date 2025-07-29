@@ -1,10 +1,8 @@
 import uuid
-import warnings
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Interaction, Person
 from db import get_db_session
-import uvicorn
 import logging
 import json
 from run_inference import send_prompt
@@ -14,27 +12,6 @@ from context_processor import (
     process_interaction,
 )
 from context_config import DEFAULT_CONFIG
-
-
-# Main entry point
-if __name__ == "__main__":
-    uvicorn.run("mira:app", host="0.0.0.0", port=8000)
-
-
-# Suppress webrtcvad deprecation warnings as early as possible
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message="pkg_resources is deprecated as an API",
-)
-
-
-# Suppress webrtcvad deprecation warnings
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message="pkg_resources is deprecated as an API",
-)
 
 
 # Initialize FastAPI app first
