@@ -21,7 +21,7 @@ How it works
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import whisper
@@ -40,6 +40,23 @@ warnings.filterwarnings(
 SAMPLE_RATE = 16_000
 SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
+
+# ---------- Global model instances (loaded once) ----------
+_asr_model = None
+_spk_encoder = None
+_speaker_centroids = []
+
+def get_models():
+    """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
+    global _asr_model, _spk_encoder
+    
+    if _asr_model is None:
+        _asr_model = whisper.load_model("base")
+    
+    if _spk_encoder is None:
+        _spk_encoder = VoiceEncoder()
+    
+    return _asr_model, _spk_encoder
 
 
 def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
@@ -122,8 +139,14 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray]) -> int:
+def assign_speaker(embedding: np.ndarray, centroids: Optional[List[np.ndarray]]) -> int:
     """Assign embedding to a speaker index; update centroids online."""
+    global _speaker_centroids
+    
+    # Use global centroids if none provided
+    if centroids is None:
+        centroids = _speaker_centroids
+    
     if not centroids:
         centroids.append(embedding.copy())
         return 0
@@ -142,23 +165,19 @@ def assign_speaker(embedding: np.ndarray, centroids: List[np.ndarray]) -> int:
     return best_idx
 
 
-def transcribe_interaction(sentence_buf: bytearray) -> dict:
+def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and enhanced speaker recognition.
     """
-
-    asr_model = whisper.load_model("base")
-    spk_encoder = VoiceEncoder()
-    speaker_centroids = []  # type: List[np.ndarray]
+    # Use cached models instead of loading them each time
+    asr_model, spk_encoder = get_models()
 
     interaction = dict()
 
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
-    if len(audio_f32) < SAMPLE_RATE * 1.5:
-        # Not enough float32 samples (1.5 seconds worth)
-        raise ValueError(
-            "Audio buffer too short for processing; must be at least 1.5 seconds."
-        )
+    if len(audio_f32) < SAMPLE_RATE * 1:
+        # Not enough float32 samples (1 second worth)
+        return None
 
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
@@ -178,7 +197,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
             if isinstance(embedding_result, tuple)
             else embedding_result
         )
-        spk_idx = assign_speaker(embedding, speaker_centroids)
+        spk_idx = assign_speaker(embedding, None)
 
         interaction["speaker"] = spk_idx + 1
         interaction["text"] = text
@@ -188,4 +207,4 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict:
 
         return interaction
     else:
-        raise ValueError("No text transcribed from audio buffer; check audio quality.")
+        return None
