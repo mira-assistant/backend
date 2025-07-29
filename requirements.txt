@@ -4,12 +4,12 @@ sqlalchemy>=2.0.37
 uvicorn>=0.35.0
 git+https://github.com/openai/whisper.git
 noisereduce>=3.0.0
-scipy>=1.15.1
+scipy>=1.15.3
 numpy==2.2.6
 spacy==3.8.7
 thinc==8.3.6
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 resemblyzer>=0.1.4
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 scikit-learn>=1.5.0
 transformers>=4.40.0
 sentence-transformers>=3.0.0
