@@ -40,12 +40,6 @@ def test_get_recent_interactions():
     assert isinstance(response.json(), list)
 
 
-def test_get_interaction_history():
-    """Test interaction history endpoint."""
-    response = client.get("/context/history")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-
 
 # def test_clear_all_interactions():
 #     """Test clearing interactions."""

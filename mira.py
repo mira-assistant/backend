@@ -117,8 +117,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         # Create database interaction
         interaction = Interaction(
-            user_id=transcription_result["speaker"],
-            text=transcription_result["text"],
+            **transcription_result,
         )
 
         # Check for shutdown command first
@@ -152,32 +151,17 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
 
 @app.get("/interactions")
-def get_recent_interactions(limit: int = 10):
+def get_interactions(limit: int = 0):
     """Get recent interactions for live transcription display."""
     try:
         db = get_db_session()
         try:
-            interactions = (
-                db.query(Interaction).order_by(Interaction.timestamp.desc()).limit(limit).all()
-            )
+            query = db.query(Interaction).order_by(Interaction.timestamp.desc())
+            if limit != 0:
+                query = query.limit(limit)
+            interactions = query.all()
 
-            result = []
-            for interaction in interactions:
-                result.append(
-                    {
-                        "id": str(interaction.id),
-                        "user_id": interaction.user_id,
-                        "speaker": interaction.user_id,
-                        "text": interaction.text,
-                        "timestamp": (
-                            interaction.timestamp.isoformat()
-                            if getattr(interaction, "timestamp")
-                            else None
-                        ),
-                    }
-                )
-
-            return result
+            return interactions
         finally:
             db.close()
     except Exception as e:
@@ -186,20 +170,20 @@ def get_recent_interactions(limit: int = 10):
 
 
 @app.delete("/interactions")
-def clear_all_interactions():
+def delete_interactions(limit: int = 0):
     """Clear all interactions from the database."""
     try:
         db = get_db_session()
         try:
-            # Delete all interactions
-            deleted_count = db.query(Interaction).delete()
+            query = db.query(Interaction).order_by(Interaction.timestamp.asc())
+            if limit != 0:
+                query = query.limit(limit)
+
+            deleted_count = query.delete()
+
             db.commit()
 
             logger.info(f"Cleared {deleted_count} interactions from database")
-
-            # Also clear from context processor
-            context_processor.interaction_history.clear()
-            logger.info("Cleared interactions from context processor")
 
             return {
                 "deleted_count": deleted_count,
@@ -278,47 +262,47 @@ def get_speaker_summary():
     return context_processor.get_speaker_summary()
 
 
-@app.get("/context/history")
-def get_interaction_history(limit: int = 0):
-    """Get recent interaction history."""
-    try:
-        if limit == 0:
-            recent_interactions = context_processor.interaction_history
-        else:
-            recent_interactions = context_processor.interaction_history[-limit:]
-        return [interaction.to_dict() for interaction in recent_interactions]
-    except Exception as e:
-        # Fallback to database query if context processor fails
-        logger.warning(f"Context processor unavailable, falling back to database: {e}")
-        try:
-            db = get_db_session()
-            try:
-                query = db.query(Interaction).order_by(Interaction.timestamp.desc())
-                if limit != 0:
-                    query = query.limit(limit)
-                interactions = query.all()
+# @app.get("/context/history")
+# def get_interaction_history(limit: int = 0):
+#     """Get recent interaction history."""
+#     try:
+#         if limit == 0:
+#             recent_interactions = context_processor.interaction_history
+#         else:
+#             recent_interactions = context_processor.interaction_history[-limit:]
+#         return [interaction.to_dict() for interaction in recent_interactions]
+#     except Exception as e:
+#         # Fallback to database query if context processor fails
+#         logger.warning(f"Context processor unavailable, falling back to database: {e}")
+#         try:
+#             db = get_db_session()
+#             try:
+#                 query = db.query(Interaction).order_by(Interaction.timestamp.desc())
+#                 if limit != 0:
+#                     query = query.limit(limit)
+#                 interactions = query.all()
 
-                return [
-                    {
-                        "id": str(interaction.id),
-                        "speaker": interaction.user_id,
-                        "text": interaction.text,
-                        "timestamp": (
-                            interaction.timestamp.isoformat()
-                            if getattr(interaction, "timestamp")
-                            else None
-                        ),
-                    }
-                    for interaction in interactions
-                ]
-            finally:
-                db.close()
-        except Exception as db_error:
-            logger.error(f"Error fetching interaction history from database: {db_error}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch interaction history: {str(db_error)}",
-            )
+#                 return [
+#                     {
+#                         "id": str(interaction.id),
+#                         "speaker": interaction.user_id,
+#                         "text": interaction.text,
+#                         "timestamp": (
+#                             interaction.timestamp.isoformat()
+#                             if getattr(interaction, "timestamp")
+#                             else None
+#                         ),
+#                     }
+#                     for interaction in interactions
+#                 ]
+#             finally:
+#                 db.close()
+#         except Exception as db_error:
+#             logger.error(f"Error fetching interaction history from database: {db_error}")
+#             raise HTTPException(
+#                 status_code=500,
+#                 detail=f"Failed to fetch interaction history: {str(db_error)}",
+#             )
 
 
 @app.post("/context/identify_speaker")

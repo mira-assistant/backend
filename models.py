@@ -6,7 +6,6 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     JSON,
-    Boolean,
     Float,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -31,7 +30,6 @@ class Person(Base):
         Integer, unique=True, nullable=False
     )  # Original speaker number (1, 2, etc.)
     voice_embedding = Column(JSON, nullable=True)  # Store voice embedding as JSON array
-    is_identified = Column(Boolean, default=False)  # Whether speaker has been manually identified
     cluster_id = Column(Integer, nullable=True)  # DBSCAN cluster assignment
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
@@ -51,9 +49,6 @@ class Interaction(Base):
     __tablename__ = "interactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(
-        Integer, nullable=False
-    )  # Keep original column name for backward compatibility
     speaker_id = Column(
         UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True
     )  # Link to Person
