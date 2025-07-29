@@ -35,6 +35,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ensure advanced features are loaded when the FastAPI app starts"""
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
         print("⛔ Mira backend cannot start without required AI features.")
         print("Please install all dependencies and try again.")
         raise e
+
 
 app = FastAPI(lifespan=lifespan)
 

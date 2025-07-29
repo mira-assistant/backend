@@ -46,16 +46,17 @@ _asr_model = None
 _spk_encoder = None
 _speaker_centroids = []
 
+
 def get_models():
     """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
     global _asr_model, _spk_encoder
-    
+
     if _asr_model is None:
         _asr_model = whisper.load_model("base")
-    
+
     if _spk_encoder is None:
         _spk_encoder = VoiceEncoder()
-    
+
     return _asr_model, _spk_encoder
 
 
@@ -142,11 +143,11 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
 def assign_speaker(embedding: np.ndarray, centroids: Optional[List[np.ndarray]]) -> int:
     """Assign embedding to a speaker index; update centroids online."""
     global _speaker_centroids
-    
+
     # Use global centroids if none provided
     if centroids is None:
         centroids = _speaker_centroids
-    
+
     if not centroids:
         centroids.append(embedding.copy())
         return 0
