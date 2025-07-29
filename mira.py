@@ -1,7 +1,7 @@
 import uuid
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import Interaction, Person
+from models import Interaction
 from db import get_db_session
 import logging
 import json

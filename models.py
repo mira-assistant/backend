@@ -50,7 +50,6 @@ class Interaction(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-
     text = Column(String, nullable=False)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True)
