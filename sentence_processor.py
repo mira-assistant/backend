@@ -44,7 +44,7 @@ MAX_SPEAKERS = 1
 # ---------- Global model instances (loaded once) ----------
 _asr_model = None
 _spk_encoder = None
-_speaker_centroids = []
+_speaker_centroids: list[np.ndarray] = []
 
 
 def get_models():
@@ -184,7 +184,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     denoised_audio = denoised_audio.astype(np.float32)
 
     result = asr_model.transcribe(denoised_audio)
-    text = (
+    text = str(
         " ".join(result["text"]).strip()
         if isinstance(result["text"], list)
         else result["text"].strip()

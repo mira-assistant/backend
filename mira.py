@@ -7,7 +7,13 @@ from db import get_db_session
 import uvicorn
 import logging
 import json
-from contextlib import asynccontextmanager
+from run_inference import send_prompt
+from sentence_processor import transcribe_interaction
+from enhanced_context_processor import (
+    create_enhanced_context_processor,
+    process_interaction_enhanced,
+)
+from context_config import DEFAULT_CONFIG
 
 # Suppress webrtcvad deprecation warnings as early as possible
 warnings.filterwarnings(
@@ -38,27 +44,10 @@ app.add_middleware(
 )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Ensure advanced features are loaded when the FastAPI app starts"""
-    try:
-        load_advanced_features()
-        initialize_context_processor()
-        print("✅ Mira backend initialized successfully via lifespan event")
-        yield
-    except SystemExit as e:
-        print(f"\n{e}")
-        print("⛔ Mira backend cannot start without required AI features.")
-        print("Please install all dependencies and try again.")
-        raise e
-
-
-app = FastAPI(lifespan=lifespan)
-
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
 
 
 status: dict = {
@@ -75,10 +64,6 @@ status: dict = {
     },
 }
 
-# Lazy loading variables to prevent duplicate initialization
-_advanced_modules_loaded = False
-_context_processor_initialized = False
-
 
 def log_once(message, flag_name=None):
     """Log a message only once during initialization"""
@@ -91,63 +76,6 @@ def log_once(message, flag_name=None):
     elif flag_name is None and not globals().get("_general_logged", False):
         print(message)
         globals()["_general_logged"] = True
-
-
-def load_advanced_features():
-    """Load advanced features - required for Mira to function"""
-    global _advanced_modules_loaded
-    global send_prompt, transcribe_interaction, create_enhanced_context_processor, process_interaction_enhanced, DEFAULT_CONFIG
-
-    if _advanced_modules_loaded:
-        return
-
-    try:
-        from run_inference import send_prompt
-        from sentence_processor import transcribe_interaction
-        from enhanced_context_processor import (
-            create_enhanced_context_processor,
-            process_interaction_enhanced,
-        )
-        from context_config import DEFAULT_CONFIG
-
-        log_once("✅ Advanced AI features loaded successfully", "advanced")
-        _advanced_modules_loaded = True
-    except ImportError as e:
-        error_msg = f"❌ Failed to load required AI features: {e}"
-        log_once(error_msg, "advanced")
-        log_once(
-            "💥 Mira requires advanced AI features to function properly.",
-            "advanced",
-        )
-        log_once(
-            "Please ensure all dependencies are installed and try again.",
-            "advanced",
-        )
-        raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
-
-
-def initialize_context_processor():
-    """Initialize context processor - required for Mira to function"""
-    global _context_processor_initialized, context_processor
-
-    # Ensure advanced features are loaded first
-    load_advanced_features()
-
-    if _context_processor_initialized:
-        return
-
-    try:
-        context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
-        log_once("✅ Enhanced context processor initialized", "context")
-        _context_processor_initialized = True
-    except Exception as e:
-        error_msg = f"❌ Failed to initialize context processor: {e}"
-        log_once(error_msg, "context")
-        log_once(
-            "💥 Mira requires context processor to function properly.",
-            "context",
-        )
-        raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
 
 
 @app.get("/")
@@ -195,10 +123,6 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
             raise ValueError("No audio data received")
 
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
-
-        # Ensure advanced features are loaded before processing
-        if not _advanced_modules_loaded:
-            load_advanced_features()
 
         # Use advanced processing (features should already be loaded)
         sentence_buf = bytearray(sentence_buf_raw)
@@ -291,10 +215,9 @@ def clear_all_interactions():
 
             logger.info(f"Cleared {deleted_count} interactions from database")
 
-            # Also clear from context processor if initialized
-            if _context_processor_initialized and "context_processor" in globals():
-                context_processor.interaction_history.clear()
-                logger.info("Cleared interactions from context processor")
+            # Also clear from context processor
+            context_processor.interaction_history.clear()
+            logger.info("Cleared interactions from context processor")
 
             return {
                 "deleted_count": deleted_count,
@@ -313,10 +236,6 @@ def clear_all_interactions():
 def inference_endpoint(interaction_id: str):
     """Enhanced inference endpoint with context integration."""
     try:
-        # Ensure advanced features are loaded before processing
-        if not _advanced_modules_loaded:
-            load_advanced_features()
-
         interaction = (
             get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
         )
@@ -328,8 +247,6 @@ def inference_endpoint(interaction_id: str):
         voice_embedding = None
 
         # Use enhanced context processing
-
-        initialize_context_processor()
         context, has_intent = process_interaction_enhanced(
             context_processor, interaction, voice_embedding
         )
@@ -378,7 +295,6 @@ def inference_endpoint(interaction_id: str):
 @app.get("/context/speakers")
 def get_speaker_summary():
     """Get summary of all tracked speakers."""
-    initialize_context_processor()
     return context_processor.get_speaker_summary()
 
 
@@ -386,7 +302,6 @@ def get_speaker_summary():
 def get_interaction_history(limit: int = 10):
     """Get recent interaction history."""
     try:
-        initialize_context_processor()
         recent_interactions = context_processor.interaction_history[-limit:]
         return [interaction.to_dict() for interaction in recent_interactions]
     except Exception as e:
@@ -437,7 +352,6 @@ def identify_speaker(speaker_index: int, name: str):
                 db.commit()
 
                 # Update context processor
-                initialize_context_processor()
                 if speaker_index in context_processor.speaker_profiles:
                     context_processor.speaker_profiles[speaker_index].name = name
                     context_processor.speaker_profiles[speaker_index].is_identified = True
