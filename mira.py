@@ -139,11 +139,15 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
             else:
                 # Fallback: create a default person
                 from models import Person
-                person = Person(speaker_index=1, name="Person 1")
-                db.add(person)
-                db.commit()
-                db.refresh(person)
-                person_id = str(person.id)
+                
+                # Check if a default person already exists
+                person = db.query(Person).filter_by(speaker_index=1).first()
+                if not person:
+                    person = Person(speaker_index=1, name="Person 1")
+                    db.add(person)
+                    db.commit()
+                    db.refresh(person)
+                person_id = person.id
 
             # Create database interaction with speaker assignment
             interaction = Interaction(

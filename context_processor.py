@@ -249,7 +249,7 @@ class ContextProcessor:
                         updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
                         person.voice_embedding = updated_embedding.tolist()
                         session.commit()
-                        return str(person.id)
+                        return person.id  # Return UUID object, not string
 
             # If no existing speaker matches, create a new one
             max_speaker_index = session.query(Person.speaker_index).order_by(Person.speaker_index.desc()).first()
@@ -263,7 +263,7 @@ class ContextProcessor:
             session.add(new_person)
             session.commit()
             session.refresh(new_person)
-            return str(new_person.id)
+            return new_person.id  # Return UUID object, not string
 
         finally:
             session.close()
@@ -272,7 +272,7 @@ class ContextProcessor:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def update_speaker_clustering(self, voice_embedding: np.ndarray, person_id: str):
+    def update_speaker_clustering(self, voice_embedding: np.ndarray, person_id):
         """Update speaker clustering with new voice embedding - now database-backed."""
         session = get_db_session()
         try:
@@ -350,7 +350,7 @@ class ContextProcessor:
 
             # Update current conversation participants
             if interaction.speaker_id:
-                self.current_participants.add(str(interaction.speaker_id))
+                self.current_participants.add(interaction.speaker_id)
 
             self.logger.debug(f"Interaction added to database with ID: {interaction.id}")
 
@@ -384,8 +384,17 @@ class ContextProcessor:
         if not last_interaction:
             return True
 
-        # Time gap detection
-        time_gap = (current_interaction.timestamp - last_interaction.timestamp).total_seconds()
+        # Time gap detection - handle timezone differences
+        current_ts = current_interaction.timestamp
+        last_ts = last_interaction.timestamp
+        
+        # Ensure both timestamps are timezone-aware
+        if current_ts.tzinfo is None:
+            current_ts = current_ts.replace(tzinfo=timezone.utc)
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=timezone.utc)
+            
+        time_gap = (current_ts - last_ts).total_seconds()
         if time_gap > self.config.conversation_gap_threshold:
             return True
 
@@ -592,7 +601,7 @@ class ContextProcessor:
 
         return "".join(context_parts) if context_parts else ""
 
-    def _get_speaker_index(self, speaker_id: str) -> int:
+    def _get_speaker_index(self, speaker_id) -> int:
         """Get speaker index from person ID."""
         if not speaker_id:
             return 1
@@ -823,7 +832,7 @@ class ContextProcessor:
         try:
             # Create new conversation
             conversation = DBConversation(
-                user_ids=str(interaction.speaker_id) if interaction.speaker_id else "unknown",
+                user_ids=interaction.speaker_id if interaction.speaker_id else uuid.uuid4(),
                 speaker_id=interaction.speaker_id,
                 start_of_conversation=interaction.timestamp,
                 participants=json.dumps([str(interaction.speaker_id)] if interaction.speaker_id else []),
@@ -834,7 +843,7 @@ class ContextProcessor:
             session.refresh(conversation)
 
             self.current_conversation_id = conversation.id
-            self.current_participants = {str(interaction.speaker_id)} if interaction.speaker_id else set()
+            self.current_participants = {interaction.speaker_id} if interaction.speaker_id else set()
 
             # Assign this conversation to the interaction
             interaction.conversation_id = conversation.id
@@ -883,6 +892,6 @@ def process_interaction(
     """Process a database interaction."""
     # Format the interaction as the processor expects
     timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    speaker_index = processor._get_speaker_index(str(interaction.speaker_id))
+    speaker_index = processor._get_speaker_index(interaction.speaker_id)
     formatted_input = f"({timestamp_str}) Person {speaker_index}: {interaction.text}"
     return processor.process_input(formatted_input, voice_embedding)
