@@ -26,7 +26,11 @@ from sqlalchemy.orm import Session
 import spacy
 from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
-from models import Person, Interaction as DBInteraction, Conversation as DBConversation
+from models import (
+    Person,
+    Interaction as DBInteraction,
+    Conversation as DBConversation,
+)
 from context_config import ContextProcessorConfig, DEFAULT_CONFIG
 from db import get_db_session
 
@@ -82,7 +86,8 @@ class EnhancedContextProcessor:
 
         # Clustering components
         self.dbscan = DBSCAN(
-            eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples
+            eps=self.config.dbscan_eps,
+            min_samples=self.config.dbscan_min_samples,
         )
         self.voice_embedding_cache: Dict[str, np.ndarray] = {}
 
@@ -153,9 +158,7 @@ class EnhancedContextProcessor:
 
         if not match:
             # Fallback: try to extract just the text
-            self.logger.warning(
-                f"Could not parse whisper output format: {whisper_output}"
-            )
+            self.logger.warning(f"Could not parse whisper output format: {whisper_output}")
             return None
 
         formatted_timestamp, speaker, text = match.groups()
@@ -198,10 +201,7 @@ class EnhancedContextProcessor:
                 ]
 
             # Sentiment Analysis
-            if (
-                self.config.enable_sentiment_analysis
-                and "sentiment" in self.nlp_components
-            ):
+            if self.config.enable_sentiment_analysis and "sentiment" in self.nlp_components:
                 sentiment_result = self.nlp_components["sentiment"](interaction.text)
                 if sentiment_result and len(sentiment_result[0]) > 0:
                     # Get the positive sentiment score
@@ -220,9 +220,9 @@ class EnhancedContextProcessor:
                 self.config.enable_context_summarization
                 and "sentence_transformer" in self.nlp_components
             ):
-                interaction.embedding = self.nlp_components[
-                    "sentence_transformer"
-                ].encode(interaction.text)
+                interaction.embedding = self.nlp_components["sentence_transformer"].encode(
+                    interaction.text
+                )
 
         except Exception as e:
             self.logger.error(f"NLP processing failed: {e}")
@@ -243,9 +243,7 @@ class EnhancedContextProcessor:
 
         return person
 
-    def update_speaker_clustering(
-        self, voice_embedding: np.ndarray, speaker_index: int
-    ):
+    def update_speaker_clustering(self, voice_embedding: np.ndarray, speaker_index: int):
         """Update speaker clustering with new voice embedding."""
         if speaker_index not in self.speaker_profiles:
             self.speaker_profiles[speaker_index] = SpeakerProfile(
@@ -296,7 +294,9 @@ class EnhancedContextProcessor:
             self.logger.error(f"Clustering update failed: {e}")
 
     def add_interaction(
-        self, interaction: Interaction, voice_embedding: Optional[np.ndarray] = None
+        self,
+        interaction: Interaction,
+        voice_embedding: Optional[np.ndarray] = None,
     ) -> None:
         """Add interaction with enhanced database integration."""
         self.interaction_history.append(interaction)
@@ -322,15 +322,13 @@ class EnhancedContextProcessor:
                 user_id=speaker_index,  # Use user_id for backward compatibility
                 speaker_id=person.id,
                 text=interaction.text,
-                timestamp=datetime.fromtimestamp(
-                    interaction.timestamp, tz=timezone.utc
-                ),
+                timestamp=datetime.fromtimestamp(interaction.timestamp, tz=timezone.utc),
                 entities=interaction.entities,
                 topics=interaction.topics,
                 sentiment=interaction.sentiment,
-                conversation_id=self.current_conversation_id
-                if self.current_conversation_id
-                else None,
+                conversation_id=(
+                    self.current_conversation_id if self.current_conversation_id else None
+                ),
             )
 
             session.add(db_interaction)
@@ -388,9 +386,7 @@ class EnhancedContextProcessor:
             and current_interaction.embedding is not None
             and last_interaction.embedding is not None
         ):
-            similarity = np.dot(
-                current_interaction.embedding, last_interaction.embedding
-            ) / (
+            similarity = np.dot(current_interaction.embedding, last_interaction.embedding) / (
                 np.linalg.norm(current_interaction.embedding)
                 * np.linalg.norm(last_interaction.embedding)
             )
@@ -419,9 +415,7 @@ class EnhancedContextProcessor:
         conversation_start = self._find_conversation_start_enhanced(current_index)
 
         # Get conversation interactions
-        conversation_interactions = self.interaction_history[
-            conversation_start : current_index + 1
-        ]
+        conversation_interactions = self.interaction_history[conversation_start : current_index + 1]
 
         # Limit to max conversation length
         if len(conversation_interactions) > self.config.max_conversation_length:
@@ -503,9 +497,7 @@ class EnhancedContextProcessor:
         # Keyword-based retrieval (existing functionality)
         if keywords:
             interaction_scores = self._score_interactions_by_keywords(keywords)
-            keyword_results = self._get_top_scored_interactions(
-                interaction_scores, max_results
-            )
+            keyword_results = self._get_top_scored_interactions(interaction_scores, max_results)
             relevant_interactions.extend(keyword_results)
 
         # Semantic similarity retrieval
@@ -562,8 +554,7 @@ class EnhancedContextProcessor:
         for i, interaction in enumerate(self.interaction_history):
             if interaction.embedding is not None:
                 similarity = np.dot(query_embedding, interaction.embedding) / (
-                    np.linalg.norm(query_embedding)
-                    * np.linalg.norm(interaction.embedding)
+                    np.linalg.norm(query_embedding) * np.linalg.norm(interaction.embedding)
                 )
                 if similarity >= self.config.context_similarity_threshold:
                     similarities.append((i, similarity))
@@ -610,9 +601,7 @@ class EnhancedContextProcessor:
             for interaction in short_term:
                 speaker_info = interaction.speaker
                 if interaction.entities:
-                    entity_text = ", ".join(
-                        [e["text"] for e in interaction.entities[:3]]
-                    )
+                    entity_text = ", ".join([e["text"] for e in interaction.entities[:3]])
                     speaker_info += f" [entities: {entity_text}]"
 
                 context_parts.append(f"\n- {speaker_info}: {interaction.text}")
@@ -828,9 +817,7 @@ class EnhancedContextProcessor:
         self.add_interaction(interaction, voice_embedding)
 
         # Build enhanced context
-        enhanced_prompt = self.build_context_prompt(
-            interaction.text, interaction.timestamp
-        )
+        enhanced_prompt = self.build_context_prompt(interaction.text, interaction.timestamp)
 
         # Enhanced intent classification
         has_intent = self.classify_intent(interaction.text)
@@ -849,16 +836,14 @@ class EnhancedContextProcessor:
 
             # Create new conversation
             conversation = DBConversation(
-                user_ids=str(interaction.person_id)
-                if interaction.person_id
-                else "unknown",  # Provide default value
+                user_ids=(
+                    str(interaction.person_id) if interaction.person_id else "unknown"
+                ),  # Provide default value
                 speaker_id=interaction.person_id,
                 start_of_conversation=datetime.fromtimestamp(
                     interaction.timestamp, tz=timezone.utc
                 ),
-                participants=json.dumps(
-                    [interaction.person_id] if interaction.person_id else []
-                ),
+                participants=json.dumps([interaction.person_id] if interaction.person_id else []),
             )
 
             session.add(conversation)
@@ -866,9 +851,7 @@ class EnhancedContextProcessor:
             session.refresh(conversation)
 
             self.current_conversation_id = getattr(conversation, "id", None)
-            self.current_participants = (
-                {interaction.person_id} if interaction.person_id else set()
-            )
+            self.current_participants = {interaction.person_id} if interaction.person_id else set()
 
             session.close()
 
@@ -880,7 +863,7 @@ class EnhancedContextProcessor:
         excess_count = len(self.interaction_history) - self.config.max_history_size
         if excess_count > 0:
             # Remove oldest interactions
-            self.interaction_history[:excess_count] 
+            self.interaction_history[:excess_count]
             self.interaction_history = self.interaction_history[excess_count:]
 
             # Rebuild keyword index efficiently
@@ -888,9 +871,7 @@ class EnhancedContextProcessor:
             for i, interaction in enumerate(self.interaction_history):
                 self._update_keyword_index_for_cleanup(interaction, i)
 
-    def _update_keyword_index_for_cleanup(
-        self, interaction: Interaction, new_index: int
-    ):
+    def _update_keyword_index_for_cleanup(self, interaction: Interaction, new_index: int):
         """Update keyword index during cleanup."""
         words = interaction.text.lower().split()
         for word in words:
@@ -927,7 +908,5 @@ def process_interaction_enhanced(
     """Process a database interaction with enhanced features."""
     # Format the interaction as the processor expects
     timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    formatted_input = (
-        f"({timestamp_str}) Person {interaction.speaker}: {interaction.text}"
-    )
+    formatted_input = f"({timestamp_str}) Person {interaction.speaker}: {interaction.text}"
     return processor.process_input(formatted_input, voice_embedding)

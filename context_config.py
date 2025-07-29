@@ -13,9 +13,7 @@ class ContextProcessorConfig:
     """Configuration class for the enhanced context processor."""
 
     # Conversation Management
-    short_term_window: int = (
-        10  # Time window in seconds for short-term context (fallback)
-    )
+    short_term_window: int = 10  # Time window in seconds for short-term context (fallback)
     max_history_size: int = 1000  # Maximum number of interactions to keep in history
     max_conversation_length: int = 20  # Maximum interactions in short-term context
     conversation_gap_threshold: int = 300  # Seconds gap to mark conversation boundary
@@ -36,9 +34,7 @@ class ContextProcessorConfig:
     max_topics: int = 5  # Maximum topics for topic modeling
 
     # Context Retrieval
-    long_term_context_max_results: int = (
-        5  # Max results for long-term context retrieval
-    )
+    long_term_context_max_results: int = 5  # Max results for long-term context retrieval
     context_similarity_threshold: float = 0.7  # Threshold for semantic similarity
     enable_context_summarization: bool = True  # Enable context summarization
     summary_max_length: int = 200  # Maximum length for context summaries

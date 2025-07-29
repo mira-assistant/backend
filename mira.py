@@ -1,6 +1,5 @@
 import uuid
 import warnings
-from datetime import datetime, timedelta
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Interaction, Person
@@ -8,18 +7,21 @@ from db import get_db_session
 import uvicorn
 import logging
 import json
-from difflib import SequenceMatcher
 from contextlib import asynccontextmanager
 
 # Suppress webrtcvad deprecation warnings as early as possible
 warnings.filterwarnings(
-    "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
+    "ignore",
+    category=UserWarning,
+    message="pkg_resources is deprecated as an API",
 )
 
 
 # Suppress webrtcvad deprecation warnings
 warnings.filterwarnings(
-    "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
+    "ignore",
+    category=UserWarning,
+    message="pkg_resources is deprecated as an API",
 )
 
 
@@ -94,12 +96,7 @@ def log_once(message, flag_name=None):
 def load_advanced_features():
     """Load advanced features - required for Mira to function"""
     global _advanced_modules_loaded
-    global \
-        send_prompt, \
-        transcribe_interaction, \
-        create_enhanced_context_processor, \
-        process_interaction_enhanced, \
-        DEFAULT_CONFIG
+    global send_prompt, transcribe_interaction, create_enhanced_context_processor, process_interaction_enhanced, DEFAULT_CONFIG
 
     if _advanced_modules_loaded:
         return
@@ -119,10 +116,12 @@ def load_advanced_features():
         error_msg = f"❌ Failed to load required AI features: {e}"
         log_once(error_msg, "advanced")
         log_once(
-            "💥 Mira requires advanced AI features to function properly.", "advanced"
+            "💥 Mira requires advanced AI features to function properly.",
+            "advanced",
         )
         log_once(
-            "Please ensure all dependencies are installed and try again.", "advanced"
+            "Please ensure all dependencies are installed and try again.",
+            "advanced",
         )
         raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
 
@@ -144,7 +143,10 @@ def initialize_context_processor():
     except Exception as e:
         error_msg = f"❌ Failed to initialize context processor: {e}"
         log_once(error_msg, "context")
-        log_once("💥 Mira requires context processor to function properly.", "context")
+        log_once(
+            "💥 Mira requires context processor to function properly.",
+            "context",
+        )
         raise SystemExit(f"CRITICAL ERROR: {error_msg}") from e
 
 
@@ -184,45 +186,6 @@ def disable_service():
     return status
 
 
-def is_duplicate_transcription(
-    text: str,
-    speaker: int,
-    similarity_threshold: float = 0.85,
-    time_window_minutes: int = 2,
-) -> bool:
-    """Check if a transcription is a duplicate of a recent one."""
-    try:
-        db = get_db_session()
-        try:
-            # Get recent interactions from the same speaker within time window
-            cutoff_time = datetime.utcnow() - timedelta(minutes=time_window_minutes)
-            recent_interactions = (
-                db.query(Interaction)
-                .filter(
-                    Interaction.user_id == speaker, Interaction.timestamp >= cutoff_time
-                )
-                .all()
-            )
-
-            # Check similarity with recent transcriptions
-            for interaction in recent_interactions:
-                similarity = SequenceMatcher(
-                    None, text.lower().strip(), interaction.text.lower().strip()
-                ).ratio()
-                if similarity >= similarity_threshold:
-                    logger.info(
-                        f"Duplicate transcription detected (similarity: {similarity:.2f}): '{text}' vs '{interaction.text}'"
-                    )
-                    return True
-
-            return False
-        finally:
-            db.close()
-    except Exception as e:
-        logger.warning(f"Error checking for duplicate transcription: {e}")
-        return False
-
-
 @app.post("/process_interaction")
 def process_interaction(sentence_buf_raw: bytes = Body(...)):
     """Process interaction - transcribe sentence and identify speaker."""
@@ -248,7 +211,8 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
 
         # Create database interaction
         interaction = Interaction(
-            user_id=transcription_result["speaker"], text=transcription_result["text"]
+            user_id=transcription_result["speaker"],
+            text=transcription_result["text"],
         )
 
         # Check for shutdown command first
@@ -272,9 +236,7 @@ def process_interaction(sentence_buf_raw: bytes = Body(...)):
         except Exception as db_error:
             logger.error(f"Database error: {db_error}")
             db.rollback()
-            raise HTTPException(
-                status_code=500, detail=f"Database error: {str(db_error)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         finally:
             db.close()
 
@@ -290,10 +252,7 @@ def get_recent_interactions(limit: int = 10):
         db = get_db_session()
         try:
             interactions = (
-                db.query(Interaction)
-                .order_by(Interaction.timestamp.desc())
-                .limit(limit)
-                .all()
+                db.query(Interaction).order_by(Interaction.timestamp.desc()).limit(limit).all()
             )
 
             result = []
@@ -304,9 +263,11 @@ def get_recent_interactions(limit: int = 10):
                         "user_id": interaction.user_id,
                         "speaker": interaction.user_id,
                         "text": interaction.text,
-                        "timestamp": interaction.timestamp.isoformat()
-                        if getattr(interaction, "timestamp")
-                        else None,
+                        "timestamp": (
+                            interaction.timestamp.isoformat()
+                            if getattr(interaction, "timestamp")
+                            else None
+                        ),
                     }
                 )
 
@@ -315,9 +276,7 @@ def get_recent_interactions(limit: int = 10):
             db.close()
     except Exception as e:
         logger.error(f"Error fetching interactions: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch interactions: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
 
 
 @app.delete("/interactions")
@@ -338,7 +297,6 @@ def clear_all_interactions():
                 logger.info("Cleared interactions from context processor")
 
             return {
-                "message": f"Successfully cleared {deleted_count} interactions",
                 "deleted_count": deleted_count,
             }
         except Exception as e:
@@ -348,9 +306,7 @@ def clear_all_interactions():
             db.close()
     except Exception as e:
         logger.error(f"Error clearing interactions: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to clear interactions: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
 
 
 @app.post("/inference")
@@ -362,10 +318,7 @@ def inference_endpoint(interaction_id: str):
             load_advanced_features()
 
         interaction = (
-            get_db_session()
-            .query(Interaction)
-            .filter_by(id=uuid.UUID(interaction_id))
-            .first()
+            get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
         )
 
         if not interaction:
@@ -386,9 +339,7 @@ def inference_endpoint(interaction_id: str):
 
         # Send enhanced prompt with context
         enhanced_prompt = (
-            f"{str(interaction.text)}\n\nContext:\n{context}"
-            if context
-            else str(interaction.text)
+            f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
         )
         response = send_prompt(prompt=enhanced_prompt, context=context)
 
@@ -396,16 +347,24 @@ def inference_endpoint(interaction_id: str):
         response["context_used"] = str(bool(context))
         response["enhanced_features"] = json.dumps(
             {
-                "entities": getattr(
-                    context_processor.interaction_history[-1], "entities", None
-                )
-                if context_processor and context_processor.interaction_history
-                else None,
-                "sentiment": getattr(
-                    context_processor.interaction_history[-1], "sentiment", None
-                )
-                if context_processor and context_processor.interaction_history
-                else None,
+                "entities": (
+                    getattr(
+                        context_processor.interaction_history[-1],
+                        "entities",
+                        None,
+                    )
+                    if context_processor and context_processor.interaction_history
+                    else None
+                ),
+                "sentiment": (
+                    getattr(
+                        context_processor.interaction_history[-1],
+                        "sentiment",
+                        None,
+                    )
+                    if context_processor and context_processor.interaction_history
+                    else None
+                ),
             }
         )
 
@@ -437,10 +396,7 @@ def get_interaction_history(limit: int = 10):
             db = get_db_session()
             try:
                 interactions = (
-                    db.query(Interaction)
-                    .order_by(Interaction.timestamp.desc())
-                    .limit(limit)
-                    .all()
+                    db.query(Interaction).order_by(Interaction.timestamp.desc()).limit(limit).all()
                 )
 
                 return [
@@ -448,18 +404,18 @@ def get_interaction_history(limit: int = 10):
                         "id": str(interaction.id),
                         "speaker": interaction.user_id,
                         "text": interaction.text,
-                        "timestamp": interaction.timestamp.isoformat()
-                        if getattr(interaction, "timestamp")
-                        else None,
+                        "timestamp": (
+                            interaction.timestamp.isoformat()
+                            if getattr(interaction, "timestamp")
+                            else None
+                        ),
                     }
                     for interaction in interactions
                 ]
             finally:
                 db.close()
         except Exception as db_error:
-            logger.error(
-                f"Error fetching interaction history from database: {db_error}"
-            )
+            logger.error(f"Error fetching interaction history from database: {db_error}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to fetch interaction history: {str(db_error)}",
@@ -484,9 +440,7 @@ def identify_speaker(speaker_index: int, name: str):
                 initialize_context_processor()
                 if speaker_index in context_processor.speaker_profiles:
                     context_processor.speaker_profiles[speaker_index].name = name
-                    context_processor.speaker_profiles[
-                        speaker_index
-                    ].is_identified = True
+                    context_processor.speaker_profiles[speaker_index].is_identified = True
 
                 return {"message": f"Speaker {speaker_index} identified as {name}"}
             else:
@@ -496,9 +450,7 @@ def identify_speaker(speaker_index: int, name: str):
 
     except Exception as e:
         logger.error(f"Error identifying speaker: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Speaker identification failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Speaker identification failed: {str(e)}")
 
 
 # Main entry point

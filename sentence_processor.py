@@ -29,11 +29,11 @@ from resemblyzer import VoiceEncoder
 import noisereduce as nr
 from scipy.signal import butter, lfilter
 
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 warnings.filterwarnings(
-    "ignore", message="FP16 is not supported on CPU; using FP32 instead"
-)
-warnings.filterwarnings(
-    "ignore", category=UserWarning, message="pkg_resources is deprecated as an API"
+    "ignore",
+    category=UserWarning,
+    message="pkg_resources is deprecated as an API",
 )
 
 # ---------- Constants ----------
@@ -142,7 +142,6 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
 
 def assign_speaker(embedding: np.ndarray, centroids: Optional[List[np.ndarray]]) -> int:
     """Assign embedding to a speaker index; update centroids online."""
-    global _speaker_centroids
 
     # Use global centroids if none provided
     if centroids is None:
@@ -193,11 +192,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
 
     if text:
         embedding_result = spk_encoder.embed_utterance(denoised_audio)
-        embedding = (
-            embedding_result[0]
-            if isinstance(embedding_result, tuple)
-            else embedding_result
-        )
+        embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
         spk_idx = assign_speaker(embedding, None)
 
         interaction["speaker"] = spk_idx + 1
