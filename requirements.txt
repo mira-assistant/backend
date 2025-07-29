@@ -6,8 +6,8 @@ git+https://github.com/openai/whisper.git
 noisereduce>=3.0.0
 scipy>=1.15.1
 numpy==2.2.6
-spacy==3.7.2
-thinc==8.2.0
+spacy==3.8.7
+thinc==8.3.6
 resemblyzer>=0.1.4
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 scikit-learn>=1.5.0
