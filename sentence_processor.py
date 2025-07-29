@@ -23,26 +23,9 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-try:
-    import whisper
-    WHISPER_AVAILABLE = True
-except ImportError:
-    WHISPER_AVAILABLE = False
-    whisper = None
-
-try:
-    from resemblyzer import VoiceEncoder
-    RESEMBLYZER_AVAILABLE = True
-except ImportError:
-    RESEMBLYZER_AVAILABLE = False
-    VoiceEncoder = None
-
-try:
-    import noisereduce as nr
-    NOISEREDUCE_AVAILABLE = True
-except ImportError:
-    NOISEREDUCE_AVAILABLE = False
-    nr = None
+import whisper
+from resemblyzer import VoiceEncoder
+import noisereduce as nr
 from scipy.signal import butter, lfilter
 
 from db import get_db_session
@@ -69,12 +52,6 @@ _speaker_centroids: list[np.ndarray] = []
 def get_models():
     """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
     global _asr_model, _spk_encoder
-
-    if not WHISPER_AVAILABLE:
-        raise ImportError("Whisper is not available. Install with: pip install git+https://github.com/openai/whisper.git")
-    
-    if not RESEMBLYZER_AVAILABLE:
-        raise ImportError("Resemblyzer is not available. Install with: pip install resemblyzer")
 
     if _asr_model is None:
         _asr_model = whisper.load_model("base")
@@ -124,10 +101,7 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
     Returns:
         Denoised audio signal
     """
-    if not NOISEREDUCE_AVAILABLE:
-        # Return original audio if noisereduce is not available
-        return audio_data
-        
+
     # Apply noise reduction using noisereduce library
     try:
         # Apply high-pass filter to remove low-frequency noise (e.g., 80 Hz cutoff)
@@ -204,13 +178,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
     """
-    if not WHISPER_AVAILABLE or not RESEMBLYZER_AVAILABLE:
-        # Return a mock result for testing when dependencies are not available
-        return {
-            "text": "Mock transcription - dependencies not available",
-            "voice_embedding": [0.0] * 256  # Mock embedding
-        }
-    
+
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
 
