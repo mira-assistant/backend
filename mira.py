@@ -98,7 +98,7 @@ def disable_service():
 
 @app.post("/register_interaction")
 def register_interaction(sentence_buf_raw: bytes = Body(...)):
-    """Register interaction - transcribe sentence and identify speaker."""
+    """Register interaction - transcribe sentence, identify speaker, and process context."""
 
     try:
         if len(sentence_buf_raw) == 0:
@@ -106,7 +106,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
 
-        # Use advanced processing (features should already be loaded)
+        # Use advanced processing with integrated speaker recognition
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = transcribe_interaction(sentence_buf)
 
@@ -115,22 +115,47 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         logger.info("Advanced transcription successful")
 
-        # Create database interaction
-        interaction = Interaction(
-            **transcription_result,
-        )
+        # Extract voice embedding for speaker recognition
+        voice_embedding = None
+        if 'voice_embedding' in transcription_result:
+            import numpy as np
+            voice_embedding = np.array(transcription_result['voice_embedding'])
+            del transcription_result['voice_embedding']  # Remove from dict to avoid DB errors
 
         # Check for shutdown command first
-        if "mira" in interaction.text.lower() and any(
-            cancelCMD in interaction.text.lower() for cancelCMD in ("cancel", "exit")
+        if "mira" in transcription_result['text'].lower() and any(
+            cancelCMD in transcription_result['text'].lower() for cancelCMD in ("cancel", "exit")
         ):
             logger.info("Mira interrupted by voice command")
             disable_service()
             return status
 
-        # Save to database with better error handling
+        # Use context processor for speaker recognition and database integration
         db = get_db_session()
         try:
+            # Assign speaker using robust method from context processor
+            if voice_embedding is not None:
+                person_id = context_processor.assign_speaker(voice_embedding)
+            else:
+                # Fallback: create a default person
+                from models import Person
+                person = Person(speaker_index=1, name="Person 1")
+                db.add(person)
+                db.commit()
+                db.refresh(person)
+                person_id = str(person.id)
+
+            # Create database interaction with speaker assignment
+            interaction = Interaction(
+                text=transcription_result['text'],
+                speaker_id=person_id,
+            )
+
+            # Process interaction through context processor for conversation management
+            if voice_embedding is not None:
+                context_processor.update_speaker_clustering(voice_embedding, person_id)
+
+            # Save to database
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
@@ -200,57 +225,89 @@ def delete_interactions(limit: int = 0):
 
 @app.post("/inference")
 def inference_endpoint(interaction_id: str):
-    """Inference endpoint with context integration."""
+    """Inference endpoint with database-backed context integration."""
     try:
-        interaction = (
-            get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
-        )
+        db = get_db_session()
+        try:
+            interaction = db.query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
 
-        if not interaction:
-            raise HTTPException(status_code=404, detail="Interaction not found")
+            if not interaction:
+                raise HTTPException(status_code=404, detail="Interaction not found")
 
-        # Use context processing
-        context, has_intent = process_interaction(context_processor, interaction)
+            # Use database-backed context processing
+            context, has_intent = process_interaction(context_processor, interaction)
 
-        if not has_intent:
-            return {"message": "Intent not recognized, no inference performed."}
+            if not has_intent:
+                return {"message": "Intent not recognized, no inference performed."}
 
-        # Send prompt with context
-        enhanced_prompt = (
-            f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
-        )
-        response = send_prompt(prompt=enhanced_prompt, context=context)
+            # Send prompt with context
+            enhanced_prompt = (
+                f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
+            )
+            response = send_prompt(prompt=enhanced_prompt, context=context)
 
-        # Add context information to response
-        response["context_used"] = str(bool(context))
-        response["enhanced_features"] = json.dumps(
-            {
-                "entities": (
-                    getattr(
-                        context_processor.interaction_history[-1],
-                        "entities",
-                        None,
-                    )
-                    if context_processor and context_processor.interaction_history
-                    else None
-                ),
-                "sentiment": (
-                    getattr(
-                        context_processor.interaction_history[-1],
-                        "sentiment",
-                        None,
-                    )
-                    if context_processor and context_processor.interaction_history
-                    else None
-                ),
+            # Add context information to response with database queries
+            response["context_used"] = str(bool(context))
+            
+            # Get enhanced features from the database interaction
+            enhanced_features = {
+                "entities": interaction.entities,
+                "sentiment": interaction.sentiment,
+                "speaker_id": str(interaction.speaker_id),
+                "conversation_id": str(interaction.conversation_id) if interaction.conversation_id else None,
             }
-        )
+            response["enhanced_features"] = json.dumps(enhanced_features)
 
-        return response
+            return response
+
+        finally:
+            db.close()
 
     except Exception as e:
         logger.error(f"Error in inference: {e}")
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+
+
+@app.get("/context/speakers")
+def get_speaker_summary():
+    """Get summary of all tracked speakers from database."""
+    return context_processor.get_speaker_summary()
+
+
+@app.get("/context/conversations")
+def get_recent_conversations(limit: int = 10):
+    """Get recent conversations with their interactions."""
+    try:
+        db = get_db_session()
+        try:
+            from models import Conversation
+            conversations = (
+                db.query(Conversation)
+                .order_by(Conversation.start_of_conversation.desc())
+                .limit(limit)
+                .all()
+            )
+            
+            result = []
+            for conv in conversations:
+                conv_data = {
+                    "id": str(conv.id),
+                    "start_time": conv.start_of_conversation.isoformat(),
+                    "end_time": conv.end_of_conversation.isoformat() if conv.end_of_conversation else None,
+                    "participants": conv.participants,
+                    "interaction_count": len(conv.interactions),
+                    "topic_summary": conv.topic_summary,
+                }
+                result.append(conv_data)
+            
+            return result
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Error fetching conversations: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
 
 
 # @app.get("/context/speakers")
