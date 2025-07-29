@@ -117,10 +117,13 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         # Extract voice embedding for speaker recognition
         voice_embedding = None
-        if 'voice_embedding' in transcription_result:
+        if 'voice_embedding' in transcription_result and transcription_result['voice_embedding'] is not None:
             import numpy as np
             voice_embedding = np.array(transcription_result['voice_embedding'])
             del transcription_result['voice_embedding']  # Remove from dict to avoid DB errors
+        elif 'voice_embedding' in transcription_result:
+            # Remove None voice_embedding to avoid errors
+            del transcription_result['voice_embedding']
 
         # Check for shutdown command first
         if "mira" in transcription_result['text'].lower() and any(
@@ -204,11 +207,14 @@ def delete_interactions(limit: int = 0):
     try:
         db = get_db_session()
         try:
-            query = db.query(Interaction).order_by(Interaction.timestamp.asc())
             if limit != 0:
-                query = query.limit(limit)
-
-            deleted_count = query.delete()
+                # If limit is specified, first get the IDs to delete
+                interactions_to_delete = db.query(Interaction.id).order_by(Interaction.timestamp.asc()).limit(limit).all()
+                interaction_ids = [interaction.id for interaction in interactions_to_delete]
+                deleted_count = db.query(Interaction).filter(Interaction.id.in_(interaction_ids)).delete(synchronize_session=False)
+            else:
+                # Delete all interactions
+                deleted_count = db.query(Interaction).delete()
 
             db.commit()
 
