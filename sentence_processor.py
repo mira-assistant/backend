@@ -162,6 +162,7 @@ def assign_speaker(new_embedding: np.ndarray):
             updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
             user.voice_embedding = updated_embedding.tolist()
             db.commit()
+
             return user.id
 
     # If no existing speaker matches, create a new one
@@ -202,9 +203,9 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
 
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-    speaker_id = assign_speaker(embedding)
+    # speaker_id = assign_speaker(embedding)
 
-    interaction["speaker_id"] = speaker_id
     interaction["text"] = text
+    interaction["voice_embedding"] = embedding.tolist()
 
     return interaction

@@ -209,11 +209,8 @@ def inference_endpoint(interaction_id: str):
         if not interaction:
             raise HTTPException(status_code=404, detail="Interaction not found")
 
-        # Extract voice embedding if available from transcription
-        voice_embedding = None
-
         # Use context processing
-        context, has_intent = process_interaction(context_processor, interaction, voice_embedding)
+        context, has_intent = process_interaction(context_processor, interaction)
 
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
@@ -256,80 +253,7 @@ def inference_endpoint(interaction_id: str):
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
 
 
-@app.get("/context/speakers")
-def get_speaker_summary():
-    """Get summary of all tracked speakers."""
-    return context_processor.get_speaker_summary()
-
-
-# @app.get("/context/history")
-# def get_interaction_history(limit: int = 0):
-#     """Get recent interaction history."""
-#     try:
-#         if limit == 0:
-#             recent_interactions = context_processor.interaction_history
-#         else:
-#             recent_interactions = context_processor.interaction_history[-limit:]
-#         return [interaction.to_dict() for interaction in recent_interactions]
-#     except Exception as e:
-#         # Fallback to database query if context processor fails
-#         logger.warning(f"Context processor unavailable, falling back to database: {e}")
-#         try:
-#             db = get_db_session()
-#             try:
-#                 query = db.query(Interaction).order_by(Interaction.timestamp.desc())
-#                 if limit != 0:
-#                     query = query.limit(limit)
-#                 interactions = query.all()
-
-#                 return [
-#                     {
-#                         "id": str(interaction.id),
-#                         "speaker": interaction.user_id,
-#                         "text": interaction.text,
-#                         "timestamp": (
-#                             interaction.timestamp.isoformat()
-#                             if getattr(interaction, "timestamp")
-#                             else None
-#                         ),
-#                     }
-#                     for interaction in interactions
-#                 ]
-#             finally:
-#                 db.close()
-#         except Exception as db_error:
-#             logger.error(f"Error fetching interaction history from database: {db_error}")
-#             raise HTTPException(
-#                 status_code=500,
-#                 detail=f"Failed to fetch interaction history: {str(db_error)}",
-#             )
-
-
-@app.post("/context/identify_speaker")
-def identify_speaker(speaker_index: int, name: str):
-    """Manually identify a speaker."""
-    try:
-        db = get_db_session()
-        try:
-            person = db.query(Person).filter_by(speaker_index=speaker_index).first()
-
-            if person:
-                setattr(person, "name", name)
-                setattr(person, "is_identified", True)
-
-                db.commit()
-
-                # Update context processor
-                if speaker_index in context_processor.speaker_profiles:
-                    context_processor.speaker_profiles[speaker_index].name = name
-                    context_processor.speaker_profiles[speaker_index].is_identified = True
-
-                return {"message": f"Speaker {speaker_index} identified as {name}"}
-            else:
-                raise HTTPException(status_code=404, detail="Speaker not found")
-        finally:
-            db.close()
-
-    except Exception as e:
-        logger.error(f"Error identifying speaker: {e}")
-        raise HTTPException(status_code=500, detail=f"Speaker identification failed: {str(e)}")
+# @app.get("/context/speakers")
+# def get_speaker_summary():
+#     """Get summary of all tracked speakers."""
+#     return context_processor.get_speaker_summary()
