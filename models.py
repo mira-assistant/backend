@@ -9,13 +9,15 @@ from sqlalchemy import (
     Boolean,
     Float,
 )
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Person(Base):
@@ -67,17 +69,6 @@ class Interaction(Base):
     # Relationships
     person = relationship("Person", back_populates="interactions")
     conversation = relationship("Conversation", back_populates="interactions")
-
-    # Property for backward compatibility
-    # @property
-    # def speaker(self):
-    #     """Backward compatibility property."""
-    #     return self.user_id
-
-    # @speaker.setter
-    # def speaker(self, value):
-    #     """Backward compatibility setter."""
-    #     self.user_id = value
 
 
 class Conversation(Base):

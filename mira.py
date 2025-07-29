@@ -299,10 +299,13 @@ def get_speaker_summary():
 
 
 @app.get("/context/history")
-def get_interaction_history(limit: int = 10):
+def get_interaction_history(limit: int = 0):
     """Get recent interaction history."""
     try:
-        recent_interactions = context_processor.interaction_history[-limit:]
+        if limit == 0:
+            recent_interactions = context_processor.interaction_history
+        else:
+            recent_interactions = context_processor.interaction_history[-limit:]
         return [interaction.to_dict() for interaction in recent_interactions]
     except Exception as e:
         # Fallback to database query if context processor fails
@@ -310,9 +313,10 @@ def get_interaction_history(limit: int = 10):
         try:
             db = get_db_session()
             try:
-                interactions = (
-                    db.query(Interaction).order_by(Interaction.timestamp.desc()).limit(limit).all()
-                )
+                query = db.query(Interaction).order_by(Interaction.timestamp.desc())
+                if limit != 0:
+                    query = query.limit(limit)
+                interactions = query.all()
 
                 return [
                     {
