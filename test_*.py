@@ -38,30 +38,3 @@ def test_get_recent_interactions():
     response = client.get("/interactions?limit=10")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
-
-
-def test_get_interaction_history():
-    """Test interaction history endpoint."""
-    response = client.get("/context/history")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-
-
-# def test_clear_all_interactions():
-#     """Test clearing interactions."""
-#     response = client.delete("/interactions")
-#     assert response.status_code == 200
-#     assert "deleted_count" in response.json()
-
-# def test_get_speaker_summary():
-#     """Test speaker summary endpoint."""
-#     response = client.get("/context/speakers")
-#     assert response.status_code == 200
-#     assert isinstance(response.json(), list)
-
-
-# @pytest.mark.parametrize("speaker_index,name", [(0, "Test User")])
-# def test_identify_speaker(speaker_index, name):
-#     """Test manual speaker identification."""
-#     response = client.post("/context/identify_speaker", params={"speaker_index": speaker_index, "name": name})
-#     assert response.status_code in (200, 404)
