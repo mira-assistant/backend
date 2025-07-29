@@ -1,5 +1,5 @@
 """
-Configuration system for the enhanced context processor.
+Configuration system for the context processor.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ import os
 
 @dataclass
 class ContextProcessorConfig:
-    """Configuration class for the enhanced context processor."""
+    """Configuration class for the context processor."""
 
     # Conversation Management
     short_term_window: int = 10  # Time window in seconds for short-term context (fallback)

@@ -17,3 +17,4 @@ python-multipart>=0.0.20
 types-requests>=2.32.3
 scipy-stubs>=1.15.3.0
 httpx>=0.28.1
+torch==2.7.1

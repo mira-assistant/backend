@@ -9,11 +9,17 @@ import logging
 import json
 from run_inference import send_prompt
 from sentence_processor import transcribe_interaction
-from enhanced_context_processor import (
-    create_enhanced_context_processor,
-    process_interaction_enhanced,
+from context_processor import (
+    create_context_processor,
+    process_interaction,
 )
 from context_config import DEFAULT_CONFIG
+
+
+# Main entry point
+if __name__ == "__main__":
+    uvicorn.run("mira:app", host="0.0.0.0", port=8000)
+
 
 # Suppress webrtcvad deprecation warnings as early as possible
 warnings.filterwarnings(
@@ -43,11 +49,10 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-context_processor = create_enhanced_context_processor(DEFAULT_CONFIG)
+context_processor = create_context_processor(DEFAULT_CONFIG)
 
 
 status: dict = {
@@ -114,9 +119,9 @@ def disable_service():
     return status
 
 
-@app.post("/process_interaction")
-def process_interaction(sentence_buf_raw: bytes = Body(...)):
-    """Process interaction - transcribe sentence and identify speaker."""
+@app.post("/register_interaction")
+def register_interaction(sentence_buf_raw: bytes = Body(...)):
+    """Register interaction - transcribe sentence and identify speaker."""
 
     try:
         if len(sentence_buf_raw) == 0:
@@ -234,7 +239,7 @@ def clear_all_interactions():
 
 @app.post("/inference")
 def inference_endpoint(interaction_id: str):
-    """Enhanced inference endpoint with context integration."""
+    """Inference endpoint with context integration."""
     try:
         interaction = (
             get_db_session().query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
@@ -246,15 +251,13 @@ def inference_endpoint(interaction_id: str):
         # Extract voice embedding if available from transcription
         voice_embedding = None
 
-        # Use enhanced context processing
-        context, has_intent = process_interaction_enhanced(
-            context_processor, interaction, voice_embedding
-        )
+        # Use context processing
+        context, has_intent = process_interaction(context_processor, interaction, voice_embedding)
 
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
 
-        # Send enhanced prompt with context
+        # Send prompt with context
         enhanced_prompt = (
             f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
         )
@@ -369,8 +372,3 @@ def identify_speaker(speaker_index: int, name: str):
     except Exception as e:
         logger.error(f"Error identifying speaker: {e}")
         raise HTTPException(status_code=500, detail=f"Speaker identification failed: {str(e)}")
-
-
-# Main entry point
-if __name__ == "__main__":
-    uvicorn.run("mira:app", host="0.0.0.0", port=8000)

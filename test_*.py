@@ -29,7 +29,7 @@ def test_enable_disable_transcription():
 
 def test_process_interaction_empty():
     """Test processing interaction with empty body (should fail)."""
-    response = client.post("/process_interaction", json={})
+    response = client.post("/register_interaction", json={})
     assert response.status_code in (400, 422)
 
 

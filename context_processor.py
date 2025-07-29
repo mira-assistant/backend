@@ -1,5 +1,5 @@
 """
-Enhanced Context Processor for Mira with advanced NLP features.
+Context Processor for Mira with advanced NLP features.
 
 This module provides a comprehensive context processor that includes:
 - Advanced speaker recognition with clustering
@@ -37,7 +37,7 @@ from db import get_db_session
 
 @dataclass
 class Interaction:
-    """Enhanced interaction with additional NLP features."""
+    """Interaction with additional NLP features."""
 
     timestamp: float
     formatted_timestamp: str
@@ -59,7 +59,7 @@ class Interaction:
 
 @dataclass
 class SpeakerProfile:
-    """Enhanced speaker profile with clustering information."""
+    """Speaker profile with clustering information."""
 
     person_id: str
     speaker_index: int
@@ -71,13 +71,13 @@ class SpeakerProfile:
     is_identified: bool = False
 
 
-class EnhancedContextProcessor:
+class ContextProcessor:
     """
-    Enhanced context processor with advanced NLP and speaker recognition features.
+    Context processor with advanced NLP and speaker recognition features.
     """
 
     def __init__(self, config: Optional[ContextProcessorConfig] = None):
-        """Initialize the enhanced context processor."""
+        """Initialize the context processor."""
         self.config = config or DEFAULT_CONFIG
         self.interaction_history: List[Interaction] = []
         self.speaker_profiles: Dict[int, SpeakerProfile] = {}
@@ -95,28 +95,14 @@ class EnhancedContextProcessor:
         self.current_conversation_id: Optional[uuid.UUID] = None
         self.current_participants: Set[str] = set()
 
-        # Setup logging
         logging.basicConfig(level=getattr(logging, self.config.log_level))
         self.logger = logging.getLogger(__name__)
 
-        # Initialize NLP components
         self._init_nlp_components()
 
     def _init_nlp_components(self):
         """Initialize NLP components based on configuration."""
         self.nlp_components = {}
-
-        # Suppress transformer warnings during model loading
-        import warnings
-        import logging
-
-        warnings.filterwarnings("ignore", message=".*not used when initializing.*")
-        warnings.filterwarnings("ignore", message=".*This IS expected.*")
-        warnings.filterwarnings("ignore", message=".*This IS NOT expected.*")
-
-        # Suppress verbose transformer logging
-        logging.getLogger("transformers").setLevel(logging.WARNING)
-        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
         try:
             if self.config.enable_ner or self.config.enable_coreference:
@@ -139,7 +125,7 @@ class EnhancedContextProcessor:
             self.nlp_components = {}
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
-        """Parse whisper output with enhanced processing."""
+        """Parse whisper output."""
         if not whisper_output or not whisper_output.strip():
             return None
 
@@ -298,7 +284,7 @@ class EnhancedContextProcessor:
         interaction: Interaction,
         voice_embedding: Optional[np.ndarray] = None,
     ) -> None:
-        """Add interaction with enhanced database integration."""
+        """Add interaction with database integration."""
         self.interaction_history.append(interaction)
 
         # Extract speaker index
@@ -346,7 +332,7 @@ class EnhancedContextProcessor:
             self._cleanup_old_interactions()
 
     def _update_keyword_index(self, interaction: Interaction):
-        """Update keyword index with enhanced text processing."""
+        """Update keyword index."""
         words = interaction.text.lower().split()
         interaction_index = len(self.interaction_history) - 1
 
@@ -362,7 +348,7 @@ class EnhancedContextProcessor:
                 self.keyword_index[entity_text].append(interaction_index)
 
     def detect_conversation_boundary(self, current_interaction: Interaction) -> bool:
-        """Enhanced conversation boundary detection."""
+        """Conversation boundary detection."""
         if not self.interaction_history:
             return True
 
@@ -397,7 +383,7 @@ class EnhancedContextProcessor:
         return False
 
     def get_short_term_context(self, current_time: float) -> List[Interaction]:
-        """Enhanced short-term context retrieval."""
+        """Short-term context retrieval."""
         if not self.interaction_history:
             return []
 
@@ -411,8 +397,7 @@ class EnhancedContextProcessor:
         if current_index == -1:
             return []
 
-        # Find conversation start with enhanced detection
-        conversation_start = self._find_conversation_start_enhanced(current_index)
+        conversation_start = self._find_conversation_start(current_index)
 
         # Get conversation interactions
         conversation_interactions = self.interaction_history[conversation_start : current_index + 1]
@@ -425,8 +410,7 @@ class EnhancedContextProcessor:
 
         return conversation_interactions
 
-    def _find_conversation_start_enhanced(self, current_index: int) -> int:
-        """Enhanced conversation start detection."""
+    def _find_conversation_start(self, current_index: int) -> int:
         if current_index < 0 or current_index >= len(self.interaction_history):
             return max(0, current_index)
 
@@ -486,7 +470,7 @@ class EnhancedContextProcessor:
         current_interaction: Optional[Interaction] = None,
         max_results: Optional[int] = None,
     ) -> List[Interaction]:
-        """Enhanced long-term context retrieval with semantic similarity."""
+        """Long-term context retrieval with semantic similarity."""
         max_results = max_results or self.config.long_term_context_max_results
 
         if not keywords and current_interaction is None:
@@ -577,7 +561,7 @@ class EnhancedContextProcessor:
         return [self.interaction_history[idx] for idx in result_indices]
 
     def build_context_prompt(self, current_text: str, current_time: float) -> str:
-        """Build enhanced context prompt with summarization."""
+        """Build context prompt with summarization."""
         # Get contexts
         short_term = self.get_short_term_context(current_time)
         if short_term and current_text in short_term[-1].text:
@@ -657,7 +641,7 @@ class EnhancedContextProcessor:
         return summary or "Previous discussion about relevant topics."
 
     def extract_keywords(self, text: str) -> List[str]:
-        """Enhanced keyword extraction with NLP features."""
+        """Keyword extraction with NLP features."""
         # Base keyword extraction (existing logic)
         words = text.lower().split()
         stop_words = {
@@ -736,7 +720,7 @@ class EnhancedContextProcessor:
         return list(set(keywords))  # Remove duplicates
 
     def classify_intent(self, text: str) -> bool:
-        """Enhanced intent classification with NLP features."""
+        """Intent classification with NLP features."""
         # Base classification (existing logic)
         action_keywords = {
             "contact": [
@@ -803,7 +787,7 @@ class EnhancedContextProcessor:
     def process_input(
         self, whisper_output: str, voice_embedding: Optional[np.ndarray] = None
     ) -> Tuple[str, bool]:
-        """Enhanced input processing with full feature integration."""
+        """Input processing with full feature integration."""
         # Parse whisper output
         interaction = self.parse_whisper_output(whisper_output)
         if not interaction:
@@ -816,7 +800,7 @@ class EnhancedContextProcessor:
         # Add to history with database integration
         self.add_interaction(interaction, voice_embedding)
 
-        # Build enhanced context
+        # Build context
         enhanced_prompt = self.build_context_prompt(interaction.text, interaction.timestamp)
 
         # Enhanced intent classification
@@ -859,7 +843,7 @@ class EnhancedContextProcessor:
             self.logger.error(f"Failed to start new conversation: {e}")
 
     def _cleanup_old_interactions(self):
-        """Enhanced cleanup with preserved relationships."""
+        """Cleanup with preserved relationships."""
         excess_count = len(self.interaction_history) - self.config.max_history_size
         if excess_count > 0:
             # Remove oldest interactions
@@ -893,20 +877,20 @@ class EnhancedContextProcessor:
 
 
 # Utility functions for integration
-def create_enhanced_context_processor(
+def create_context_processor(
     config: Optional[ContextProcessorConfig] = None,
-) -> EnhancedContextProcessor:
-    """Create a new enhanced context processor instance."""
-    return EnhancedContextProcessor(config)
+) -> ContextProcessor:
+    """Create a new context processor instance."""
+    return ContextProcessor(config)
 
 
-def process_interaction_enhanced(
-    processor: EnhancedContextProcessor,
+def process_interaction(
+    processor: ContextProcessor,
     interaction: DBInteraction,
     voice_embedding: Optional[np.ndarray] = None,
 ) -> Tuple[str, bool]:
-    """Process a database interaction with enhanced features."""
+    """Process a database interaction."""
     # Format the interaction as the processor expects
     timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    formatted_input = f"({timestamp_str}) Person {interaction.speaker}: {interaction.text}"
+    formatted_input = f"({timestamp_str}) Person {interaction.speaker_id}: {interaction.text}"
     return processor.process_input(formatted_input, voice_embedding)

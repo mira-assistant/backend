@@ -167,7 +167,7 @@ def assign_speaker(embedding: np.ndarray, centroids: Optional[List[np.ndarray]])
 
 def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
-    Process a complete sentence buffer with real-time audio denoising and enhanced speaker recognition.
+    Process a complete sentence buffer with real-time audio denoising and speaker recognition.
     """
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
