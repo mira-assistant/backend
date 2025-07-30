@@ -151,13 +151,13 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
 
 def assign_speaker(new_embedding: np.ndarray):
     """Assign embedding to a speaker index; update centroids online."""
-    
+
     db = get_db_session()
     try:
         users = db.query(Person).all()
 
         for user in users:
-            voice_embedding = np.array(getattr(user, "voice_embedding"), dtype=np.float32)
+            voice_embedding = np.array(user.voice_embedding, dtype=np.float32)
 
             similarity_score = cosine_sim(voice_embedding, new_embedding)
 
@@ -186,10 +186,10 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
     """
-    
+
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
-    
+
     if asr_model is None or spk_encoder is None:
         logger.error("Failed to load ML models")
         return None

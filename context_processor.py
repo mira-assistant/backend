@@ -16,7 +16,7 @@ import json
 import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Tuple, Any, Set
+from typing import Dict, List, Optional, Tuple, Any
 import uuid
 import numpy as np
 
@@ -57,12 +57,12 @@ class ContextProcessor:
             eps=self.config.dbscan_eps,
             min_samples=self.config.dbscan_min_samples,
         )
-            
+
         self.voice_embedding_cache: Dict[str, np.ndarray] = {}
 
         # Current conversation tracking for real-time updates
-        self.current_conversation_id: Optional[uuid.UUID] = None
-        self.current_participants: Set[str] = set()
+        self.current_conversation_id = None
+        self.current_participants = set()
 
         logging.basicConfig(level=getattr(logging, self.config.log_level))
         self.logger = logging.getLogger(__name__)
@@ -84,9 +84,7 @@ class ContextProcessor:
             )
 
         if self.config.enable_topic_modeling:
-            self.nlp_components["sentence_transformer"] = SentenceTransformer(
-                "all-MiniLM-L6-v2"
-            )
+            self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
         """Parse whisper output and return SQLAlchemy Interaction model."""
@@ -200,7 +198,6 @@ class ContextProcessor:
             person = Person(
                 speaker_index=speaker_index,
                 name=f"Person {speaker_index}",
-                is_identified=False,
             )
             session.add(person)
             session.commit()
@@ -208,7 +205,7 @@ class ContextProcessor:
 
         return person
 
-    def assign_speaker(self, new_embedding: np.ndarray) -> str:
+    def assign_speaker(self, new_embedding: np.ndarray):
         """
         Assign embedding to a speaker; integrate robust method from sentence_processor.py.
         Returns person_id.
@@ -232,7 +229,7 @@ class ContextProcessor:
                         updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
                         person.voice_embedding = updated_embedding.tolist()
                         session.commit()
-                        return getattr(person, "id")  # Return UUID object, not string
+                        return person.id
 
             # If no existing speaker matches, create a new one
             max_speaker_index = (
@@ -248,7 +245,7 @@ class ContextProcessor:
             session.add(new_person)
             session.commit()
             session.refresh(new_person)
-            return getattr(new_person, "id")  # Return UUID object, not string
+            return new_person.id
 
         finally:
             session.close()
@@ -323,12 +320,12 @@ class ContextProcessor:
                 self.update_speaker_clustering(voice_embedding, person_id)
 
             # Check if we need to start a new conversation or continue existing one
-            if self.detect_conversation_boundary_db(interaction, session):
-                self._start_new_conversation_db(interaction, session)
+            if self.detect_conversation_boundary(interaction, session):
+                self._start_new_conversation(interaction, session)
             else:
                 # Assign to current conversation if exists
-                if self.current_conversation_id:
-                    setattr(interaction, "conversation_id", self.current_conversation_id)
+                if self.current_conversation_id is not None:
+                    interaction.conversation_id = self.current_conversation_id
 
             # Save interaction to database
             session.add(interaction)
@@ -337,11 +334,9 @@ class ContextProcessor:
 
             # Update current conversation participants
             if hasattr(interaction, "speaker_id"):
-                self.current_participants.add(getattr(interaction, "speaker_id"))
+                self.current_participants.add(interaction.speaker_id)
 
-            self.logger.debug(
-                f"Interaction added to database with ID: {getattr(interaction, 'id')}"
-            )
+            self.logger.debug(f"Interaction added to database with ID: {interaction.id}")
 
         except Exception as e:
             session.rollback()
@@ -349,11 +344,11 @@ class ContextProcessor:
         finally:
             session.close()
 
-
-
-    def detect_conversation_boundary_db(self, current_interaction: Interaction, session) -> bool:
+    def detect_conversation_boundary(self, current_interaction: Interaction) -> bool:
         """Conversation boundary detection using database queries."""
         # Get last interaction from database
+        session = get_db_session()
+
         last_interaction = session.query(Interaction).order_by(Interaction.timestamp.desc()).first()
 
         if not last_interaction:
@@ -401,7 +396,7 @@ class ContextProcessor:
         session = get_db_session()
         try:
             # Get interactions from current conversation or recent interactions
-            if self.current_conversation_id:
+            if self.current_conversation_id is not None:
                 # Get interactions from current conversation
                 interactions = (
                     session.query(Interaction)
@@ -457,7 +452,7 @@ class ContextProcessor:
                 and self.config.enable_context_summarization
             ):
                 semantic_results = self._get_semantic_similar_interactions_db(
-                    getattr(current_interaction, "voice_embedding"), session, max_results
+                    current_interaction.voice_embedding, session, max_results
                 )
                 relevant_interactions.extend(semantic_results)
 
@@ -499,7 +494,7 @@ class ContextProcessor:
         return interactions
 
     def _get_semantic_similar_interactions_db(
-        self, query_embedding: List[float], session, max_results: int
+        self, query_embedding, session, max_results: int
     ) -> List[Interaction]:
         """Get semantically similar interactions using embeddings from database."""
         query_embedding_np = np.array(query_embedding)
@@ -529,16 +524,16 @@ class ContextProcessor:
 
     # Removed obsolete in-memory scoring methods (replaced by database queries)
 
-    def build_context_prompt(self, current_text: str, current_time: datetime) -> str:
+    def build_context_prompt(self, interaction: Interaction) -> str:
         """Build context prompt with summarization using database."""
         # Get contexts from database
-        short_term = self.get_short_term_context(current_time)
+        short_term = self.get_short_term_context(interaction.timestamp)
 
         # Remove current interaction if it's already in short term context
-        if short_term and current_text in short_term[-1].text:
+        if short_term and interaction.text in short_term[-1].text:
             short_term = short_term[:-1]
 
-        keywords = self.extract_keywords(current_text)
+        keywords = self.extract_keywords(interaction.text)
 
         # For long-term context, try to get current interaction for semantic similarity
         current_interaction = None
@@ -551,7 +546,7 @@ class ContextProcessor:
             session.close()
 
         long_term = self.get_long_term_context(keywords, current_interaction)
-        long_term = [i for i in long_term if getattr(i, "text") != current_text]
+        long_term = [i for i in long_term if str(i.text) != interaction.text]
 
         # Build context with summarization
         context_parts = []
@@ -594,7 +589,7 @@ class ContextProcessor:
         session = get_db_session()
         try:
             person = session.query(Person).filter_by(id=speaker_id).first()
-            return getattr(person, "speaker_index") if person else 1
+            return person.speaker_index if person else 1
         finally:
             session.close()
 
@@ -604,7 +599,7 @@ class ContextProcessor:
             return ""
 
         # Simple extractive summarization
-        texts = [getattr(i, "text") for i in interactions]
+        texts = [i.text for i in interactions]
 
         # Combine entities and key phrases
         key_info = []
@@ -790,19 +785,17 @@ class ContextProcessor:
         # Check for conversation boundary using database
         session = get_db_session()
         try:
-            if self.detect_conversation_boundary_db(interaction, session):
-                self._start_new_conversation_db(interaction, session)
+            if self.detect_conversation_boundary(interaction):
+                self._start_new_conversation(interaction, session)
 
             # Add to database with database integration
             self.add_interaction(interaction, voice_embedding)
 
             # Build context using database
-            enhanced_prompt = self.build_context_prompt(
-                getattr(interaction, "text"), getattr(interaction, "timestamp")
-            )
+            enhanced_prompt = self.build_context_prompt(interaction)
 
             # Enhanced intent classification
-            has_intent = self.classify_intent(getattr(interaction, "text"))
+            has_intent = self.classify_intent(interaction.text)
 
             if self.config.debug_mode:
                 self.logger.debug(f"Processed interaction: {interaction.text}")
@@ -814,22 +807,18 @@ class ContextProcessor:
         finally:
             session.close()
 
-    def _start_new_conversation_db(self, interaction: Interaction, session):
+    def _start_new_conversation(self, interaction: Interaction, session):
         """Start a new conversation in the database with real-time tracking."""
         try:
             # Create new conversation
             conversation = Conversation(
                 user_ids=(
-                    getattr(interaction, "speaker_id")
-                    if getattr(interaction, "speaker_id")
-                    else uuid.uuid4()
+                    interaction.speaker_id if interaction.speaker_id is not None else uuid.uuid4()
                 ),
-                speaker_id=getattr(interaction, "speaker_id"),
-                start_of_conversation=getattr(interaction, "timestamp"),
+                speaker_id=interaction.speaker_id,
+                start_of_conversation=interaction.timestamp,
                 participants=json.dumps(
-                    [str(getattr(interaction, "speaker_id"))]
-                    if getattr(interaction, "speaker_id")
-                    else []
+                    [str(interaction.speaker_id)] if interaction.speaker_id is not None else []
                 ),
             )
 
@@ -837,10 +826,10 @@ class ContextProcessor:
             session.commit()
             session.refresh(conversation)
 
-            self.current_conversation_id = getattr(conversation, "id")
+            self.current_conversation_id = conversation.id
             self.current_participants = (
-                {getattr(interaction, "speaker_id")}
-                if getattr(interaction, "speaker_id")
+                {interaction.speaker_id}
+                if interaction.speaker_id is not None
                 else set()
             )
 
@@ -865,7 +854,6 @@ class ContextProcessor:
                 summary[f"Person {person.speaker_index}"] = {
                     "interaction_count": len(person.interactions),
                     "cluster_id": person.cluster_id,
-                    "is_identified": getattr(person, "is_identified", False),
                     "name": person.name,
                     "person_id": str(person.id),
                 }

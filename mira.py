@@ -300,7 +300,7 @@ def get_recent_conversations(limit: int = 10):
                 conv_data = {
                     "id": str(conv.id),
                     "start_time": conv.start_of_conversation.isoformat(),
-                    "end_time": conv.end_of_conversation.isoformat() if getattr(conv, "end_of_conversation") else None,
+                    "end_time": conv.end_of_conversation.isoformat() if conv.end_of_conversation is not None else None,
                     "participants": conv.participants,
                     "interaction_count": len(conv.interactions),
                     "topic_summary": conv.topic_summary,
