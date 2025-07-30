@@ -20,37 +20,14 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 import uuid
 import numpy as np
 
-# Optional heavy dependencies - graceful degradation when not available
-try:
-    from sklearn.cluster import DBSCAN
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-    DBSCAN = None
+# Required heavy dependencies - hard imports
+from sklearn.cluster import DBSCAN
+import spacy
+from transformers.pipelines import pipeline
+from sentence_transformers import SentenceTransformer
 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-
-try:
-    import spacy
-    SPACY_AVAILABLE = True
-except ImportError:
-    SPACY_AVAILABLE = False
-    spacy = None
-
-try:
-    from transformers.pipelines import pipeline
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
-    pipeline = None
-
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    SentenceTransformer = None
 
 from models import (
     Person,
@@ -75,14 +52,11 @@ class ContextProcessor:
         # Remove in-memory structures - all data now comes from database
         self.conversation_cache: deque = deque(maxlen=100)  # Keep for caching recent conversations
 
-        # Clustering components (optional)
-        if SKLEARN_AVAILABLE:
-            self.dbscan = DBSCAN(
-                eps=self.config.dbscan_eps,
-                min_samples=self.config.dbscan_min_samples,
-            )
-        else:
-            self.dbscan = None
+        # Clustering components (required)
+        self.dbscan = DBSCAN(
+            eps=self.config.dbscan_eps,
+            min_samples=self.config.dbscan_min_samples,
+        )
             
         self.voice_embedding_cache: Dict[str, np.ndarray] = {}
 
@@ -99,42 +73,20 @@ class ContextProcessor:
         """Initialize NLP components based on configuration."""
         self.nlp_components = {}
 
-        try:
-            if (self.config.enable_ner or self.config.enable_coreference) and SPACY_AVAILABLE:
-                try:
-                    self.nlp_components["spacy"] = spacy.load(self.config.spacy_model)
-                except OSError:
-                    self.logger.warning(
-                        f"spaCy model {self.config.spacy_model} not found, disabling NER/coreference"
-                    )
-            elif self.config.enable_ner or self.config.enable_coreference:
-                self.logger.warning("spaCy not available, disabling NER/coreference")
+        if self.config.enable_ner or self.config.enable_coreference:
+            self.nlp_components["spacy"] = spacy.load(self.config.spacy_model)
 
-            if self.config.enable_sentiment_analysis and TRANSFORMERS_AVAILABLE:
-                try:
-                    self.nlp_components["sentiment"] = pipeline(
-                        task="text-classification",
-                        model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                        top_k=None,
-                    )
-                except Exception as e:
-                    self.logger.warning(f"Failed to load sentiment model: {e}")
-            elif self.config.enable_sentiment_analysis:
-                self.logger.warning("transformers not available, disabling sentiment analysis")
+        if self.config.enable_sentiment_analysis:
+            self.nlp_components["sentiment"] = pipeline(
+                task="text-classification",
+                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+                top_k=None,
+            )
 
-            if self.config.enable_topic_modeling and SENTENCE_TRANSFORMERS_AVAILABLE:
-                try:
-                    self.nlp_components["sentence_transformer"] = SentenceTransformer(
-                        "all-MiniLM-L6-v2"
-                    )
-                except Exception as e:
-                    self.logger.warning(f"Failed to load sentence transformer: {e}")
-            elif self.config.enable_topic_modeling:
-                self.logger.warning("sentence-transformers not available, disabling topic modeling")
-
-        except Exception as e:
-            self.logger.error(f"Failed to initialize NLP components: {e}")
-            self.nlp_components = {}
+        if self.config.enable_topic_modeling:
+            self.nlp_components["sentence_transformer"] = SentenceTransformer(
+                "all-MiniLM-L6-v2"
+            )
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
         """Parse whisper output and return SQLAlchemy Interaction model."""
@@ -327,10 +279,6 @@ class ContextProcessor:
 
     def _update_clusters_db(self, session):
         """Update DBSCAN clustering for all speakers using database."""
-        if not SKLEARN_AVAILABLE or self.dbscan is None:
-            self.logger.warning("DBSCAN clustering not available, skipping cluster update")
-            return
-            
         persons = session.query(Person).filter(Person.voice_embedding.isnot(None)).all()
 
         if len(persons) < self.config.dbscan_min_samples:

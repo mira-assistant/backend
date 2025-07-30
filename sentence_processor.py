@@ -25,44 +25,19 @@ import logging
 
 import numpy as np
 
-# Optional heavy dependencies - graceful degradation when not available
-try:
-    import whisper
-    WHISPER_AVAILABLE = True
-except ImportError:
-    WHISPER_AVAILABLE = False
-    whisper = None
-
-try:
-    from resemblyzer import VoiceEncoder
-    RESEMBLYZER_AVAILABLE = True
-except ImportError:
-    RESEMBLYZER_AVAILABLE = False
-    VoiceEncoder = None
-
-try:
-    import noisereduce as nr
-    NOISEREDUCE_AVAILABLE = True
-except ImportError:
-    NOISEREDUCE_AVAILABLE = False
-    nr = None
-
-try:
-    from scipy.signal import butter, lfilter
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-    butter = None
-    lfilter = None
+# Required heavy dependencies - hard imports
+import whisper
+from resemblyzer import VoiceEncoder
+import noisereduce as nr
+from scipy.signal import butter, lfilter
 
 from db import get_db_session
 from models import Person
 
 logger = logging.getLogger(__name__)
 
-# Suppress warnings only if libraries are available
-if WHISPER_AVAILABLE:
-    warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+# Suppress warnings
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
@@ -83,10 +58,6 @@ _speaker_centroids: list[np.ndarray] = []
 def get_models():
     """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
     global _asr_model, _spk_encoder
-    
-    if not WHISPER_AVAILABLE or not RESEMBLYZER_AVAILABLE:
-        logger.warning("Heavy ML dependencies not available. Audio transcription will be limited.")
-        return None, None
 
     if _asr_model is None:
         _asr_model = whisper.load_model("base")
@@ -105,9 +76,6 @@ def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
 
 def butter_highpass(cutoff, fs, order=5):
     """Design a high-pass Butterworth filter."""
-    if not SCIPY_AVAILABLE:
-        raise ImportError("scipy not available for audio filtering")
-        
     nyquist = 0.5 * fs
     if cutoff <= 0 or cutoff >= nyquist:
         raise ValueError(
@@ -123,10 +91,6 @@ def butter_highpass(cutoff, fs, order=5):
 
 def butter_highpass_filter(data, cutoff, fs, order=5):
     """Apply a high-pass Butterworth filter to the data."""
-    if not SCIPY_AVAILABLE:
-        logger.warning("scipy not available, skipping audio filtering")
-        return data
-        
     b, a = butter_highpass(cutoff, fs, order=order)
     y = lfilter(b, a, data)
     return y
@@ -143,11 +107,6 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
     Returns:
         Denoised audio signal
     """
-    
-    # If heavy dependencies are not available, return original audio
-    if not NOISEREDUCE_AVAILABLE:
-        logger.warning("noisereduce not available, skipping audio denoising")
-        return audio_data
 
     # Apply noise reduction using noisereduce library
     try:
@@ -193,22 +152,6 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
 def assign_speaker(new_embedding: np.ndarray):
     """Assign embedding to a speaker index; update centroids online."""
     
-    if not RESEMBLYZER_AVAILABLE:
-        logger.warning("Resemblyzer not available, creating default speaker")
-        # Create or return default speaker when voice recognition is not available
-        db = get_db_session()
-        try:
-            # Check if a default person already exists
-            person = db.query(Person).filter_by(speaker_index=1).first()
-            if not person:
-                person = Person(speaker_index=1, name="Person 1")
-                db.add(person)
-                db.commit()
-                db.refresh(person)
-            return person.id
-        finally:
-            db.close()
-
     db = get_db_session()
     try:
         users = db.query(Person).all()
@@ -242,19 +185,8 @@ def assign_speaker(new_embedding: np.ndarray):
 def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
-    
-    Gracefully degrades when heavy ML dependencies are not available.
     """
     
-    # Check if transcription dependencies are available
-    if not WHISPER_AVAILABLE or not RESEMBLYZER_AVAILABLE:
-        logger.warning("Heavy ML dependencies not available. Returning placeholder transcription.")
-        # Return a basic response indicating transcription is not available
-        return {
-            "text": "[Audio transcription requires whisper and resemblyzer dependencies]",
-            "voice_embedding": None
-        }
-
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
     
