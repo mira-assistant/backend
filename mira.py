@@ -75,7 +75,6 @@ def register_client(client_id: str):
 def deregister_client(client_id: str):
     if client_id in status["listening_clients"]:
         status["listening_clients"].remove(client_id)
-        print("Client deregistered:", client_id)
     else:
         # Make endpoint idempotent - don't error if client already deregistered
         print("Client already deregistered or not found:", client_id)
@@ -86,7 +85,6 @@ def deregister_client(client_id: str):
 @app.patch("/enable")
 def enable_service():
     status["enabled"] = True
-    print("Mira enabled")
     return status
 
 
