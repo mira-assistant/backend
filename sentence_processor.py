@@ -191,6 +191,9 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
     denoised_audio = denoised_audio.astype(np.float32)
 
+    if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
+        raise ValueError("Audio contains NaN or Inf values")
+
     result = asr_model.transcribe(denoised_audio)
     text = str(
         " ".join(result["text"]).strip()
