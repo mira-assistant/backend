@@ -220,7 +220,6 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
 
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-    # speaker_id = assign_speaker(embedding)
 
     interaction["text"] = text
     interaction["voice_embedding"] = embedding.tolist()

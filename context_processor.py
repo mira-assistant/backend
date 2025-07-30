@@ -38,18 +38,19 @@ class ContextProcessor:
     def __init__(self, config: Optional[ContextProcessorConfig] = None):
         """Initialize the context processor."""
         self.config = config or DEFAULT_CONFIG
-        # Remove in-memory structures - all data now comes from database
         self.conversation_cache: deque = deque(maxlen=100)  # Keep for caching recent conversations
 
-        # Clustering components (required)
+        # Speaker detection state variables for advanced clustering
+        self._speaker_embeddings = []
+        self._speaker_person_ids = []
+        self._speaker_interaction_ids = []
+        self._cluster_labels = []
+        self._clusters_dirty = True  # Mark True when cache must be refreshed
+
         self.dbscan = DBSCAN(
-            eps=self.config.dbscan_eps,
-            min_samples=self.config.dbscan_min_samples,
+            eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples, metric="cosine"
         )
 
-        self.voice_embedding_cache: Dict[str, np.ndarray] = {}
-
-        # Current conversation tracking for real-time updates
         self.current_conversation_id = None
         self.current_participants = set()
 
@@ -74,6 +75,166 @@ class ContextProcessor:
 
         if self.config.enable_topic_modeling:
             self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
+
+        # --- ADVANCED SPEAKER DETECTION SECTION START ---
+
+    def _refresh_speaker_cache(self):
+        """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
+        session = get_db_session()
+        try:
+            interactions = (
+                session.query(Interaction)
+                .filter(Interaction.voice_embedding != None, Interaction.speaker_id != None)
+                .all()
+            )
+            self._speaker_embeddings = [
+                np.array(i.voice_embedding, dtype=np.float32) for i in interactions
+            ]
+            self._speaker_person_ids = [i.speaker_id for i in interactions]
+            self._speaker_interaction_ids = [i.id for i in interactions]
+            self._clusters_dirty = True
+        finally:
+            session.close()
+
+    def _recompute_clusters(self):
+        """Run DBSCAN clustering on all cached embeddings and update labels."""
+        if not self._speaker_embeddings:
+            self._cluster_labels = []
+            return
+        X = np.stack(self._speaker_embeddings)
+        self._cluster_labels = self.dbscan.fit_predict(X).tolist()
+        self._clusters_dirty = False
+
+    def assign_speaker(
+        self, embedding: np.ndarray, session: Optional[Session] = None
+    ):
+        """
+        Assign a speaker using DBSCAN clustering over all embeddings.
+        Returns the Person.id of the most similar speaker (if above threshold) or creates a new one.
+        Also updates clusters in the database.
+        """
+        own_session = session is None
+        session = session or get_db_session()
+        try:
+            # Refresh cache if needed
+            if not self._speaker_embeddings or self._clusters_dirty:
+                self._refresh_speaker_cache()
+                self._recompute_clusters()
+
+            # Add the new embedding to the cached ones for clustering
+            all_embeddings = self._speaker_embeddings + [embedding]
+            X = np.stack(all_embeddings)
+            dbscan = DBSCAN(
+                eps=self.config.dbscan_eps,
+                min_samples=self.config.dbscan_min_samples,
+                metric="cosine",
+            )
+            labels = dbscan.fit_predict(X)
+            new_label = labels[-1]
+
+            if new_label == -1:
+                new_person = Person(
+                    voice_embedding=embedding.tolist(),
+                    index=(
+                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                    )[0]
+                    + 1,
+                )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                # Add to state
+                self._speaker_embeddings.append(embedding)
+                self._speaker_person_ids.append(new_person.id)
+                self._speaker_interaction_ids.append(None)
+                self._clusters_dirty = True
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
+
+            cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
+            if not cluster_indices:
+                new_person = Person(
+                    voice_embedding=embedding.tolist(),
+                    index=(
+                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                    )[0]
+                    + 1,
+                )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                self._speaker_embeddings.append(embedding)
+                self._speaker_person_ids.append(new_person.id)
+                self._speaker_interaction_ids.append(None)
+                self._clusters_dirty = True
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
+
+            similarities = []
+            for idx in cluster_indices:
+                emb = all_embeddings[idx]
+                sim = float(
+                    np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb))
+                )
+                similarities.append((idx, sim))
+            best_idx, best_sim = max(similarities, key=lambda x: x[1])
+            if best_sim < self.config.similarity_threshold:
+                new_person = Person(
+                    voice_embedding=embedding.tolist(),
+                    index=(
+                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                    )[0]
+                    + 1,
+                )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                self._speaker_embeddings.append(embedding)
+                self._speaker_person_ids.append(new_person.id)
+                self._speaker_interaction_ids.append(None)
+                self._clusters_dirty = True
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
+
+            # Assign to the Person of the best match in the cluster
+            matched_person_id = self._speaker_person_ids[best_idx]
+            # Optionally, update the matched Person's embedding (e.g., running average)
+            matched_person = session.query(Person).filter_by(id=matched_person_id).first()
+            if matched_person and matched_person.voice_embedding is not None:
+                old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
+                updated_emb = 0.8 * old_emb + 0.2 * embedding  # Weighted update
+                matched_person.voice_embedding = updated_emb.tolist()
+                session.commit()
+            self._speaker_embeddings.append(embedding)
+            self._speaker_person_ids.append(matched_person_id)
+            self._speaker_interaction_ids.append(None)
+            self._clusters_dirty = True
+            self._update_db_clusters(session, labels)
+            return matched_person_id
+        finally:
+            if own_session:
+                session.close()
+
+    def _update_db_clusters(self, session: Session, cluster_labels):
+        """
+        Update DB cluster assignments for all Persons based on current cache and cluster_labels.
+        Interactions in cache must match the order of cluster_labels.
+        """
+        if (
+            not self._speaker_person_ids
+            or not cluster_labels
+            or len(self._speaker_person_ids) != len(cluster_labels)
+        ):
+            return
+        for person_id, label in zip(self._speaker_person_ids, cluster_labels):
+            if person_id is None:
+                continue
+            person = session.query(Person).filter_by(id=person_id).first()
+            if person:
+                person.cluster_id = int(label) if label != -1 else None
+        session.commit()
+
+    # --- ADVANCED SPEAKER DETECTION SECTION END ---
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
         """Parse whisper output and return SQLAlchemy Interaction model."""
@@ -194,75 +355,10 @@ class ContextProcessor:
 
         return person
 
-    def assign_speaker(self, new_embedding: np.ndarray):
-        """
-        Assign embedding to a speaker; integrate robust method from sentence_processor.py.
-        Returns person_id.
-        """
-        session = get_db_session()
-        try:
-            persons = session.query(Person).all()
-
-            # Ensure new_embedding is a numpy array of type float32
-            new_embedding = np.array(new_embedding, dtype=np.float32)
-
-            for person in persons:
-                if person.voice_embedding is not None:
-                    voice_embedding = np.array(person.voice_embedding, dtype=np.float32)
-                    similarity_score = self._cosine_sim(voice_embedding, new_embedding)
-
-                    if similarity_score >= self.config.similarity_threshold:
-                        # Weighted update: new_embedding = alpha * new_embedding + (1 - alpha) * old_embedding
-                        # alpha decreases as number of interactions increases
-                        num_interactions = (
-                            len(person.interactions) if person.interactions is not None else 0
-                        )
-                        alpha = 1.0 / (num_interactions + 1)
-                        updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
-                        person.voice_embedding = updated_embedding.tolist()
-                        session.commit()
-                        return person.id
-
-            # If no existing speaker matches, create a new one
-            max_speaker_index = session.query(Person.index).order_by(Person.index.desc()).first()
-
-            next_speaker_index = (max_speaker_index[0] + 1) if max_speaker_index else 1
-
-            new_person = Person(
-                voice_embedding=new_embedding.tolist(),
-                index=next_speaker_index,
-            )
-            session.add(new_person)
-            session.commit()
-            session.refresh(new_person)
-            return new_person.id
-
-        finally:
-            session.close()
-
     def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def update_speaker_clustering(self, voice_embedding: np.ndarray, person_id):
-        """Update speaker clustering with new voice embedding - now database-backed."""
-        session = get_db_session()
-        try:
-            person = session.query(Person).filter_by(id=person_id).first()
-            if not person:
-                return
-
-            # Update voice embedding using weighted average (already done in assign_speaker)
-            # Update clustering if we have enough data across all speakers
-            persons_with_embeddings = (
-                session.query(Person).filter(Person.voice_embedding.isnot(None)).all()
-            )
-
-            if len(persons_with_embeddings) >= self.config.dbscan_min_samples:
-                self._update_clusters_db(session)
-
-        finally:
-            session.close()
 
     def _update_clusters_db(self, session):
         """Update DBSCAN clustering for all speakers using database."""
