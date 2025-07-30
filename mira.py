@@ -22,8 +22,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins for development
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Setup logging
@@ -33,16 +33,16 @@ processor = context_processor.create_context_processor(DEFAULT_CONFIG)
 
 
 status: dict = {
-    "version": "2.3.9",  # Removed simple mode fallback
+    "version": "4.1.1",
     "listening_clients": list(),
     "enabled": False,
-    "mode": "advanced",  # Always advanced mode
+    "mode": "advanced",
     "features": {
-        "advanced_nlp": True,  # Always available
-        "speaker_clustering": True,  # Always available
-        "context_summarization": True,  # Always available
-        "database_integration": True,  # Always available
-        "audio_processing": True,  # Always available
+        "advanced_nlp": True,
+        "speaker_clustering": True,
+        "context_summarization": True,
+        "database_integration": True,
+        "audio_processing": True,
     },
 }
 
@@ -76,7 +76,6 @@ def deregister_client(client_id: str):
     if client_id in status["listening_clients"]:
         status["listening_clients"].remove(client_id)
     else:
-        # Make endpoint idempotent - don't error if client already deregistered
         print("Client already deregistered or not found:", client_id)
 
     return status
