@@ -1,7 +1,7 @@
 import uuid
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import Interaction
+from models import Interaction, Person
 from db import get_db_session
 import logging
 import json
@@ -12,6 +12,7 @@ from context_processor import (
     process_interaction,
 )
 from context_config import DEFAULT_CONFIG
+import numpy as np
 
 
 # Initialize FastAPI app first
@@ -117,8 +118,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         # Extract voice embedding for speaker recognition
         voice_embedding = None
-        if 'voice_embedding' in transcription_result and transcription_result['voice_embedding'] is not None:
-            import numpy as np
+        if transcription_result.get('voice_embedding') is not None:
             voice_embedding = np.array(transcription_result['voice_embedding'])
             del transcription_result['voice_embedding']  # Remove from dict to avoid DB errors
         elif 'voice_embedding' in transcription_result:
@@ -140,9 +140,6 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
             if voice_embedding is not None:
                 person_id = context_processor.assign_speaker(voice_embedding)
             else:
-                # Fallback: create a default person
-                from models import Person
-                
                 # Check if a default person already exists
                 person = db.query(Person).filter_by(speaker_index=1).first()
                 if not person:
@@ -258,13 +255,13 @@ def inference_endpoint(interaction_id: str):
 
             # Add context information to response with database queries
             response["context_used"] = str(bool(context))
-            
+
             # Get enhanced features from the database interaction
             enhanced_features = {
                 "entities": interaction.entities,
                 "sentiment": interaction.sentiment,
                 "speaker_id": str(interaction.speaker_id),
-                "conversation_id": str(interaction.conversation_id) if interaction.conversation_id else None,
+                "conversation_id": str(interaction.conversation_id) if bool(interaction.conversation_id) else None,
             }
             response["enhanced_features"] = json.dumps(enhanced_features)
 
@@ -297,30 +294,24 @@ def get_recent_conversations(limit: int = 10):
                 .limit(limit)
                 .all()
             )
-            
+
             result = []
             for conv in conversations:
                 conv_data = {
                     "id": str(conv.id),
                     "start_time": conv.start_of_conversation.isoformat(),
-                    "end_time": conv.end_of_conversation.isoformat() if conv.end_of_conversation else None,
+                    "end_time": conv.end_of_conversation.isoformat() if getattr(conv, "end_of_conversation") else None,
                     "participants": conv.participants,
                     "interaction_count": len(conv.interactions),
                     "topic_summary": conv.topic_summary,
                 }
                 result.append(conv_data)
-            
+
             return result
-            
+
         finally:
             db.close()
-            
+
     except Exception as e:
         logger.error(f"Error fetching conversations: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
-
-
-# @app.get("/context/speakers")
-# def get_speaker_summary():
-#     """Get summary of all tracked speakers."""
-#     return context_processor.get_speaker_summary()
