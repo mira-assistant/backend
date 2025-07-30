@@ -1,14 +1,3 @@
-"""
-Context Processor for Mira with advanced NLP features.
-
-This module provides a comprehensive context processor that includes:
-- Advanced speaker recognition with clustering
-- Database integration with Person entities
-- NLP features (NER, coreference resolution, topic modeling)
-- Improved conversation management
-- Context summarization
-"""
-
 from __future__ import annotations
 
 import re
@@ -16,7 +5,7 @@ import json
 import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 import uuid
 import numpy as np
 
@@ -149,19 +138,20 @@ class ContextProcessor:
             # Named Entity Recognition
             if self.config.enable_ner and "spacy" in self.nlp_components:
                 doc = self.nlp_components["spacy"](interaction.text)
-                setattr(
-                    interaction,
-                    "entities",
-                    [
-                        {
-                            "text": ent.text,
-                            "label": ent.label_,
-                            "start": ent.start_char,
-                            "end": ent.end_char,
-                        }
-                        for ent in doc.ents
-                    ],
-                )
+                entities_list = [
+                    {
+                        "text": ent.text,
+                        "label": ent.label_,
+                        "start": ent.start_char,
+                        "end": ent.end_char,
+                    }
+                    for ent in doc.ents
+                ]
+                # Store as JSON if the column is JSON type, else as string
+                try:
+                    interaction.entities = entities_list
+                except Exception:
+                    interaction.entities = json.dumps(entities_list)
 
             # Sentiment Analysis
             if self.config.enable_sentiment_analysis and "sentiment" in self.nlp_components:
@@ -176,7 +166,7 @@ class ContextProcessor:
                         ),
                         0.5,
                     )
-                    setattr(interaction, "sentiment", positive_score)
+                    interaction.sentiment = positive_score
 
             # Text Embedding for semantic similarity
             if (
@@ -214,17 +204,20 @@ class ContextProcessor:
         try:
             persons = session.query(Person).all()
 
-            similarity_threshold = self.config.similarity_threshold
+            # Ensure new_embedding is a numpy array of type float32
+            new_embedding = np.array(new_embedding, dtype=np.float32)
 
             for person in persons:
-                if hasattr(person, "voice_embedding"):
+                if person.voice_embedding is not None:
                     voice_embedding = np.array(person.voice_embedding, dtype=np.float32)
                     similarity_score = self._cosine_sim(voice_embedding, new_embedding)
 
-                    if similarity_score >= similarity_threshold:
+                    if similarity_score >= self.config.similarity_threshold:
                         # Weighted update: new_embedding = alpha * new_embedding + (1 - alpha) * old_embedding
                         # alpha decreases as number of interactions increases
-                        num_interactions = len(person.interactions)
+                        num_interactions = (
+                            len(person.interactions) if person.interactions is not None else 0
+                        )
                         alpha = 1.0 / (num_interactions + 1)
                         updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
                         person.voice_embedding = updated_embedding.tolist()
@@ -235,6 +228,7 @@ class ContextProcessor:
             max_speaker_index = (
                 session.query(Person.speaker_index).order_by(Person.speaker_index.desc()).first()
             )
+
             next_speaker_index = (max_speaker_index[0] + 1) if max_speaker_index else 1
 
             new_person = Person(
@@ -315,12 +309,12 @@ class ContextProcessor:
             # Handle speaker recognition if voice embedding provided
             if voice_embedding is not None:
                 person_id = self.assign_speaker(voice_embedding)
-                setattr(interaction, "speaker_id", person_id)
+                interaction.speaker_id = person_id
                 # Update clustering
                 self.update_speaker_clustering(voice_embedding, person_id)
 
             # Check if we need to start a new conversation or continue existing one
-            if self.detect_conversation_boundary(interaction, session):
+            if self.detect_conversation_boundary(interaction):
                 self._start_new_conversation(interaction, session)
             else:
                 # Assign to current conversation if exists
@@ -333,7 +327,7 @@ class ContextProcessor:
             session.refresh(interaction)
 
             # Update current conversation participants
-            if hasattr(interaction, "speaker_id"):
+            if interaction.speaker_id is not None:
                 self.current_participants.add(interaction.speaker_id)
 
             self.logger.debug(f"Interaction added to database with ID: {interaction.id}")
@@ -555,7 +549,7 @@ class ContextProcessor:
             context_parts.append("Current conversation:")
             for interaction in short_term:
                 speaker_info = f"Person {self._get_speaker_index(interaction.speaker_id)}"
-                if hasattr(interaction, "entities") and isinstance(interaction.entities, list):
+                if interaction.entities is not None and isinstance(interaction.entities, list):
                     entity_text = ", ".join(
                         [
                             str(e.get("text", ""))
@@ -604,7 +598,7 @@ class ContextProcessor:
         # Combine entities and key phrases
         key_info = []
         for interaction in interactions:
-            if hasattr(interaction, "entities"):
+            if interaction.entities is not None:
                 entities = [
                     e["text"]
                     for e in interaction.entities
@@ -828,9 +822,7 @@ class ContextProcessor:
 
             self.current_conversation_id = conversation.id
             self.current_participants = (
-                {interaction.speaker_id}
-                if interaction.speaker_id is not None
-                else set()
+                {interaction.speaker_id} if interaction.speaker_id is not None else set()
             )
 
             # Assign this conversation to the interaction
@@ -840,27 +832,6 @@ class ContextProcessor:
 
         except Exception as e:
             self.logger.error(f"Failed to start new conversation: {e}")
-
-    # Removed obsolete cleanup methods (no longer needed with database storage)
-
-    def get_speaker_summary(self) -> Dict[str, Any]:
-        """Get summary of all tracked speakers from database."""
-        session = get_db_session()
-        try:
-            persons = session.query(Person).all()
-            summary = {}
-
-            for person in persons:
-                summary[f"Person {person.speaker_index}"] = {
-                    "interaction_count": len(person.interactions),
-                    "cluster_id": person.cluster_id,
-                    "name": person.name,
-                    "person_id": str(person.id),
-                }
-
-            return summary
-        finally:
-            session.close()
 
 
 # Utility functions for integration

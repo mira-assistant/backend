@@ -19,7 +19,7 @@ class ContextProcessorConfig:
     conversation_gap_threshold: int = 300  # Seconds gap to mark conversation boundary
 
     # Speaker Recognition and Clustering
-    similarity_threshold: float = 0.75  # Cosine similarity threshold for same speaker
+    similarity_threshold: float = 0.5  # Cosine similarity threshold for same speaker
     max_speakers: int = 10  # Maximum number of speakers to track
     dbscan_eps: float = 0.3  # DBSCAN epsilon parameter
     dbscan_min_samples: int = 2  # DBSCAN minimum samples parameter

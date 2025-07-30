@@ -1,18 +1,17 @@
 import uuid
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import Interaction, Person
-from db import get_db_session
 import logging
 import json
-from run_inference import send_prompt
-from sentence_processor import transcribe_interaction
-from context_processor import (
-    create_context_processor,
-    process_interaction,
-)
+
+
+from db import get_db_session
+from models import Interaction, Person
+
 from context_config import DEFAULT_CONFIG
-import numpy as np
+import inference_processor
+import sentence_processor
+import context_processor
 
 
 # Initialize FastAPI app first
@@ -30,7 +29,7 @@ app.add_middleware(
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-context_processor = create_context_processor(DEFAULT_CONFIG)
+processor = context_processor.create_context_processor(DEFAULT_CONFIG)
 
 
 status: dict = {
@@ -109,55 +108,43 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         # Use advanced processing with integrated speaker recognition
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = transcribe_interaction(sentence_buf)
+        transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
 
         if transcription_result is None:
             return
 
         logger.info("Advanced transcription successful")
 
-        # Extract voice embedding for speaker recognition
-        voice_embedding = None
-        if transcription_result.get('voice_embedding') is not None:
-            voice_embedding = np.array(transcription_result['voice_embedding'])
-            del transcription_result['voice_embedding']  # Remove from dict to avoid DB errors
-        elif 'voice_embedding' in transcription_result:
-            # Remove None voice_embedding to avoid errors
-            del transcription_result['voice_embedding']
-
         # Check for shutdown command first
-        if "mira" in transcription_result['text'].lower() and any(
-            cancelCMD in transcription_result['text'].lower() for cancelCMD in ("cancel", "exit")
+        if "mira" in transcription_result["text"].lower() and any(
+            cancelCMD in transcription_result["text"].lower() for cancelCMD in ("cancel", "exit")
         ):
             logger.info("Mira interrupted by voice command")
             disable_service()
             return status
 
-        # Use context processor for speaker recognition and database integration
         db = get_db_session()
+
         try:
+            print("checkpoint 1:", transcription_result)
+
             # Assign speaker using robust method from context processor
-            if voice_embedding is not None:
-                person_id = context_processor.assign_speaker(voice_embedding)
-            else:
-                # Check if a default person already exists
-                person = db.query(Person).filter_by(speaker_index=1).first()
-                if not person:
-                    person = Person(speaker_index=1, name="Person 1")
-                    db.add(person)
-                    db.commit()
-                    db.refresh(person)
-                person_id = person.id
+            transcription_result["speaker_id"] = processor.assign_speaker(
+                transcription_result["voice_embedding"]
+            )
+
+            print("checkpoint 2:", transcription_result)
 
             # Create database interaction with speaker assignment
             interaction = Interaction(
-                text=transcription_result['text'],
-                speaker_id=person_id,
+                **transcription_result,
             )
 
             # Process interaction through context processor for conversation management
-            if voice_embedding is not None:
-                context_processor.update_speaker_clustering(voice_embedding, person_id)
+            if interaction.speaker_id is not None:
+                processor.update_speaker_clustering(
+                    transcription_result["voice_embedding"], interaction.speaker_id
+                )
 
             # Save to database
             db.add(interaction)
@@ -206,9 +193,18 @@ def delete_interactions(limit: int = 0):
         try:
             if limit != 0:
                 # If limit is specified, first get the IDs to delete
-                interactions_to_delete = db.query(Interaction.id).order_by(Interaction.timestamp.asc()).limit(limit).all()
+                interactions_to_delete = (
+                    db.query(Interaction.id)
+                    .order_by(Interaction.timestamp.asc())
+                    .limit(limit)
+                    .all()
+                )
                 interaction_ids = [interaction.id for interaction in interactions_to_delete]
-                deleted_count = db.query(Interaction).filter(Interaction.id.in_(interaction_ids)).delete(synchronize_session=False)
+                deleted_count = (
+                    db.query(Interaction)
+                    .filter(Interaction.id.in_(interaction_ids))
+                    .delete(synchronize_session=False)
+                )
             else:
                 # Delete all interactions
                 deleted_count = db.query(Interaction).delete()
@@ -242,16 +238,18 @@ def inference_endpoint(interaction_id: str):
                 raise HTTPException(status_code=404, detail="Interaction not found")
 
             # Use database-backed context processing
-            context, has_intent = process_interaction(context_processor, interaction)
+            context, has_intent = context_processor.process_interaction(processor, interaction)
 
             if not has_intent:
                 return {"message": "Intent not recognized, no inference performed."}
 
             # Send prompt with context
             enhanced_prompt = (
-                f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
+                f"{str(interaction.text)}\n\nContext:\n{context}"
+                if context
+                else str(interaction.text)
             )
-            response = send_prompt(prompt=enhanced_prompt, context=context)
+            response = inference_processor.send_prompt(prompt=enhanced_prompt, context=context)
 
             # Add context information to response with database queries
             response["context_used"] = str(bool(context))
@@ -261,7 +259,9 @@ def inference_endpoint(interaction_id: str):
                 "entities": interaction.entities,
                 "sentiment": interaction.sentiment,
                 "speaker_id": str(interaction.speaker_id),
-                "conversation_id": str(interaction.conversation_id) if bool(interaction.conversation_id) else None,
+                "conversation_id": (
+                    str(interaction.conversation_id) if bool(interaction.conversation_id) else None
+                ),
             }
             response["enhanced_features"] = json.dumps(enhanced_features)
 
@@ -275,12 +275,6 @@ def inference_endpoint(interaction_id: str):
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
 
 
-@app.get("/context/speakers")
-def get_speaker_summary():
-    """Get summary of all tracked speakers from database."""
-    return context_processor.get_speaker_summary()
-
-
 @app.get("/context/conversations")
 def get_recent_conversations(limit: int = 10):
     """Get recent conversations with their interactions."""
@@ -288,6 +282,7 @@ def get_recent_conversations(limit: int = 10):
         db = get_db_session()
         try:
             from models import Conversation
+
             conversations = (
                 db.query(Conversation)
                 .order_by(Conversation.start_of_conversation.desc())
@@ -300,7 +295,11 @@ def get_recent_conversations(limit: int = 10):
                 conv_data = {
                     "id": str(conv.id),
                     "start_time": conv.start_of_conversation.isoformat(),
-                    "end_time": conv.end_of_conversation.isoformat() if conv.end_of_conversation is not None else None,
+                    "end_time": (
+                        conv.end_of_conversation.isoformat()
+                        if conv.end_of_conversation is not None
+                        else None
+                    ),
                     "participants": conv.participants,
                     "interaction_count": len(conv.interactions),
                     "topic_summary": conv.topic_summary,
@@ -315,3 +314,18 @@ def get_recent_conversations(limit: int = 10):
     except Exception as e:
         logger.error(f"Error fetching conversations: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
+
+
+@app.get("/context/speakers")
+def get_speakers():
+    """Get all speakers from the database."""
+    try:
+        db = get_db_session()
+        try:
+            speakers = db.query(Person).all()
+            return speakers
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error fetching speakers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch speakers: {str(e)}")
