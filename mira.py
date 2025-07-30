@@ -126,14 +126,11 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
         db = get_db_session()
 
         try:
-            print("checkpoint 1:", transcription_result)
-
             # Assign speaker using robust method from context processor
             transcription_result["speaker_id"] = processor.assign_speaker(
                 transcription_result["voice_embedding"]
             )
 
-            print("checkpoint 2:", transcription_result)
 
             # Create database interaction with speaker assignment
             interaction = Interaction(
@@ -226,7 +223,7 @@ def delete_interactions(limit: int = 0):
         raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
 
 
-@app.post("/inference")
+@app.post("/inference/{interaction_id}")
 def inference_endpoint(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
     try:
@@ -329,3 +326,21 @@ def get_speakers():
     except Exception as e:
         logger.error(f"Error fetching speakers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch speakers: {str(e)}")
+
+
+@app.get("/context/speaker/{speaker_id}")
+def get_speaker(speaker_id: str):
+    """Get a specific speaker by ID."""
+    try:
+        db = get_db_session()
+        try:
+            speaker = db.query(Person).filter_by(id=uuid.UUID(speaker_id)).first()
+            if not speaker:
+                raise HTTPException(status_code=404, detail="Speaker not found")
+
+            return speaker
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error fetching speaker: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch speaker: {str(e)}")

@@ -182,12 +182,11 @@ class ContextProcessor:
 
     def get_or_create_person(self, speaker_index: int, session: Session) -> Person:
         """Get or create a person entity in the database."""
-        person = session.query(Person).filter_by(speaker_index=speaker_index).first()
+        person = session.query(Person).filter_by(index=speaker_index).first()
 
         if not person:
             person = Person(
-                speaker_index=speaker_index,
-                name=f"Person {speaker_index}",
+                index=speaker_index,
             )
             session.add(person)
             session.commit()
@@ -225,16 +224,13 @@ class ContextProcessor:
                         return person.id
 
             # If no existing speaker matches, create a new one
-            max_speaker_index = (
-                session.query(Person.speaker_index).order_by(Person.speaker_index.desc()).first()
-            )
+            max_speaker_index = session.query(Person.index).order_by(Person.index.desc()).first()
 
             next_speaker_index = (max_speaker_index[0] + 1) if max_speaker_index else 1
 
             new_person = Person(
                 voice_embedding=new_embedding.tolist(),
-                speaker_index=next_speaker_index,
-                name=f"Person {next_speaker_index}",
+                index=next_speaker_index,
             )
             session.add(new_person)
             session.commit()
@@ -385,7 +381,7 @@ class ContextProcessor:
 
         return False
 
-    def get_short_term_context(self, current_time: datetime) -> List[Interaction]:
+    def get_short_term_context(self, current_time) -> List[Interaction]:
         """Short-term context retrieval from database."""
         session = get_db_session()
         try:
@@ -575,7 +571,7 @@ class ContextProcessor:
 
         return "".join(context_parts) if context_parts else ""
 
-    def _get_speaker_index(self, speaker_id) -> int:
+    def _get_speaker_index(self, speaker_id):
         """Get speaker index from person ID."""
         if not speaker_id:
             return 1
@@ -583,7 +579,7 @@ class ContextProcessor:
         session = get_db_session()
         try:
             person = session.query(Person).filter_by(id=speaker_id).first()
-            return person.speaker_index if person else 1
+            return person.index if person else 1
         finally:
             session.close()
 
@@ -623,10 +619,10 @@ class ContextProcessor:
 
         return summary or "Previous discussion about relevant topics."
 
-    def extract_keywords(self, text: str) -> List[str]:
+    def extract_keywords(self, text) -> List[str]:
         """Keyword extraction with NLP features."""
         # Base keyword extraction (existing logic)
-        words = text.lower().split()
+        words = str(text).lower().split()
         stop_words = {
             "the",
             "a",
@@ -702,7 +698,7 @@ class ContextProcessor:
 
         return list(set(keywords))  # Remove duplicates
 
-    def classify_intent(self, text: str) -> bool:
+    def classify_intent(self, text) -> bool:
         """Intent classification with NLP features."""
         # Base classification (existing logic)
         action_keywords = {
@@ -756,7 +752,7 @@ class ContextProcessor:
             ],
         }
 
-        text_lower = text.lower()
+        text_lower = str(text).lower()
         has_keywords = any(
             any(keyword in text_lower for keyword in keywords)
             for keywords in action_keywords.values()
