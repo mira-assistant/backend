@@ -92,7 +92,126 @@ def disable_service():
     return status
 
 
-@app.post("/register_interaction")
+@app.get("/interactions")
+def get_interactions(limit: int = 0):
+    """Get recent interactions for live transcription display."""
+    try:
+        db = get_db_session()
+        try:
+            query = db.query(Interaction).order_by(Interaction.timestamp.desc())
+            if limit != 0:
+                query = query.limit(limit)
+            interactions = query.all()
+
+            return interactions
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error fetching interactions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
+
+
+@app.delete("/interactions")
+def delete_interactions(limit: int = 0):
+    """Clear all interactions from the database."""
+    try:
+        db = get_db_session()
+        try:
+            if limit != 0:
+                # If limit is specified, first get the IDs to delete
+                interactions_to_delete = (
+                    db.query(Interaction.id)
+                    .order_by(Interaction.timestamp.asc())
+                    .limit(limit)
+                    .all()
+                )
+                interaction_ids = [interaction.id for interaction in interactions_to_delete]
+                deleted_count = (
+                    db.query(Interaction)
+                    .filter(Interaction.id.in_(interaction_ids))
+                    .delete(synchronize_session=False)
+                )
+            else:
+                # Delete all interactions
+                deleted_count = db.query(Interaction).delete()
+
+            db.commit()
+
+            logger.info(f"Cleared {deleted_count} interactions from database")
+
+            return {
+                "deleted_count": deleted_count,
+            }
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error clearing interactions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
+
+
+@app.get("/conversations")
+def get_recent_conversations(limit: int = 10):
+    """Get recent conversations with their interactions."""
+    try:
+        db = get_db_session()
+        try:
+            from models import Conversation
+
+            conversations = (
+                db.query(Conversation)
+                .order_by(Conversation.start_of_conversation.desc())
+                .limit(limit)
+                .all()
+            )
+
+            result = []
+            for conv in conversations:
+                conv_data = {
+                    "id": str(conv.id),
+                    "start_time": conv.start_of_conversation.isoformat(),
+                    "end_time": (
+                        conv.end_of_conversation.isoformat()
+                        if conv.end_of_conversation is not None
+                        else None
+                    ),
+                    "participants": conv.participants,
+                    "interaction_count": len(conv.interactions),
+                    "topic_summary": conv.topic_summary,
+                }
+                result.append(conv_data)
+
+            return result
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error fetching conversations: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
+
+
+@app.get("/speakers/{speaker_id}")
+def get_speaker(speaker_id: str):
+    """Get a specific speaker by ID."""
+    try:
+        db = get_db_session()
+        try:
+            speaker = db.query(Person).filter_by(id=uuid.UUID(speaker_id)).first()
+            if not speaker:
+                raise HTTPException(status_code=404, detail="Speaker not found")
+
+            return speaker
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error fetching speaker: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch speaker: {str(e)}")
+
+
+@app.post("/interactions/register")
 def register_interaction(sentence_buf_raw: bytes = Body(...)):
     """Register interaction - transcribe sentence, identify speaker."""
 
@@ -167,67 +286,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
-@app.get("/interactions")
-def get_interactions(limit: int = 0):
-    """Get recent interactions for live transcription display."""
-    try:
-        db = get_db_session()
-        try:
-            query = db.query(Interaction).order_by(Interaction.timestamp.desc())
-            if limit != 0:
-                query = query.limit(limit)
-            interactions = query.all()
-
-            return interactions
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error fetching interactions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
-
-
-@app.delete("/interactions")
-def delete_interactions(limit: int = 0):
-    """Clear all interactions from the database."""
-    try:
-        db = get_db_session()
-        try:
-            if limit != 0:
-                # If limit is specified, first get the IDs to delete
-                interactions_to_delete = (
-                    db.query(Interaction.id)
-                    .order_by(Interaction.timestamp.asc())
-                    .limit(limit)
-                    .all()
-                )
-                interaction_ids = [interaction.id for interaction in interactions_to_delete]
-                deleted_count = (
-                    db.query(Interaction)
-                    .filter(Interaction.id.in_(interaction_ids))
-                    .delete(synchronize_session=False)
-                )
-            else:
-                # Delete all interactions
-                deleted_count = db.query(Interaction).delete()
-
-            db.commit()
-
-            logger.info(f"Cleared {deleted_count} interactions from database")
-
-            return {
-                "deleted_count": deleted_count,
-            }
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error clearing interactions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
-
-
-@app.post("/inference/{interaction_id}")
+@app.post("/interactions/process/{interaction_id}")
 def inference_endpoint(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
     try:
@@ -274,77 +333,3 @@ def inference_endpoint(interaction_id: str):
     except Exception as e:
         logger.error(f"Error in inference: {e}")
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
-
-
-@app.get("/context/conversations")
-def get_recent_conversations(limit: int = 10):
-    """Get recent conversations with their interactions."""
-    try:
-        db = get_db_session()
-        try:
-            from models import Conversation
-
-            conversations = (
-                db.query(Conversation)
-                .order_by(Conversation.start_of_conversation.desc())
-                .limit(limit)
-                .all()
-            )
-
-            result = []
-            for conv in conversations:
-                conv_data = {
-                    "id": str(conv.id),
-                    "start_time": conv.start_of_conversation.isoformat(),
-                    "end_time": (
-                        conv.end_of_conversation.isoformat()
-                        if conv.end_of_conversation is not None
-                        else None
-                    ),
-                    "participants": conv.participants,
-                    "interaction_count": len(conv.interactions),
-                    "topic_summary": conv.topic_summary,
-                }
-                result.append(conv_data)
-
-            return result
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logger.error(f"Error fetching conversations: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
-
-
-@app.get("/context/speakers")
-def get_speakers():
-    """Get all speakers from the database."""
-    try:
-        db = get_db_session()
-        try:
-            speakers = db.query(Person).all()
-            return speakers
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error fetching speakers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch speakers: {str(e)}")
-
-
-@app.get("/context/speaker/{speaker_id}")
-def get_speaker(speaker_id: str):
-    """Get a specific speaker by ID."""
-    try:
-        db = get_db_session()
-        try:
-            speaker = db.query(Person).filter_by(id=uuid.UUID(speaker_id)).first()
-            if not speaker:
-                raise HTTPException(status_code=404, detail="Speaker not found")
-
-            return speaker
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error fetching speaker: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch speaker: {str(e)}")
