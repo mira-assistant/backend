@@ -36,9 +36,6 @@ status: dict = {
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
 }
 
-# If you need to run code at startup, use the @app.on_event("startup") decorator.
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     for interaction in (
@@ -285,7 +282,7 @@ def delete_interactions(limit: int = 0):
                     [i for i in status["recent_interactions"] if i not in interaction_ids],
                     maxlen=10,
                 )
-                
+
             else:
                 # Delete all interactions
                 deleted_count = db.query(Interaction).delete()
