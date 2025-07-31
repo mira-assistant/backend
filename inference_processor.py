@@ -1,5 +1,4 @@
 import requests
-import os
 import json
 
 API_URL = "http://localhost:1234/v1/chat/completions"
@@ -18,17 +17,9 @@ def send_prompt(prompt: str, context=None) -> dict[str, str]:
 
     message = {"role": "user", "content": prompt}
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    system_prompt_path = os.path.join(script_dir, "system_prompt.txt")
-
-    with open(system_prompt_path, "r") as f:
-        system_prompt_content = f.read()
-
-    system_prompt = {"role": "system", "content": system_prompt_content}
-
     payload = {
         "model": "nous-hermes-2-mistral-7b-dpo",
-        "messages": [system_prompt, message],
+        "messages": [message],
         "max_tokens": -1,
         "stream": False,
         "temperature": 0.3,
