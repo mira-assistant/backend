@@ -1,4 +1,4 @@
-name: Backend CI
+name: Mira Backend CI
 
 on:
   push:
