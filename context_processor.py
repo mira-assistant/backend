@@ -22,7 +22,7 @@ from models import (
     Interaction,
     Conversation,
 )
-from context_config import ContextProcessorConfig, DEFAULT_CONFIG
+from context_config import ContextProcessorConfig
 from db import get_db_session
 
 
@@ -31,9 +31,8 @@ class ContextProcessor:
     Context processor with advanced NLP and speaker recognition features.
     """
 
-    def __init__(self, config: Optional[ContextProcessorConfig] = None):
+    def __init__(self):
         """Initialize the context processor."""
-        self.config = config or DEFAULT_CONFIG
         self.conversation_cache: deque = deque(maxlen=100)
 
         # Speaker detection state variables for advanced clustering
@@ -44,13 +43,15 @@ class ContextProcessor:
         self._clusters_dirty: bool = True
 
         self.dbscan = DBSCAN(
-            eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples, metric="cosine"
+            eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
+            min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
+            metric="cosine",
         )
 
         self.current_conversation_id = None
         self.current_participants = set()
 
-        logging.basicConfig(level=getattr(logging, self.config.log_level))
+        logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
         self.logger = logging.getLogger(__name__)
 
         self._init_nlp_components()
@@ -58,18 +59,13 @@ class ContextProcessor:
     def _init_nlp_components(self):
         self.nlp_components = {}
 
-        if self.config.enable_ner or self.config.enable_coreference:
-            self.nlp_components["spacy"] = spacy.load(self.config.spacy_model)
-
-        if self.config.enable_sentiment_analysis:
-            self.nlp_components["sentiment"] = pipeline(
-                task="text-classification",
-                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                top_k=None,
-            )
-
-        if self.config.enable_topic_modeling:
-            self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
+        self.nlp_components["spacy"] = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+        self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
+        self.nlp_components["sentiment"] = pipeline(
+            task="text-classification",
+            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+            top_k=None,
+        )
 
     # --- ADVANCED SPEAKER DETECTION SECTION START ---
 
@@ -93,8 +89,9 @@ class ContextProcessor:
 
     def _recompute_clusters(self):
         """Run DBSCAN clustering on all cached embeddings and update labels."""
-        if (not self._speaker_embeddings or
-            (isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0)):
+        if not self._speaker_embeddings or (
+            isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0
+        ):
             self._cluster_labels = []
             return
         X = np.stack(self._speaker_embeddings)
@@ -105,7 +102,7 @@ class ContextProcessor:
         self,
         embedding: np.ndarray,
         session: Optional[Session] = None,
-        interaction_id = None,
+        interaction_id=None,
     ):
         """
         Assign a speaker using DBSCAN clustering over all embeddings.
@@ -123,9 +120,14 @@ class ContextProcessor:
         own_session = session is None
         session = session or get_db_session()
         try:
-            if (not self._speaker_embeddings or
-                (isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0) or
-                self._clusters_dirty):
+            if (
+                not self._speaker_embeddings
+                or (
+                    isinstance(self._speaker_embeddings, np.ndarray)
+                    and self._speaker_embeddings.size == 0
+                )
+                or self._clusters_dirty
+            ):
                 self._refresh_speaker_cache()
                 self._recompute_clusters()
                 self._recompute_clusters()
@@ -134,8 +136,8 @@ class ContextProcessor:
             all_embeddings = self._speaker_embeddings + [embedding]
             X = np.stack(all_embeddings)
             dbscan = DBSCAN(
-                eps=self.config.dbscan_eps,
-                min_samples=self.config.dbscan_min_samples,
+                eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
+                min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
                 metric="cosine",
             )
 
@@ -154,7 +156,9 @@ class ContextProcessor:
                     session.query(Person.index).order_by(Person.index.desc()).first() or [0]
                 )[0] + 1
                 new_person = Person(
-                    voice_embedding=embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
+                    voice_embedding=(
+                        embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
+                    ),
                     index=new_index,
                 )
                 session.add(new_person)
@@ -191,7 +195,7 @@ class ContextProcessor:
 
             print("best similarity:", best_sim)
 
-            if best_sim < self.config.similarity_threshold:
+            if best_sim < ContextProcessorConfig.SpeakerRecognitionConfig.SIMILARITY_THRESHOLD:
                 new_index = (
                     session.query(Person.index).order_by(Person.index.desc()).first() or [0]
                 )[0] + 1
@@ -305,46 +309,36 @@ class ContextProcessor:
 
         try:
             # Named Entity Recognition
-            if self.config.enable_ner and "spacy" in self.nlp_components:
-                doc = self.nlp_components["spacy"](interaction.text)
-                entities_list = [
-                    {
-                        "text": ent.text,
-                        "label": ent.label_,
-                        "start": ent.start_char,
-                        "end": ent.end_char,
-                    }
-                    for ent in doc.ents
-                ]
-                # Store as JSON if the column is JSON type, else as string
-                try:
-                    interaction.entities = entities_list
-                except Exception:
-                    interaction.entities = json.dumps(entities_list)
+            doc = self.nlp_components["spacy"](interaction.text)
+            entities_list = [
+                {
+                    "text": ent.text,
+                    "label": ent.label_,
+                    "start": ent.start_char,
+                    "end": ent.end_char,
+                }
+                for ent in doc.ents
+            ]
+            # Store as JSON if the column is JSON type, else as string
+            try:
+                interaction.entities = entities_list
+            except Exception:
+                interaction.entities = json.dumps(entities_list)
 
             # Sentiment Analysis
-            if self.config.enable_sentiment_analysis and "sentiment" in self.nlp_components:
-                sentiment_result = self.nlp_components["sentiment"](interaction.text)
-                if sentiment_result and len(sentiment_result[0]) > 0:
-                    # Get the positive sentiment score
-                    positive_score = next(
-                        (
-                            item["score"]
-                            for item in sentiment_result[0]
-                            if item["label"] == "LABEL_2"
-                        ),
-                        0.5,
-                    )
-                    interaction.sentiment = positive_score
+            sentiment_result = self.nlp_components["sentiment"](interaction.text)
+            if sentiment_result and len(sentiment_result[0]) > 0:
+                # Get the positive sentiment score
+                positive_score = next(
+                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),
+                    0.5,
+                )
+                interaction.sentiment = positive_score
 
             # Text Embedding for semantic similarity
-            if (
-                self.config.enable_context_summarization
-                and "sentence_transformer" in self.nlp_components
-            ):
-                embedding = self.nlp_components["sentence_transformer"].encode(interaction.text)
-                # Store embedding as JSON in voice_embedding field (reusing existing field)
-                interaction.voice_embedding = embedding.tolist()
+            embedding = self.nlp_components["sentence_transformer"].encode(interaction.text)
+            # Store embedding as JSON in voice_embedding field (reusing existing field)
+            interaction.voice_embedding = embedding.tolist()
 
         except Exception as e:
             self.logger.error(f"NLP processing failed: {e}")
@@ -371,7 +365,7 @@ class ContextProcessor:
         """Update DBSCAN clustering for all speakers using database."""
         persons = session.query(Person).filter(Person.voice_embedding.isnot(None)).all()
 
-        if len(persons) < self.config.dbscan_min_samples:
+        if len(persons) < ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES:
             return
 
         try:
@@ -409,8 +403,6 @@ class ContextProcessor:
             if voice_embedding is not None:
                 person_id = self.assign_speaker(voice_embedding)
                 interaction.speaker_id = person_id
-                # Update clustering
-                self.update_speaker_clustering(voice_embedding, person_id)
 
             # Check if we need to start a new conversation or continue existing one
             if self.detect_conversation_boundary(interaction):
@@ -458,20 +450,20 @@ class ContextProcessor:
             last_ts = last_ts.replace(tzinfo=timezone.utc)
 
         time_gap = (current_ts - last_ts).total_seconds()
-        if time_gap > self.config.conversation_gap_threshold:
+        if time_gap > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD:
             return True
 
         # Speaker change with extended silence
         if (
             current_interaction.speaker_id != last_interaction.speaker_id
-            and time_gap > self.config.conversation_gap_threshold / 2
+            and time_gap
+            > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD / 2
         ):
             return True
 
         # Topic shift detection using embeddings if available
         if (
-            self.config.enable_topic_modeling
-            and current_interaction.voice_embedding is not None
+            current_interaction.voice_embedding is not None
             and last_interaction.voice_embedding is not None
         ):
             current_embedding = np.array(current_interaction.voice_embedding)
@@ -479,7 +471,10 @@ class ContextProcessor:
 
             similarity = self._cosine_sim(current_embedding, last_embedding)
 
-            if similarity < self.config.context_similarity_threshold:
+            if (
+                similarity
+                < ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+            ):
                 return True
 
         return False
@@ -495,21 +490,25 @@ class ContextProcessor:
                     session.query(Interaction)
                     .filter_by(conversation_id=self.current_conversation_id)
                     .order_by(Interaction.timestamp.desc())
-                    .limit(self.config.max_conversation_length)
+                    .limit(
+                        ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
+                    )
                     .all()
                 )
                 interactions.reverse()  # Return in chronological order
             else:
                 # Get recent interactions within time window
                 time_threshold = current_time - timedelta(
-                    seconds=self.config.conversation_gap_threshold
+                    seconds=ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD
                 )
                 interactions = (
                     session.query(Interaction)
                     .filter(Interaction.timestamp >= time_threshold)
                     .filter(Interaction.timestamp <= current_time)
                     .order_by(Interaction.timestamp.asc())
-                    .limit(self.config.max_conversation_length)
+                    .limit(
+                        ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
+                    )
                     .all()
                 )
 
@@ -527,7 +526,10 @@ class ContextProcessor:
         max_results: Optional[int] = None,
     ) -> List[Interaction]:
         """Long-term context retrieval with semantic similarity from database."""
-        max_results = max_results or self.config.long_term_context_max_results
+        max_results = (
+            max_results
+            or ContextProcessorConfig.ContextManagementParameters.LONG_TERM_CONTEXT_MAX_RESULTS
+        )
         session = get_db_session()
 
         try:
@@ -539,11 +541,7 @@ class ContextProcessor:
                 relevant_interactions.extend(keyword_results)
 
             # Semantic similarity retrieval using embeddings
-            if (
-                current_interaction
-                and current_interaction.voice_embedding is not None
-                and self.config.enable_context_summarization
-            ):
+            if current_interaction and current_interaction.voice_embedding is not None:
                 semantic_results = self._get_semantic_similar_interactions_db(
                     current_interaction.voice_embedding, session, max_results
                 )
@@ -606,7 +604,10 @@ class ContextProcessor:
             try:
                 interaction_embedding = np.array(interaction.voice_embedding)
                 similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
-                if similarity >= self.config.context_similarity_threshold:
+                if (
+                    similarity
+                    >= ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+                ):
                     similarities.append((interaction, similarity))
             except Exception as e:
                 self.logger.debug(f"Error computing similarity: {e}")
@@ -661,7 +662,7 @@ class ContextProcessor:
                 context_parts.append(f"\n- {speaker_info}: {interaction.text}")
 
         if long_term:
-            if self.config.enable_context_summarization and len(long_term) > 3:
+            if len(long_term) > 3:
                 # Summarize long-term context
                 summary = self._summarize_context_db(long_term)
                 context_parts.append(f"\n\nRelevant context summary: {summary}")
@@ -717,8 +718,11 @@ class ContextProcessor:
 
         summary = ". ".join(important_sentences[:3])  # Max 3 sentences
 
-        if len(summary) > self.config.summary_max_length:
-            summary = summary[: self.config.summary_max_length] + "..."
+        if len(summary) > ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH:
+            summary = (
+                summary[: ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH]
+                + "..."
+            )
 
         return summary or "Previous discussion about relevant topics."
 
@@ -890,7 +894,7 @@ class ContextProcessor:
             # Enhanced intent classification
             has_intent = self.classify_intent(interaction.text)
 
-            if self.config.debug_mode:
+            if ContextProcessorConfig.DebugConfig.DEBUG_MODE:
                 self.logger.debug(f"Processed interaction: {interaction.text}")
                 self.logger.debug(f"Intent detected: {has_intent}")
                 self.logger.debug(f"Entities: {interaction.entities}")
@@ -934,11 +938,9 @@ class ContextProcessor:
 
 
 # Utility functions for integration
-def create_context_processor(
-    config: Optional[ContextProcessorConfig] = None,
-) -> ContextProcessor:
+def create_context_processor() -> ContextProcessor:
     """Create a new context processor instance."""
-    return ContextProcessor(config)
+    return ContextProcessor()
 
 
 def process_interaction(

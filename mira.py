@@ -8,7 +8,6 @@ import json
 from db import get_db_session
 from models import Interaction, Person
 
-from context_config import DEFAULT_CONFIG
 import inference_processor
 import sentence_processor
 import context_processor
@@ -29,7 +28,7 @@ app.add_middleware(
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-processor = context_processor.create_context_processor(DEFAULT_CONFIG)
+processor = context_processor.create_context_processor()
 
 
 status: dict = {

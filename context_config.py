@@ -12,42 +12,34 @@ import os
 class ContextProcessorConfig:
     """Configuration class for the context processor."""
 
-    # Conversation Management
-    short_term_window: int = 10  # Time window in seconds for short-term context (fallback)
-    max_history_size: int = 1000  # Maximum number of interactions to keep in history
-    max_conversation_length: int = 20  # Maximum interactions in short-term context
-    conversation_gap_threshold: int = 300  # Seconds gap to mark conversation boundary
-
     # Speaker Recognition and Clustering
-    similarity_threshold: float = 0.7  # Cosine similarity threshold for same speaker
-    max_speakers: int = 10  # Maximum number of speakers to track
-    dbscan_eps: float = 0.9  # DBSCAN epsilon parameter
-    dbscan_min_samples: int = 2  # DBSCAN minimum samples parameter
-    voice_embedding_update_rate: float = 0.1  # Rate for updating voice embeddings
+    class SpeakerRecognitionConfig:
+        SIMILARITY_THRESHOLD: float = 0.7  # Cosine similarity threshold for same speaker
+        DBSCAN_EPS: float = 0.9  # DBSCAN epsilon parameter
+        DBSCAN_MIN_SAMPLES: int = 2  # DBSCAN minimum samples parameter
 
     # NLP Settings
-    enable_ner: bool = True  # Enable Named Entity Recognition
-    enable_coreference: bool = True  # Enable coreference resolution
-    enable_topic_modeling: bool = True  # Enable topic modeling
-    enable_sentiment_analysis: bool = True  # Enable sentiment analysis
-    spacy_model: str = "en_core_web_sm"  # spaCy model for NLP
-    max_topics: int = 5  # Maximum topics for topic modeling
+    class NLPConfig:
+        SPACY_MODEL: str = "en_core_web_sm"  # spaCy model for NLP
+        CONTEXT_SIMILARITY_THRESHOLD: float = 0.7  # Threshold for semantic similarity
 
-    # Context Retrieval
-    long_term_context_max_results: int = 5  # Max results for long-term context retrieval
-    context_similarity_threshold: float = 0.7  # Threshold for semantic similarity
-    enable_context_summarization: bool = True  # Enable context summarization
-    summary_max_length: int = 200  # Maximum length for context summaries
+    # Context Management
+    class ContextManagementParameters:
+        CONVERSATION_GAP_THRESHOLD: int = 300  # Seconds gap to mark conversation boundary
+        SHORT_TERM_CONTEXT_MAX_RESULTS: int = 20  # Maximum interactions in short-term context
+        LONG_TERM_CONTEXT_MAX_RESULTS: int = 5  # Max results for long-term context retrieval
+        SUMMARY_MAX_LENGTH: int = 200  # Maximum length for context summaries
 
     # Performance Settings
-    batch_processing: bool = False  # Enable batch processing for better performance
-    cache_embeddings: bool = True  # Cache voice and text embeddings
-    async_processing: bool = False  # Enable asynchronous processing
+    class PerformanceConfig:
+        BATCH_PROCESSING: bool = False  # Enable batch processing for better performance
+        CACHE_EMBEDDINGS: bool = True  # Cache voice and text embeddings
+        ASYNC_PROCESSING: bool = False  # Enable asynchronous processing
 
     # Debug and Logging
-    debug_mode: bool = False  # Enable debug logging
-    log_level: str = "INFO"  # Logging level
-    save_intermediate_results: bool = False  # Save intermediate processing results
+    class DebugConfig:
+        DEBUG_MODE: bool = False  # Enable debug logging
+        LOG_LEVEL: str = "INFO"  # Logging level
 
     @classmethod
     def load_from_file(cls, config_path: str) -> "ContextProcessorConfig":
@@ -74,19 +66,3 @@ class ContextProcessorConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         return self.__dict__.copy()
-
-
-# Default configuration instance
-DEFAULT_CONFIG = ContextProcessorConfig()
-
-
-def get_default_config() -> ContextProcessorConfig:
-    """Get the default configuration instance."""
-    return DEFAULT_CONFIG
-
-
-def create_config(**kwargs) -> ContextProcessorConfig:
-    """Create a new configuration with custom parameters."""
-    config = ContextProcessorConfig()
-    config.update(**kwargs)
-    return config
