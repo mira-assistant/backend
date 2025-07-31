@@ -1,92 +1,58 @@
-"""
-Configuration system for the context processor.
-"""
-
-from dataclasses import dataclass
-from typing import Dict, Any
-import json
-import os
+from typing import Literal
 
 
-@dataclass
 class ContextProcessorConfig:
     """Configuration class for the context processor."""
 
-    # Conversation Management
-    short_term_window: int = 10  # Time window in seconds for short-term context (fallback)
-    max_history_size: int = 1000  # Maximum number of interactions to keep in history
-    max_conversation_length: int = 20  # Maximum interactions in short-term context
-    conversation_gap_threshold: int = 300  # Seconds gap to mark conversation boundary
+    class SpeakerRecognitionConfig:
+        """Speaker recognition parameters."""
 
-    # Speaker Recognition and Clustering
-    similarity_threshold: float = 0.75  # Cosine similarity threshold for same speaker
-    max_speakers: int = 10  # Maximum number of speakers to track
-    dbscan_eps: float = 0.3  # DBSCAN epsilon parameter
-    dbscan_min_samples: int = 2  # DBSCAN minimum samples parameter
-    voice_embedding_update_rate: float = 0.1  # Rate for updating voice embeddings
+        SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
+        """Cosine similarity threshold for determining if two voice samples are from the same speaker.
+        Lowering this value decreases sensitivity, making it less likely to group different speakers together,
+        but may increase false negatives (splitting the same speaker into multiple clusters)."""
+        DBSCAN_EPS: float = 0.9
+        """Epsilon parameter for DBSCAN clustering algorithm, controlling the maximum distance between samples in a cluster."""
+        DBSCAN_MIN_SAMPLES: Literal[2] = 2
+        """Minimum number of samples required to form a cluster in DBSCAN."""
 
-    # NLP Settings
-    enable_ner: bool = True  # Enable Named Entity Recognition
-    enable_coreference: bool = True  # Enable coreference resolution
-    enable_topic_modeling: bool = True  # Enable topic modeling
-    enable_sentiment_analysis: bool = True  # Enable sentiment analysis
-    spacy_model: str = "en_core_web_sm"  # spaCy model for NLP
-    max_topics: int = 5  # Maximum topics for topic modeling
+    class NLPConfig:
+        """Natural Language Processing parameters."""
 
-    # Context Retrieval
-    long_term_context_max_results: int = 5  # Max results for long-term context retrieval
-    context_similarity_threshold: float = 0.7  # Threshold for semantic similarity
-    enable_context_summarization: bool = True  # Enable context summarization
-    summary_max_length: int = 200  # Maximum length for context summaries
+        SPACY_MODEL: Literal["en_core_web_sm"] = "en_core_web_sm"
+        """spaCy language model used for natural language processing tasks."""
+        CONTEXT_SIMILARITY_THRESHOLD: float = 0.7
+        """Threshold for semantic similarity when comparing contexts.
+        Lowering this value makes the system more likely to consider contexts as similar,
+        potentially increasing recall but reducing precision."""
 
-    # Performance Settings
-    batch_processing: bool = False  # Enable batch processing for better performance
-    cache_embeddings: bool = True  # Cache voice and text embeddings
-    async_processing: bool = False  # Enable asynchronous processing
+    class ContextManagementParameters:
+        """Parameters for managing context and conversation boundaries."""
 
-    # Debug and Logging
-    debug_mode: bool = False  # Enable debug logging
-    log_level: str = "INFO"  # Logging level
-    save_intermediate_results: bool = False  # Save intermediate processing results
+        CONVERSATION_GAP_THRESHOLD: Literal[300] = 300
+        """Time gap in seconds used to determine conversation boundaries.
+        Lowering this value will result in more frequent splitting of conversations."""
+        SHORT_TERM_CONTEXT_MAX_RESULTS: Literal[20] = 20
+        """Maximum number of recent interactions to include in the short-term context."""
+        LONG_TERM_CONTEXT_MAX_RESULTS: Literal[5] = 5
+        """Maximum number of results to retrieve from long-term context storage."""
+        SUMMARY_MAX_LENGTH: Literal[200] = 200
+        """Maximum length (in tokens or characters) for generated context summaries."""
 
-    @classmethod
-    def load_from_file(cls, config_path: str) -> "ContextProcessorConfig":
-        """Load configuration from a JSON file."""
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config_data = json.load(f)
-            return cls(**config_data)
-        return cls()
+    class PerformanceConfig:
+        """Performance optimization parameters."""
 
-    def save_to_file(self, config_path: str) -> None:
-        """Save configuration to a JSON file."""
-        with open(config_path, "w") as f:
-            json.dump(self.__dict__, f, indent=2)
+        BATCH_PROCESSING: Literal[False] = False
+        """Enable or disable batch processing to improve performance on large datasets."""
+        CACHE_EMBEDDINGS: Literal[True] = True
+        """Enable or disable caching of voice and text embeddings to speed up repeated computations."""
+        ASYNC_PROCESSING: Literal[False] = False
+        """Enable or disable asynchronous processing for improved throughput."""
 
-    def update(self, **kwargs) -> None:
-        """Update configuration parameters."""
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-            else:
-                raise ValueError(f"Unknown configuration parameter: {key}")
+    class DebugConfig:
+        """Debugging and logging parameters."""
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert configuration to dictionary."""
-        return self.__dict__.copy()
-
-
-# Default configuration instance
-DEFAULT_CONFIG = ContextProcessorConfig()
-
-
-def get_default_config() -> ContextProcessorConfig:
-    """Get the default configuration instance."""
-    return DEFAULT_CONFIG
-
-
-def create_config(**kwargs) -> ContextProcessorConfig:
-    """Create a new configuration with custom parameters."""
-    config = ContextProcessorConfig()
-    config.update(**kwargs)
-    return config
+        DEBUG_MODE: Literal[False] = False
+        """Enable or disable debug mode for verbose logging and additional diagnostics."""
+        LOG_LEVEL: Literal["INFO"] = "INFO"
+        """Logging level for controlling the verbosity of log output."""

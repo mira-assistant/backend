@@ -26,11 +26,13 @@ class Person(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=True)  # Can be None for unidentified speakers
-    speaker_index = Column(
+    index = Column(
         Integer, unique=True, nullable=False
     )  # Original speaker number (1, 2, etc.)
+
     voice_embedding = Column(JSON, nullable=True)  # Store voice embedding as JSON array
     cluster_id = Column(Integer, nullable=True)  # DBSCAN cluster assignment
+    
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,

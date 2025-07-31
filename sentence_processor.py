@@ -21,8 +21,11 @@ How it works
 from __future__ import annotations
 
 import warnings
+import logging
 
 import numpy as np
+
+# Required heavy dependencies - hard imports
 import whisper
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
@@ -31,6 +34,9 @@ from scipy.signal import butter, lfilter
 from db import get_db_session
 from models import Person
 
+logger = logging.getLogger(__name__)
+
+# Suppress warnings
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 warnings.filterwarnings(
     "ignore",
@@ -101,6 +107,7 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
     Returns:
         Denoised audio signal
     """
+
     # Apply noise reduction using noisereduce library
     try:
         # Apply high-pass filter to remove low-frequency noise (e.g., 80 Hz cutoff)
@@ -130,7 +137,7 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
 
     except Exception as e:
         # If denoising fails, return the original audio with just high-pass filtering
-        print(f"Denoising warning: {e}")
+        logger.warning(f"Denoising failed: {e}")
         filtered = butter_highpass_filter(audio_data, 80, sample_rate)
         if isinstance(filtered, tuple):
             filtered = filtered[0]
@@ -146,39 +153,46 @@ def assign_speaker(new_embedding: np.ndarray):
     """Assign embedding to a speaker index; update centroids online."""
 
     db = get_db_session()
+    try:
+        users = db.query(Person).all()
 
-    users = db.query(Person).all()
+        for user in users:
+            voice_embedding = np.array(user.voice_embedding, dtype=np.float32)
 
-    for user in users:
-        voice_embedding = np.array(getattr(user, "voice_embedding"), dtype=np.float32)
+            similarity_score = cosine_sim(voice_embedding, new_embedding)
 
-        similarity_score = cosine_sim(voice_embedding, new_embedding)
+            if similarity_score >= SIM_THRESHOLD:
+                # Weighted update: new_embedding = alpha * new_embedding + (1 - alpha) * old_embedding
+                # alpha decreases as number of interactions increases (e.g., alpha = 1 / (n + 1))
+                num_interactions = len(user.interactions)
+                alpha = 1.0 / (num_interactions + 1)
+                updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
+                user.voice_embedding = updated_embedding.tolist()
+                db.commit()
 
-        if similarity_score >= SIM_THRESHOLD:
-            # Weighted update: new_embedding = alpha * new_embedding + (1 - alpha) * old_embedding
-            # alpha decreases as number of interactions increases (e.g., alpha = 1 / (n + 1))
-            num_interactions = len(user.interactions)
-            alpha = 1.0 / (num_interactions + 1)
-            updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
-            user.voice_embedding = updated_embedding.tolist()
-            db.commit()
+                return user.id
 
-            return user.id
-
-    # If no existing speaker matches, create a new one
-    new_user = Person(voice_embedding=new_embedding.tolist(), speaker_index=len(users))
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user.id
+        # If no existing speaker matches, create a new one
+        new_user = Person(voice_embedding=new_embedding.tolist(), speaker_index=len(users))
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user.id
+    finally:
+        db.close()
 
 
 def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
     """
+
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
+
+    if asr_model is None or spk_encoder is None:
+        logger.error("Failed to load ML models")
+        return None
 
     interaction = dict()
 
@@ -206,7 +220,6 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
 
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-    # speaker_id = assign_speaker(embedding)
 
     interaction["text"] = text
     interaction["voice_embedding"] = embedding.tolist()

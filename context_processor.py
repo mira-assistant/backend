@@ -1,74 +1,29 @@
-"""
-Context Processor for Mira with advanced NLP features.
-
-This module provides a comprehensive context processor that includes:
-- Advanced speaker recognition with clustering
-- Database integration with Person entities
-- NLP features (NER, coreference resolution, topic modeling)
-- Improved conversation management
-- Context summarization
-"""
-
 from __future__ import annotations
 
 import re
-import time
 import json
 import logging
-from collections import defaultdict, deque
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple, Any, Set
-from dataclasses import dataclass, asdict, field
+from collections import deque
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional, Tuple
 import uuid
 import numpy as np
+
 from sklearn.cluster import DBSCAN
-from sqlalchemy.orm import Session
 import spacy
 from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
+
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
+
 from models import (
     Person,
-    Interaction as DBInteraction,
-    Conversation as DBConversation,
+    Interaction,
+    Conversation,
 )
-from context_config import ContextProcessorConfig, DEFAULT_CONFIG
+from context_config import ContextProcessorConfig
 from db import get_db_session
-
-
-@dataclass
-class Interaction:
-    """Interaction with additional NLP features."""
-
-    timestamp: float
-    formatted_timestamp: str
-    speaker: str
-    text: str
-    raw_input: str
-    person_id: Optional[str] = None
-    entities: Optional[List[Dict]] = None
-    topics: Optional[List[str]] = None
-    sentiment: Optional[float] = None
-    embedding: Optional[np.ndarray] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        if self.embedding is not None:
-            data["embedding"] = self.embedding.tolist()
-        return data
-
-
-@dataclass
-class SpeakerProfile:
-    """Speaker profile with clustering information."""
-
-    person_id: str
-    speaker_index: int
-    name: Optional[str] = None
-    voice_embeddings: List[np.ndarray] = field(default_factory=list)
-    cluster_id: Optional[int] = None
-    confidence: float = 0.0
-    interaction_count: int = 0
-    is_identified: bool = False
 
 
 class ContextProcessor:
@@ -76,56 +31,225 @@ class ContextProcessor:
     Context processor with advanced NLP and speaker recognition features.
     """
 
-    def __init__(self, config: Optional[ContextProcessorConfig] = None):
+    def __init__(self):
         """Initialize the context processor."""
-        self.config = config or DEFAULT_CONFIG
-        self.interaction_history: List[Interaction] = []
-        self.speaker_profiles: Dict[int, SpeakerProfile] = {}
-        self.keyword_index: Dict[str, List[int]] = defaultdict(list)
         self.conversation_cache: deque = deque(maxlen=100)
 
-        # Clustering components
+        # Speaker detection state variables for advanced clustering
+        self._speaker_embeddings: List[np.ndarray] = []
+        self._speaker_person_ids: List[uuid.UUID] = []
+        self._speaker_interaction_ids: List[uuid.UUID] = []
+        self._cluster_labels: List[int] = []
+        self._clusters_dirty: bool = True
+
         self.dbscan = DBSCAN(
-            eps=self.config.dbscan_eps,
-            min_samples=self.config.dbscan_min_samples,
+            eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
+            min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
+            metric="cosine",
         )
-        self.voice_embedding_cache: Dict[str, np.ndarray] = {}
 
-        # Conversation tracking
-        self.current_conversation_id: Optional[uuid.UUID] = None
-        self.current_participants: Set[str] = set()
+        self.current_conversation_id = None
+        self.current_participants = set()
 
-        logging.basicConfig(level=getattr(logging, self.config.log_level))
+        logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
         self.logger = logging.getLogger(__name__)
 
         self._init_nlp_components()
 
     def _init_nlp_components(self):
-        """Initialize NLP components based on configuration."""
         self.nlp_components = {}
 
+        self.nlp_components["spacy"] = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+        self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
+        self.nlp_components["sentiment"] = pipeline(
+            task="text-classification",
+            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+            top_k=None,
+        )
+
+    # --- ADVANCED SPEAKER DETECTION SECTION START ---
+
+    def _refresh_speaker_cache(self):
+        """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
+        session = get_db_session()
         try:
-            if self.config.enable_ner or self.config.enable_coreference:
-                self.nlp_components["spacy"] = spacy.load(self.config.spacy_model)
+            interactions = (
+                session.query(Interaction)
+                .filter(Interaction.voice_embedding != None, Interaction.speaker_id != None)
+                .all()
+            )
+            self._speaker_embeddings = [
+                np.array(i.voice_embedding, dtype=np.float32) for i in interactions
+            ]
+            self._speaker_person_ids = [i.speaker_id for i in interactions]
+            self._speaker_interaction_ids = [i.id for i in interactions]
+            self._clusters_dirty = True
+        finally:
+            session.close()
 
-            if self.config.enable_sentiment_analysis:
-                self.nlp_components["sentiment"] = pipeline(
-                    task="text-classification",
-                    model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                    top_k=None,
+    def _recompute_clusters(self):
+        """Run DBSCAN clustering on all cached embeddings and update labels."""
+        if not self._speaker_embeddings or (
+            isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0
+        ):
+            self._cluster_labels = []
+            return
+        X = np.stack(self._speaker_embeddings)
+        self._cluster_labels = self.dbscan.fit_predict(X).tolist()
+        self._clusters_dirty = False
+
+    def assign_speaker(
+        self,
+        embedding: np.ndarray,
+        session: Optional[Session] = None,
+        interaction_id=None,
+    ):
+        """
+        Assign a speaker using DBSCAN clustering over all embeddings.
+        Returns the Person.id of the most similar speaker (if above threshold) or creates a new one.
+        Also updates clusters in the database.
+
+        Args:
+            embedding: The new voice embedding (np.ndarray)
+            session: Optional SQLAlchemy session to reuse
+            interaction_id: The interaction UUID to use for the new embedding, if available
+        """
+
+        embedding = np.array(embedding, dtype=np.float32)
+
+        own_session = session is None
+        session = session or get_db_session()
+        try:
+            if (
+                not self._speaker_embeddings
+                or (
+                    isinstance(self._speaker_embeddings, np.ndarray)
+                    and self._speaker_embeddings.size == 0
                 )
+                or self._clusters_dirty
+            ):
+                self._refresh_speaker_cache()
+                self._recompute_clusters()
+                self._recompute_clusters()
 
-            if self.config.enable_topic_modeling:
-                self.nlp_components["sentence_transformer"] = SentenceTransformer(
-                    "all-MiniLM-L6-v2"
+            # Add the new embedding to the cached ones for clustering
+            all_embeddings = self._speaker_embeddings + [embedding]
+            X = np.stack(all_embeddings)
+            dbscan = DBSCAN(
+                eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
+                min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
+                metric="cosine",
+            )
+
+            labels = dbscan.fit_predict(X)
+            new_label = labels[-1]
+
+            # Helper to append to cache with correct types
+            def _append_cache(embedding, person_id, interaction_id):
+                self._speaker_embeddings.append(embedding)
+                self._speaker_person_ids.append(person_id)
+                self._speaker_interaction_ids.append(interaction_id)
+                self._clusters_dirty = True
+
+            if new_label == -1:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
+                new_person = Person(
+                    voice_embedding=(
+                        embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
+                    ),
+                    index=new_index,
                 )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                _append_cache(embedding, new_person.id, interaction_id)
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
 
-        except Exception as e:
-            self.logger.error(f"Failed to initialize NLP components: {e}")
-            self.nlp_components = {}
+            cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
+            if not cluster_indices:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
+                new_person = Person(
+                    voice_embedding=embedding.tolist(),
+                    index=new_index,
+                )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                _append_cache(embedding, new_person.id, interaction_id)
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
+
+            similarities = []
+            for idx in cluster_indices:
+                emb = all_embeddings[idx]
+                sim = float(
+                    np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb))
+                )
+                similarities.append((idx, sim))
+            best_idx, best_sim = max(similarities, key=lambda x: x[1])
+
+            print("best similarity:", best_sim)
+
+            if best_sim < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
+                new_person = Person(
+                    voice_embedding=embedding.tolist(),
+                    index=new_index,
+                )
+                session.add(new_person)
+                session.commit()
+                session.refresh(new_person)
+                _append_cache(embedding, new_person.id, interaction_id)
+                self._update_db_clusters(session, labels[:-1] + [-1])
+                return new_person.id
+
+            # Assign to the Person of the best match in the cluster
+            matched_person_id = self._speaker_person_ids[best_idx]
+            matched_person = session.query(Person).filter_by(id=matched_person_id).first()
+            if matched_person and matched_person.voice_embedding is not None:
+                old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
+                updated_emb = 0.8 * old_emb + 0.2 * embedding
+                matched_person.voice_embedding = updated_emb.tolist()
+                session.commit()
+            _append_cache(embedding, matched_person_id, interaction_id)
+            self._update_db_clusters(session, labels)
+            return matched_person_id
+        finally:
+            if own_session:
+                session.close()
+
+    def _update_db_clusters(self, session: Session, cluster_labels):
+        """
+        Update DB cluster assignments for all Persons based on current cache and cluster_labels.
+        Interactions in cache must match the order of cluster_labels.
+        """
+        if (
+            len(self._speaker_person_ids) == 0
+            or len(cluster_labels) == 0
+            or len(self._speaker_person_ids) != len(cluster_labels)
+        ):
+            return
+        for person_id, label in zip(self._speaker_person_ids, cluster_labels):
+            if person_id is None:
+                continue
+            person = session.query(Person).filter_by(id=person_id).first()
+            if person:
+                person.cluster_id = int(label) if label != -1 else None
+        session.commit()
+
+    # --- ADVANCED SPEAKER DETECTION SECTION END ---
+
+    # ... all other ContextProcessor methods remain unchanged ...
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
-        """Parse whisper output."""
+        """Parse whisper output and return SQLAlchemy Interaction model."""
         if not whisper_output or not whisper_output.strip():
             return None
 
@@ -152,76 +276,80 @@ class ContextProcessor:
         # Convert to Unix timestamp
         try:
             dt = datetime.strptime(formatted_timestamp, "%Y-%m-%d %H:%M:%S")
-            timestamp = dt.timestamp()
+            timestamp = dt.replace(tzinfo=timezone.utc)
         except ValueError:
-            timestamp = time.time()
+            timestamp = datetime.now(timezone.utc)
 
-        interaction = Interaction(
-            timestamp=timestamp,
-            formatted_timestamp=formatted_timestamp,
-            speaker=speaker,
-            text=text.strip(),
-            raw_input=whisper_output.strip(),
-        )
+        # Extract speaker index
+        speaker_match = re.search(r"Person (\d+)", speaker)
+        speaker_index = int(speaker_match.group(1)) if speaker_match else 1
 
-        # Add NLP processing
-        self._process_nlp_features(interaction)
+        # Get or create person in database
+        session = get_db_session()
+        try:
+            person = self.get_or_create_person(speaker_index, session)
 
-        return interaction
+            # Create SQLAlchemy Interaction object
+            interaction = Interaction(
+                text=text.strip(),
+                timestamp=timestamp,
+                speaker_id=person.id,
+            )
+
+            # Add NLP processing
+            self._process_nlp_features(interaction)
+
+            return interaction
+
+        finally:
+            session.close()
 
     def _process_nlp_features(self, interaction: Interaction):
-        """Process NLP features for an interaction."""
+        """Process NLP features for a SQLAlchemy interaction."""
 
         try:
             # Named Entity Recognition
-            if self.config.enable_ner and "spacy" in self.nlp_components:
-                doc = self.nlp_components["spacy"](interaction.text)
-                interaction.entities = [
-                    {
-                        "text": ent.text,
-                        "label": ent.label_,
-                        "start": ent.start_char,
-                        "end": ent.end_char,
-                    }
-                    for ent in doc.ents
-                ]
+            doc = self.nlp_components["spacy"](interaction.text)
+            entities_list = [
+                {
+                    "text": ent.text,
+                    "label": ent.label_,
+                    "start": ent.start_char,
+                    "end": ent.end_char,
+                }
+                for ent in doc.ents
+            ]
+            # Store as JSON if the column is JSON type, else as string
+            try:
+                interaction.entities = entities_list
+            except Exception:
+                interaction.entities = json.dumps(entities_list)
 
             # Sentiment Analysis
-            if self.config.enable_sentiment_analysis and "sentiment" in self.nlp_components:
-                sentiment_result = self.nlp_components["sentiment"](interaction.text)
-                if sentiment_result and len(sentiment_result[0]) > 0:
-                    # Get the positive sentiment score
-                    positive_score = next(
-                        (
-                            item["score"]
-                            for item in sentiment_result[0]
-                            if item["label"] == "LABEL_2"
-                        ),
-                        0.5,
-                    )
-                    interaction.sentiment = positive_score
+            sentiment_result = self.nlp_components["sentiment"](interaction.text)
+            if sentiment_result and len(sentiment_result[0]) > 0:
+                # Get the positive sentiment score
+                positive_score = next(
+                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),
+                    0.5,
+                )
+                interaction.sentiment = positive_score
 
             # Text Embedding for semantic similarity
-            if (
-                self.config.enable_context_summarization
-                and "sentence_transformer" in self.nlp_components
-            ):
-                interaction.embedding = self.nlp_components["sentence_transformer"].encode(
-                    interaction.text
-                )
+            embedding = self.nlp_components["sentence_transformer"].encode(interaction.text)
+            # Store embedding as JSON in voice_embedding field (reusing existing field)
+            interaction.voice_embedding = embedding.tolist()
 
         except Exception as e:
             self.logger.error(f"NLP processing failed: {e}")
 
     def get_or_create_person(self, speaker_index: int, session: Session) -> Person:
         """Get or create a person entity in the database."""
-        person = session.query(Person).filter_by(speaker_index=speaker_index).first()
+        person = session.query(Person).filter_by(index=speaker_index).first()
 
         if not person:
             person = Person(
-                speaker_index=speaker_index,
-                name=f"Person {speaker_index}",
-                is_identified=False,
+                index=speaker_index,
             )
             session.add(person)
             session.commit()
@@ -229,52 +357,35 @@ class ContextProcessor:
 
         return person
 
-    def update_speaker_clustering(self, voice_embedding: np.ndarray, speaker_index: int):
-        """Update speaker clustering with new voice embedding."""
-        if speaker_index not in self.speaker_profiles:
-            self.speaker_profiles[speaker_index] = SpeakerProfile(
-                person_id="",  # Will be set from database
-                speaker_index=speaker_index,
-            )
+    def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Cosine similarity between two vectors."""
+        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-        profile = self.speaker_profiles[speaker_index]
-        profile.voice_embeddings.append(voice_embedding)
-        profile.interaction_count += 1
+    def _update_clusters_db(self, session):
+        """Update DBSCAN clustering for all speakers using database."""
+        persons = session.query(Person).filter(Person.voice_embedding.isnot(None)).all()
 
-        # Limit embedding history
-        if len(profile.voice_embeddings) > 50:
-            profile.voice_embeddings = profile.voice_embeddings[-25:]
-
-        # Update clustering if we have enough data
-        if len(profile.voice_embeddings) >= self.config.dbscan_min_samples:
-            self._update_clusters()
-
-    def _update_clusters(self):
-        """Update DBSCAN clustering for all speakers."""
-        all_embeddings = []
-        embedding_to_speaker = []
-
-        for speaker_idx, profile in self.speaker_profiles.items():
-            for embedding in profile.voice_embeddings:
-                all_embeddings.append(embedding)
-                embedding_to_speaker.append(speaker_idx)
-
-        if len(all_embeddings) < self.config.dbscan_min_samples:
+        if len(persons) < ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES:
             return
 
         try:
+            all_embeddings = []
+            person_ids = []
+
+            for person in persons:
+                all_embeddings.append(np.array(person.voice_embedding))
+                person_ids.append(person.id)
+
             all_embeddings = np.array(all_embeddings)
             cluster_labels = self.dbscan.fit_predict(all_embeddings)
 
-            # Update speaker profiles with cluster information
-            speaker_clusters = defaultdict(list)
-            for i, speaker_idx in enumerate(embedding_to_speaker):
-                speaker_clusters[speaker_idx].append(cluster_labels[i])
+            # Update cluster IDs in database
+            for i, person_id in enumerate(person_ids):
+                person = session.query(Person).filter_by(id=person_id).first()
+                if person:
+                    person.cluster_id = int(cluster_labels[i]) if cluster_labels[i] != -1 else None
 
-            for speaker_idx, clusters in speaker_clusters.items():
-                # Use most common cluster as the speaker's cluster
-                most_common_cluster = max(set(clusters), key=clusters.count)
-                self.speaker_profiles[speaker_idx].cluster_id = most_common_cluster
+            session.commit()
 
         except Exception as e:
             self.logger.error(f"Clustering update failed: {e}")
@@ -284,185 +395,129 @@ class ContextProcessor:
         interaction: Interaction,
         voice_embedding: Optional[np.ndarray] = None,
     ) -> None:
-        """Add interaction with database integration."""
-        self.interaction_history.append(interaction)
+        """Add interaction with database integration and real-time conversation management."""
 
-        # Extract speaker index
-        speaker_match = re.search(r"Person (\d+)", interaction.speaker)
-        speaker_index = int(speaker_match.group(1)) if speaker_match else 1
-
-        # Update speaker clustering if embedding provided
-        if voice_embedding is not None:
-            self.update_speaker_clustering(voice_embedding, speaker_index)
-
-        # Database integration
+        session = get_db_session()
         try:
-            session = get_db_session()
+            # Handle speaker recognition if voice embedding provided
+            if voice_embedding is not None:
+                person_id = self.assign_speaker(voice_embedding)
+                interaction.speaker_id = person_id
 
-            # Get or create person
-            person = self.get_or_create_person(speaker_index, session)
-            interaction.person_id = str(person.id)
+            # Check if we need to start a new conversation or continue existing one
+            if self.detect_conversation_boundary(interaction):
+                self._start_new_conversation(interaction, session)
+            else:
+                # Assign to current conversation if exists
+                if self.current_conversation_id is not None:
+                    interaction.conversation_id = self.current_conversation_id
 
-            # Create database interaction
-            db_interaction = DBInteraction(
-                user_id=speaker_index,  # Use user_id for backward compatibility
-                speaker_id=person.id,
-                text=interaction.text,
-                timestamp=datetime.fromtimestamp(interaction.timestamp, tz=timezone.utc),
-                entities=interaction.entities,
-                topics=interaction.topics,
-                sentiment=interaction.sentiment,
-                conversation_id=(
-                    self.current_conversation_id if self.current_conversation_id else None
-                ),
-            )
-
-            session.add(db_interaction)
+            # Save interaction to database
+            session.add(interaction)
             session.commit()
-            session.close()
+            session.refresh(interaction)
+
+            # Update current conversation participants
+            if interaction.speaker_id is not None:
+                self.current_participants.add(interaction.speaker_id)
+
+            self.logger.debug(f"Interaction added to database with ID: {interaction.id}")
 
         except Exception as e:
+            session.rollback()
             self.logger.error(f"Database integration failed: {e}")
-
-        # Update keyword index
-        self._update_keyword_index(interaction)
-
-        # Maintain history size limit
-        if len(self.interaction_history) > self.config.max_history_size:
-            self._cleanup_old_interactions()
-
-    def _update_keyword_index(self, interaction: Interaction):
-        """Update keyword index."""
-        words = interaction.text.lower().split()
-        interaction_index = len(self.interaction_history) - 1
-
-        for word in words:
-            clean_word = re.sub(r"[^\w]", "", word)
-            if clean_word and len(clean_word) > 2:
-                self.keyword_index[clean_word].append(interaction_index)
-
-        # Add entities as keywords
-        if interaction.entities:
-            for entity in interaction.entities:
-                entity_text = entity["text"].lower().replace(" ", "_")
-                self.keyword_index[entity_text].append(interaction_index)
+        finally:
+            session.close()
 
     def detect_conversation_boundary(self, current_interaction: Interaction) -> bool:
-        """Conversation boundary detection."""
-        if not self.interaction_history:
+        """Conversation boundary detection using database queries."""
+        # Get last interaction from database
+        session = get_db_session()
+
+        last_interaction = session.query(Interaction).order_by(Interaction.timestamp.desc()).first()
+
+        if not last_interaction:
             return True
 
-        last_interaction = self.interaction_history[-1]
+        # Time gap detection - handle timezone differences
+        current_ts = current_interaction.timestamp
+        last_ts = last_interaction.timestamp
 
-        # Time gap detection
-        time_gap = current_interaction.timestamp - last_interaction.timestamp
-        if time_gap > self.config.conversation_gap_threshold:
+        # Ensure both timestamps are timezone-aware
+        if current_ts.tzinfo is None:
+            current_ts = current_ts.replace(tzinfo=timezone.utc)
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=timezone.utc)
+
+        time_gap = (current_ts - last_ts).total_seconds()
+        if time_gap > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD:
             return True
 
         # Speaker change with extended silence
         if (
-            current_interaction.speaker != last_interaction.speaker
-            and time_gap > self.config.conversation_gap_threshold / 2
+            current_interaction.speaker_id != last_interaction.speaker_id
+            and time_gap
+            > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD / 2
         ):
             return True
 
-        # Topic shift detection using embeddings
+        # Topic shift detection using embeddings if available
         if (
-            self.config.enable_topic_modeling
-            and current_interaction.embedding is not None
-            and last_interaction.embedding is not None
+            current_interaction.voice_embedding is not None
+            and last_interaction.voice_embedding is not None
         ):
-            similarity = np.dot(current_interaction.embedding, last_interaction.embedding) / (
-                np.linalg.norm(current_interaction.embedding)
-                * np.linalg.norm(last_interaction.embedding)
-            )
+            current_embedding = np.array(current_interaction.voice_embedding)
+            last_embedding = np.array(last_interaction.voice_embedding)
 
-            if similarity < self.config.context_similarity_threshold:
+            similarity = self._cosine_sim(current_embedding, last_embedding)
+
+            if (
+                similarity
+                < ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+            ):
                 return True
 
         return False
 
-    def get_short_term_context(self, current_time: float) -> List[Interaction]:
-        """Short-term context retrieval."""
-        if not self.interaction_history:
-            return []
-
-        # Find current interaction index
-        current_index = -1
-        for i in range(len(self.interaction_history) - 1, -1, -1):
-            if self.interaction_history[i].timestamp <= current_time:
-                current_index = i
-                break
-
-        if current_index == -1:
-            return []
-
-        conversation_start = self._find_conversation_start(current_index)
-
-        # Get conversation interactions
-        conversation_interactions = self.interaction_history[conversation_start : current_index + 1]
-
-        # Limit to max conversation length
-        if len(conversation_interactions) > self.config.max_conversation_length:
-            conversation_interactions = conversation_interactions[
-                -self.config.max_conversation_length :
-            ]
-
-        return conversation_interactions
-
-    def _find_conversation_start(self, current_index: int) -> int:
-        if current_index < 0 or current_index >= len(self.interaction_history):
-            return max(0, current_index)
-
-        speakers = set()
-        conversation_start = current_index
-        topics = []
-
-        for i in range(current_index, -1, -1):
-            interaction = self.interaction_history[i]
-            speakers.add(interaction.speaker)
-
-            # Speaker limit check
-            if len(speakers) > 2:
-                conversation_start = i + 1
-                break
-
-            # Time gap check
-            if i > 0:
-                prev_interaction = self.interaction_history[i - 1]
-                time_gap = interaction.timestamp - prev_interaction.timestamp
-                if time_gap > self.config.conversation_gap_threshold:
-                    conversation_start = i
-                    break
-
-            # Topic coherence check
-            if self.config.enable_topic_modeling and interaction.embedding is not None:
-                topics.append(interaction.embedding)
-
-                if len(topics) > 5:  # Check topic coherence every 5 interactions
-                    avg_similarity = self._calculate_topic_coherence(topics)
-                    if avg_similarity < self.config.context_similarity_threshold:
-                        conversation_start = i + 2  # Start after the topic shift
-                        break
-
-            conversation_start = i
-
-        return conversation_start
-
-    def _calculate_topic_coherence(self, embeddings: List[np.ndarray]) -> float:
-        """Calculate average topic coherence from embeddings."""
-        if len(embeddings) < 2:
-            return 1.0
-
-        similarities = []
-        for i in range(len(embeddings) - 1):
-            for j in range(i + 1, len(embeddings)):
-                sim = np.dot(embeddings[i], embeddings[j]) / (
-                    np.linalg.norm(embeddings[i]) * np.linalg.norm(embeddings[j])
+    def get_short_term_context(self, current_time) -> List[Interaction]:
+        """Short-term context retrieval from database."""
+        session = get_db_session()
+        try:
+            # Get interactions from current conversation or recent interactions
+            if self.current_conversation_id is not None:
+                # Get interactions from current conversation
+                interactions = (
+                    session.query(Interaction)
+                    .filter_by(conversation_id=self.current_conversation_id)
+                    .order_by(Interaction.timestamp.desc())
+                    .limit(
+                        ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
+                    )
+                    .all()
                 )
-                similarities.append(sim)
+                interactions.reverse()  # Return in chronological order
+            else:
+                # Get recent interactions within time window
+                time_threshold = current_time - timedelta(
+                    seconds=ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD
+                )
+                interactions = (
+                    session.query(Interaction)
+                    .filter(Interaction.timestamp >= time_threshold)
+                    .filter(Interaction.timestamp <= current_time)
+                    .order_by(Interaction.timestamp.asc())
+                    .limit(
+                        ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
+                    )
+                    .all()
+                )
 
-        return float(np.mean(similarities)) if similarities else 1.0
+            return interactions
+
+        finally:
+            session.close()
+
+    # Removed obsolete _find_conversation_start method (replaced by database queries)
 
     def get_long_term_context(
         self,
@@ -470,112 +525,122 @@ class ContextProcessor:
         current_interaction: Optional[Interaction] = None,
         max_results: Optional[int] = None,
     ) -> List[Interaction]:
-        """Long-term context retrieval with semantic similarity."""
-        max_results = max_results or self.config.long_term_context_max_results
+        """Long-term context retrieval with semantic similarity from database."""
+        max_results = (
+            max_results
+            or ContextProcessorConfig.ContextManagementParameters.LONG_TERM_CONTEXT_MAX_RESULTS
+        )
+        session = get_db_session()
 
-        if not keywords and current_interaction is None:
+        try:
+            relevant_interactions = []
+
+            # Keyword-based retrieval
+            if keywords:
+                keyword_results = self._get_keyword_interactions_db(keywords, session, max_results)
+                relevant_interactions.extend(keyword_results)
+
+            # Semantic similarity retrieval using embeddings
+            if current_interaction and current_interaction.voice_embedding is not None:
+                semantic_results = self._get_semantic_similar_interactions_db(
+                    current_interaction.voice_embedding, session, max_results
+                )
+                relevant_interactions.extend(semantic_results)
+
+            # Remove duplicates and sort by relevance/recency
+            seen_ids = set()
+            unique_interactions = []
+            for interaction in relevant_interactions:
+                if interaction.id not in seen_ids:
+                    seen_ids.add(interaction.id)
+                    unique_interactions.append(interaction)
+
+            # Sort by timestamp (most recent first) and limit results
+            unique_interactions.sort(key=lambda x: x.timestamp, reverse=True)
+            return unique_interactions[:max_results]
+
+        finally:
+            session.close()
+
+    def _get_keyword_interactions_db(
+        self, keywords: List[str], session, max_results: int
+    ) -> List[Interaction]:
+        """Get interactions matching keywords from database."""
+        if not keywords:
             return []
 
-        relevant_interactions = []
-
-        # Keyword-based retrieval (existing functionality)
-        if keywords:
-            interaction_scores = self._score_interactions_by_keywords(keywords)
-            keyword_results = self._get_top_scored_interactions(interaction_scores, max_results)
-            relevant_interactions.extend(keyword_results)
-
-        # Semantic similarity retrieval
-        if (
-            current_interaction
-            and current_interaction.embedding is not None
-            and self.config.enable_context_summarization
-        ):
-            semantic_results = self._get_semantic_similar_interactions(
-                current_interaction.embedding, max_results
-            )
-            relevant_interactions.extend(semantic_results)
-
-        # Remove duplicates and sort by relevance
-        seen_indices = set()
-        unique_interactions = []
-        for interaction in relevant_interactions:
-            interaction_index = self.interaction_history.index(interaction)
-            if interaction_index not in seen_indices:
-                seen_indices.add(interaction_index)
-                unique_interactions.append(interaction)
-
-        return unique_interactions[:max_results]
-
-    def _score_interactions_by_keywords(self, keywords: List[str]) -> Dict[int, float]:
-        """Score interactions by keyword matches with entity weighting."""
-        interaction_scores = defaultdict(float)
-
+        # Simple text search for keywords
+        keyword_filters = []
         for keyword in keywords:
-            clean_keyword = re.sub(r"[^\w]", "", keyword.lower())
-            if clean_keyword in self.keyword_index:
-                for interaction_idx in self.keyword_index[clean_keyword]:
-                    interaction = self.interaction_history[interaction_idx]
+            keyword_filters.append(Interaction.text.like(f"%{keyword}%"))
 
-                    # Base keyword score
-                    score = 1.0
+        interactions = (
+            session.query(Interaction)
+            .filter(or_(*keyword_filters))
+            .order_by(Interaction.timestamp.desc())
+            .limit(max_results * 2)  # Get more to allow for deduplication
+            .all()
+        )
 
-                    # Boost score if keyword matches an entity
-                    if interaction.entities:
-                        for entity in interaction.entities:
-                            if clean_keyword in entity["text"].lower():
-                                score *= 2.0  # Entity match bonus
+        return interactions
 
-                    interaction_scores[interaction_idx] += score
-
-        return interaction_scores
-
-    def _get_semantic_similar_interactions(
-        self, query_embedding: np.ndarray, max_results: int
+    def _get_semantic_similar_interactions_db(
+        self, query_embedding, session, max_results: int
     ) -> List[Interaction]:
-        """Get semantically similar interactions using embeddings."""
-        similarities = []
+        """Get semantically similar interactions using embeddings from database."""
+        query_embedding_np = np.array(query_embedding)
 
-        for i, interaction in enumerate(self.interaction_history):
-            if interaction.embedding is not None:
-                similarity = np.dot(query_embedding, interaction.embedding) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(interaction.embedding)
-                )
-                if similarity >= self.config.context_similarity_threshold:
-                    similarities.append((i, similarity))
+        # Get all interactions with embeddings
+        interactions_with_embeddings = (
+            session.query(Interaction)
+            .filter(Interaction.voice_embedding.isnot(None))
+            .order_by(Interaction.timestamp.desc())
+            .limit(100)  # Limit to recent interactions for performance
+            .all()
+        )
+
+        similarities = []
+        for interaction in interactions_with_embeddings:
+            try:
+                interaction_embedding = np.array(interaction.voice_embedding)
+                similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
+                if (
+                    similarity
+                    >= ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+                ):
+                    similarities.append((interaction, similarity))
+            except Exception as e:
+                self.logger.debug(f"Error computing similarity: {e}")
 
         # Sort by similarity and return top results
         similarities.sort(key=lambda x: x[1], reverse=True)
-        return [self.interaction_history[idx] for idx, _ in similarities[:max_results]]
+        return [interaction for interaction, _ in similarities[:max_results]]
 
-    def _get_top_scored_interactions(
-        self, interaction_scores: Dict[int, float], max_results: int
-    ) -> List[Interaction]:
-        """Get top scored interactions sorted by score and recency."""
-        sorted_interactions = sorted(
-            interaction_scores.items(),
-            key=lambda x: (x[1], self.interaction_history[x[0]].timestamp),
-            reverse=True,
-        )
+    # Removed obsolete in-memory scoring methods (replaced by database queries)
 
-        result_indices = [idx for idx, _ in sorted_interactions[:max_results]]
-        return [self.interaction_history[idx] for idx in result_indices]
+    def build_context_prompt(self, interaction: Interaction) -> str:
+        """Build context prompt with summarization using database."""
+        # Get contexts from database
+        short_term = self.get_short_term_context(interaction.timestamp)
 
-    def build_context_prompt(self, current_text: str, current_time: float) -> str:
-        """Build context prompt with summarization."""
-        # Get contexts
-        short_term = self.get_short_term_context(current_time)
-        if short_term and current_text in short_term[-1].text:
+        # Remove current interaction if it's already in short term context
+        if short_term and interaction.text in short_term[-1].text:
             short_term = short_term[:-1]
 
-        keywords = self.extract_keywords(current_text)
+        keywords = self.extract_keywords(interaction.text)
 
         # For long-term context, try to get current interaction for semantic similarity
         current_interaction = None
-        if self.interaction_history:
-            current_interaction = self.interaction_history[-1]
+        session = get_db_session()
+        try:
+            current_interaction = (
+                session.query(Interaction).order_by(Interaction.timestamp.desc()).first()
+            )
+        finally:
+            session.close()
 
         long_term = self.get_long_term_context(keywords, current_interaction)
-        long_term = [i for i in long_term if i.text != current_text]
+        long_term = [i for i in long_term if str(i.text) != interaction.text]
 
         # Build context with summarization
         context_parts = []
@@ -583,29 +648,47 @@ class ContextProcessor:
         if short_term:
             context_parts.append("Current conversation:")
             for interaction in short_term:
-                speaker_info = interaction.speaker
-                if interaction.entities:
-                    entity_text = ", ".join([e["text"] for e in interaction.entities[:3]])
+                speaker_info = f"Person {self._get_speaker_index(interaction.speaker_id)}"
+                if interaction.entities is not None and isinstance(interaction.entities, list):
+                    entity_text = ", ".join(
+                        [
+                            str(e.get("text", ""))
+                            for e in interaction.entities[:3]
+                            if isinstance(e, dict) and "text" in e
+                        ]
+                    )
                     speaker_info += f" [entities: {entity_text}]"
 
                 context_parts.append(f"\n- {speaker_info}: {interaction.text}")
 
         if long_term:
-            if self.config.enable_context_summarization and len(long_term) > 3:
+            if len(long_term) > 3:
                 # Summarize long-term context
-                summary = self._summarize_context(long_term)
+                summary = self._summarize_context_db(long_term)
                 context_parts.append(f"\n\nRelevant context summary: {summary}")
             else:
                 context_parts.append("\n\nRelevant historical context:")
                 for interaction in long_term:
-                    context_parts.append(
-                        f"\n- {interaction.formatted_timestamp} {interaction.speaker}: {interaction.text}"
-                    )
+                    timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                    speaker_info = f"Person {self._get_speaker_index(interaction.speaker_id)}"
+                    context_parts.append(f"\n- {timestamp_str} {speaker_info}: {interaction.text}")
 
         return "".join(context_parts) if context_parts else ""
 
-    def _summarize_context(self, interactions: List[Interaction]) -> str:
-        """Summarize context interactions."""
+    def _get_speaker_index(self, speaker_id):
+        """Get speaker index from person ID."""
+        if not speaker_id:
+            return 1
+
+        session = get_db_session()
+        try:
+            person = session.query(Person).filter_by(id=speaker_id).first()
+            return person.index if person else 1
+        finally:
+            session.close()
+
+    def _summarize_context_db(self, interactions: List[Interaction]) -> str:
+        """Summarize context interactions from database models."""
         if not interactions:
             return ""
 
@@ -615,7 +698,7 @@ class ContextProcessor:
         # Combine entities and key phrases
         key_info = []
         for interaction in interactions:
-            if interaction.entities:
+            if interaction.entities is not None:
                 entities = [
                     e["text"]
                     for e in interaction.entities
@@ -624,7 +707,7 @@ class ContextProcessor:
                 key_info.extend(entities)
 
         # Create summary
-        combined_text = " ".join(texts)
+        combined_text = " ".join([str(t) for t in texts])
         sentences = combined_text.split(". ")
 
         # Keep the most informative sentences (simple heuristic)
@@ -635,15 +718,18 @@ class ContextProcessor:
 
         summary = ". ".join(important_sentences[:3])  # Max 3 sentences
 
-        if len(summary) > self.config.summary_max_length:
-            summary = summary[: self.config.summary_max_length] + "..."
+        if len(summary) > ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH:
+            summary = (
+                summary[: ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH]
+                + "..."
+            )
 
         return summary or "Previous discussion about relevant topics."
 
-    def extract_keywords(self, text: str) -> List[str]:
+    def extract_keywords(self, text) -> List[str]:
         """Keyword extraction with NLP features."""
         # Base keyword extraction (existing logic)
-        words = text.lower().split()
+        words = str(text).lower().split()
         stop_words = {
             "the",
             "a",
@@ -719,7 +805,7 @@ class ContextProcessor:
 
         return list(set(keywords))  # Remove duplicates
 
-    def classify_intent(self, text: str) -> bool:
+    def classify_intent(self, text) -> bool:
         """Intent classification with NLP features."""
         # Base classification (existing logic)
         action_keywords = {
@@ -773,7 +859,7 @@ class ContextProcessor:
             ],
         }
 
-        text_lower = text.lower()
+        text_lower = str(text).lower()
         has_keywords = any(
             any(keyword in text_lower for keyword in keywords)
             for keywords in action_keywords.values()
@@ -787,110 +873,84 @@ class ContextProcessor:
     def process_input(
         self, whisper_output: str, voice_embedding: Optional[np.ndarray] = None
     ) -> Tuple[str, bool]:
-        """Input processing with full feature integration."""
-        # Parse whisper output
+        """Input processing with full feature integration using database-only approach."""
+        # Parse whisper output to get SQLAlchemy model
         interaction = self.parse_whisper_output(whisper_output)
         if not interaction:
             return whisper_output, False
 
-        # Check for conversation boundary
-        if self.detect_conversation_boundary(interaction):
-            self._start_new_conversation(interaction)
-
-        # Add to history with database integration
-        self.add_interaction(interaction, voice_embedding)
-
-        # Build context
-        enhanced_prompt = self.build_context_prompt(interaction.text, interaction.timestamp)
-
-        # Enhanced intent classification
-        has_intent = self.classify_intent(interaction.text)
-
-        if self.config.debug_mode:
-            self.logger.debug(f"Processed interaction: {interaction.text}")
-            self.logger.debug(f"Intent detected: {has_intent}")
-            self.logger.debug(f"Entities: {interaction.entities}")
-
-        return enhanced_prompt, has_intent
-
-    def _start_new_conversation(self, interaction: Interaction):
-        """Start a new conversation in the database."""
+        # Check for conversation boundary using database
+        session = get_db_session()
         try:
-            session = get_db_session()
+            if self.detect_conversation_boundary(interaction):
+                self._start_new_conversation(interaction, session)
 
+            # Add to database with database integration
+            self.add_interaction(interaction, voice_embedding)
+
+            # Build context using database
+            enhanced_prompt = self.build_context_prompt(interaction)
+
+            # Enhanced intent classification
+            has_intent = self.classify_intent(interaction.text)
+
+            if ContextProcessorConfig.DebugConfig.DEBUG_MODE:
+                self.logger.debug(f"Processed interaction: {interaction.text}")
+                self.logger.debug(f"Intent detected: {has_intent}")
+                self.logger.debug(f"Entities: {interaction.entities}")
+
+            return enhanced_prompt, has_intent
+
+        finally:
+            session.close()
+
+    def _start_new_conversation(self, interaction: Interaction, session):
+        """Start a new conversation in the database with real-time tracking."""
+        try:
             # Create new conversation
-            conversation = DBConversation(
+            conversation = Conversation(
                 user_ids=(
-                    str(interaction.person_id) if interaction.person_id else "unknown"
-                ),  # Provide default value
-                speaker_id=interaction.person_id,
-                start_of_conversation=datetime.fromtimestamp(
-                    interaction.timestamp, tz=timezone.utc
+                    interaction.speaker_id if interaction.speaker_id is not None else uuid.uuid4()
                 ),
-                participants=json.dumps([interaction.person_id] if interaction.person_id else []),
+                speaker_id=interaction.speaker_id,
+                start_of_conversation=interaction.timestamp,
+                participants=json.dumps(
+                    [str(interaction.speaker_id)] if interaction.speaker_id is not None else []
+                ),
             )
 
             session.add(conversation)
             session.commit()
             session.refresh(conversation)
 
-            self.current_conversation_id = getattr(conversation, "id", None)
-            self.current_participants = {interaction.person_id} if interaction.person_id else set()
+            self.current_conversation_id = conversation.id
+            self.current_participants = (
+                {interaction.speaker_id} if interaction.speaker_id is not None else set()
+            )
 
-            session.close()
+            # Assign this conversation to the interaction
+            interaction.conversation_id = conversation.id
+
+            self.logger.debug(f"Started new conversation with ID: {conversation.id}")
 
         except Exception as e:
             self.logger.error(f"Failed to start new conversation: {e}")
 
-    def _cleanup_old_interactions(self):
-        """Cleanup with preserved relationships."""
-        excess_count = len(self.interaction_history) - self.config.max_history_size
-        if excess_count > 0:
-            # Remove oldest interactions
-            self.interaction_history[:excess_count]
-            self.interaction_history = self.interaction_history[excess_count:]
-
-            # Rebuild keyword index efficiently
-            self.keyword_index.clear()
-            for i, interaction in enumerate(self.interaction_history):
-                self._update_keyword_index_for_cleanup(interaction, i)
-
-    def _update_keyword_index_for_cleanup(self, interaction: Interaction, new_index: int):
-        """Update keyword index during cleanup."""
-        words = interaction.text.lower().split()
-        for word in words:
-            clean_word = re.sub(r"[^\w]", "", word)
-            if clean_word and len(clean_word) > 2:
-                self.keyword_index[clean_word].append(new_index)
-
-    def get_speaker_summary(self) -> Dict[str, Any]:
-        """Get summary of all tracked speakers."""
-        summary = {}
-        for speaker_idx, profile in self.speaker_profiles.items():
-            summary[f"Person {speaker_idx}"] = {
-                "interaction_count": profile.interaction_count,
-                "cluster_id": profile.cluster_id,
-                "is_identified": profile.is_identified,
-                "name": profile.name,
-            }
-        return summary
-
 
 # Utility functions for integration
-def create_context_processor(
-    config: Optional[ContextProcessorConfig] = None,
-) -> ContextProcessor:
+def create_context_processor() -> ContextProcessor:
     """Create a new context processor instance."""
-    return ContextProcessor(config)
+    return ContextProcessor()
 
 
 def process_interaction(
     processor: ContextProcessor,
-    interaction: DBInteraction,
+    interaction: Interaction,
     voice_embedding: Optional[np.ndarray] = None,
 ) -> Tuple[str, bool]:
     """Process a database interaction."""
     # Format the interaction as the processor expects
     timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    formatted_input = f"({timestamp_str}) Person {interaction.speaker_id}: {interaction.text}"
+    speaker_index = processor._get_speaker_index(interaction.speaker_id)
+    formatted_input = f"({timestamp_str}) Person {speaker_index}: {interaction.text}"
     return processor.process_input(formatted_input, voice_embedding)
