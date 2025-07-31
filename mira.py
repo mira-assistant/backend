@@ -45,6 +45,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Macbook Tailscale IP: 100.75.140.79
+
 # Initialize FastAPI app first
 app = FastAPI(lifespan=lifespan)
 
