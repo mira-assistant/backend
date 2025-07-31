@@ -1,4 +1,4 @@
-name: Mira CI
+name: Backend CI
 
 on:
   push:
@@ -31,14 +31,12 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install Backend dependencies
-        working-directory: apps/backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 mypy pytest pip-audit
+          pip install flake8 pytest pip-audit
 
       - name: Run Flake8 (Linting)
-        working-directory: apps/backend
         run: flake8 .
         continue-on-error: true
 
@@ -46,7 +44,6 @@ jobs:
         run: pytest
 
       - name: Dependency audit (ignore en-core-web-sm warning)
-        working-directory: apps/backend
         run: |
           pip-audit 2>&1 | tee audit.txt || true
           # Fail if there are actual vulnerabilities (lines with a package, not just missing en-core-web-sm)
@@ -57,7 +54,6 @@ jobs:
           exit 0
 
       - name: Start Backend
-        working-directory: apps/backend
         run: |
           python -m uvicorn mira:app --host 0.0.0.0 --port 8000 &
 
@@ -72,95 +68,3 @@ jobs:
             echo "Waiting for backend to be ready..."
             sleep 2
           done
-
-  desktop-client:
-    name: Desktop Client
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Cache Node.js modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install dependencies
-        working-directory: apps/desktop-client
-        run: npm install
-
-      - name: Run ESLint (Linting)
-        working-directory: apps/desktop-client
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Build Electron App
-        working-directory: apps/desktop-client
-        run: npm run build
-
-      - name: Run frontend tests
-        working-directory: apps/desktop-client
-        run: npm test || echo "No tests found"
-
-  integration-check:
-    name: Integration Check
-    runs-on: ubuntu-latest
-    needs: [backend, desktop-client]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install Backend Dependencies
-        working-directory: apps/backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Frontend Dependencies
-        working-directory: apps/desktop-client
-        run: npm install
-
-      - name: Start Backend
-        working-directory: apps/backend
-        run: |
-          python -m uvicorn mira:app --host 0.0.0.0 --port 8000 &
-
-      - name: Launch Desktop Client
-        working-directory: apps/desktop-client
-        run: |
-          npm start &
-
-      - name: Wait for Backend to be ready
-        run: |
-          for i in {1..30}; do
-            if curl --silent --fail http://localhost:8000/; then
-              echo "Backend is ready"
-              break
-            fi
-            echo "Waiting for backend to be ready..."
-            sleep 2
-          done
-
-
-      - name: Terminate Processes
-        run: |
-          pkill -f uvicorn || true
-          pkill -f electron || true
