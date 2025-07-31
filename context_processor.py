@@ -138,6 +138,7 @@ class ContextProcessor:
                 min_samples=self.config.dbscan_min_samples,
                 metric="cosine",
             )
+
             labels = dbscan.fit_predict(X)
             new_label = labels[-1]
 
@@ -187,6 +188,9 @@ class ContextProcessor:
                 )
                 similarities.append((idx, sim))
             best_idx, best_sim = max(similarities, key=lambda x: x[1])
+
+            print("best similarity:", best_sim)
+
             if best_sim < self.config.similarity_threshold:
                 new_index = (
                     session.query(Person.index).order_by(Person.index.desc()).first() or [0]
