@@ -13,17 +13,15 @@ def test_root_status():
 
 def test_register_client():
     """Test client registration endpoint."""
-    response = client.post("/register_client", params={"client_id": "TestClient"})
-    assert response.status_code in (200, 201, 409)  # 409 if already registered
-    data = response.json()
-    assert "enabled" in data
+    response = client.post("/service/client/register/TestClient")
+    assert response.status_code in (200, 201)
 
 
 def test_enable_disable_transcription():
     """Test enabling and disabling transcription endpoints."""
-    enable = client.patch("/enable")
+    enable = client.patch("service/enable")
     assert enable.status_code == 200
-    disable = client.patch("/disable")
+    disable = client.patch("service/disable")
     assert disable.status_code == 200
 
 
@@ -33,7 +31,7 @@ def test_process_interaction_empty():
     assert response.status_code in (400, 422)
 
 
-def test_get_recent_interactions():
+def test_get_recent_interaction():
     """Test getting recent interactions."""
     response = client.get("/interactions?limit=10")
     assert response.status_code == 200
