@@ -36,6 +36,7 @@ status: dict = {
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
 }
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     for interaction in (
@@ -45,7 +46,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# Macbook Tailscale IP: 100.75.140.79
+hosting_urls = {
+    "localhost": "http://localhost:8000",
+    "ankurs-macbook-air": "http://100.75.140.79:8000",
+}
 
 # Initialize FastAPI app first
 app = FastAPI(lifespan=lifespan)
