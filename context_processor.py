@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Tuple
 import uuid
 import numpy as np
 
-# Required heavy dependencies - hard imports
 from sklearn.cluster import DBSCAN
 import spacy
 from transformers.pipelines import pipeline
@@ -27,9 +26,6 @@ from context_config import ContextProcessorConfig, DEFAULT_CONFIG
 from db import get_db_session
 
 
-# Removed custom dataclasses - now using SQLAlchemy models directly
-
-
 class ContextProcessor:
     """
     Context processor with advanced NLP and speaker recognition features.
@@ -38,14 +34,14 @@ class ContextProcessor:
     def __init__(self, config: Optional[ContextProcessorConfig] = None):
         """Initialize the context processor."""
         self.config = config or DEFAULT_CONFIG
-        self.conversation_cache: deque = deque(maxlen=100)  # Keep for caching recent conversations
+        self.conversation_cache: deque = deque(maxlen=100)
 
         # Speaker detection state variables for advanced clustering
-        self._speaker_embeddings = []
-        self._speaker_person_ids = []
-        self._speaker_interaction_ids = []
-        self._cluster_labels = []
-        self._clusters_dirty = True  # Mark True when cache must be refreshed
+        self._speaker_embeddings: List[np.ndarray] = []
+        self._speaker_person_ids: List[uuid.UUID] = []
+        self._speaker_interaction_ids: List[uuid.UUID] = []
+        self._cluster_labels: List[int] = []
+        self._clusters_dirty: bool = True
 
         self.dbscan = DBSCAN(
             eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples, metric="cosine"
@@ -60,7 +56,6 @@ class ContextProcessor:
         self._init_nlp_components()
 
     def _init_nlp_components(self):
-        """Initialize NLP components based on configuration."""
         self.nlp_components = {}
 
         if self.config.enable_ner or self.config.enable_coreference:
@@ -76,7 +71,7 @@ class ContextProcessor:
         if self.config.enable_topic_modeling:
             self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
 
-        # --- ADVANCED SPEAKER DETECTION SECTION START ---
+    # --- ADVANCED SPEAKER DETECTION SECTION START ---
 
     def _refresh_speaker_cache(self):
         """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
@@ -98,7 +93,8 @@ class ContextProcessor:
 
     def _recompute_clusters(self):
         """Run DBSCAN clustering on all cached embeddings and update labels."""
-        if not self._speaker_embeddings:
+        if (not self._speaker_embeddings or
+            (isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0)):
             self._cluster_labels = []
             return
         X = np.stack(self._speaker_embeddings)
@@ -106,19 +102,32 @@ class ContextProcessor:
         self._clusters_dirty = False
 
     def assign_speaker(
-        self, embedding: np.ndarray, session: Optional[Session] = None
+        self,
+        embedding: np.ndarray,
+        session: Optional[Session] = None,
+        interaction_id = None,
     ):
         """
         Assign a speaker using DBSCAN clustering over all embeddings.
         Returns the Person.id of the most similar speaker (if above threshold) or creates a new one.
         Also updates clusters in the database.
+
+        Args:
+            embedding: The new voice embedding (np.ndarray)
+            session: Optional SQLAlchemy session to reuse
+            interaction_id: The interaction UUID to use for the new embedding, if available
         """
+
+        embedding = np.array(embedding, dtype=np.float32)
+
         own_session = session is None
         session = session or get_db_session()
         try:
-            # Refresh cache if needed
-            if not self._speaker_embeddings or self._clusters_dirty:
+            if (not self._speaker_embeddings or
+                (isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0) or
+                self._clusters_dirty):
                 self._refresh_speaker_cache()
+                self._recompute_clusters()
                 self._recompute_clusters()
 
             # Add the new embedding to the cached ones for clustering
@@ -132,41 +141,41 @@ class ContextProcessor:
             labels = dbscan.fit_predict(X)
             new_label = labels[-1]
 
+            # Helper to append to cache with correct types
+            def _append_cache(embedding, person_id, interaction_id):
+                self._speaker_embeddings.append(embedding)
+                self._speaker_person_ids.append(person_id)
+                self._speaker_interaction_ids.append(interaction_id)
+                self._clusters_dirty = True
+
             if new_label == -1:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
                 new_person = Person(
-                    voice_embedding=embedding.tolist(),
-                    index=(
-                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                    )[0]
-                    + 1,
+                    voice_embedding=embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
+                    index=new_index,
                 )
                 session.add(new_person)
                 session.commit()
                 session.refresh(new_person)
-                # Add to state
-                self._speaker_embeddings.append(embedding)
-                self._speaker_person_ids.append(new_person.id)
-                self._speaker_interaction_ids.append(None)
-                self._clusters_dirty = True
+                _append_cache(embedding, new_person.id, interaction_id)
                 self._update_db_clusters(session, labels[:-1] + [-1])
                 return new_person.id
 
             cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
             if not cluster_indices:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
                 new_person = Person(
                     voice_embedding=embedding.tolist(),
-                    index=(
-                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                    )[0]
-                    + 1,
+                    index=new_index,
                 )
                 session.add(new_person)
                 session.commit()
                 session.refresh(new_person)
-                self._speaker_embeddings.append(embedding)
-                self._speaker_person_ids.append(new_person.id)
-                self._speaker_interaction_ids.append(None)
-                self._clusters_dirty = True
+                _append_cache(embedding, new_person.id, interaction_id)
                 self._update_db_clusters(session, labels[:-1] + [-1])
                 return new_person.id
 
@@ -179,36 +188,29 @@ class ContextProcessor:
                 similarities.append((idx, sim))
             best_idx, best_sim = max(similarities, key=lambda x: x[1])
             if best_sim < self.config.similarity_threshold:
+                new_index = (
+                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+                )[0] + 1
                 new_person = Person(
                     voice_embedding=embedding.tolist(),
-                    index=(
-                        session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                    )[0]
-                    + 1,
+                    index=new_index,
                 )
                 session.add(new_person)
                 session.commit()
                 session.refresh(new_person)
-                self._speaker_embeddings.append(embedding)
-                self._speaker_person_ids.append(new_person.id)
-                self._speaker_interaction_ids.append(None)
-                self._clusters_dirty = True
+                _append_cache(embedding, new_person.id, interaction_id)
                 self._update_db_clusters(session, labels[:-1] + [-1])
                 return new_person.id
 
             # Assign to the Person of the best match in the cluster
             matched_person_id = self._speaker_person_ids[best_idx]
-            # Optionally, update the matched Person's embedding (e.g., running average)
             matched_person = session.query(Person).filter_by(id=matched_person_id).first()
             if matched_person and matched_person.voice_embedding is not None:
                 old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
-                updated_emb = 0.8 * old_emb + 0.2 * embedding  # Weighted update
+                updated_emb = 0.8 * old_emb + 0.2 * embedding
                 matched_person.voice_embedding = updated_emb.tolist()
                 session.commit()
-            self._speaker_embeddings.append(embedding)
-            self._speaker_person_ids.append(matched_person_id)
-            self._speaker_interaction_ids.append(None)
-            self._clusters_dirty = True
+            _append_cache(embedding, matched_person_id, interaction_id)
             self._update_db_clusters(session, labels)
             return matched_person_id
         finally:
@@ -221,8 +223,8 @@ class ContextProcessor:
         Interactions in cache must match the order of cluster_labels.
         """
         if (
-            not self._speaker_person_ids
-            or not cluster_labels
+            len(self._speaker_person_ids) == 0
+            or len(cluster_labels) == 0
             or len(self._speaker_person_ids) != len(cluster_labels)
         ):
             return
@@ -235,6 +237,8 @@ class ContextProcessor:
         session.commit()
 
     # --- ADVANCED SPEAKER DETECTION SECTION END ---
+
+    # ... all other ContextProcessor methods remain unchanged ...
 
     def parse_whisper_output(self, whisper_output: str) -> Optional[Interaction]:
         """Parse whisper output and return SQLAlchemy Interaction model."""
@@ -358,7 +362,6 @@ class ContextProcessor:
     def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
 
     def _update_clusters_db(self, session):
         """Update DBSCAN clustering for all speakers using database."""

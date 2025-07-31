@@ -95,7 +95,7 @@ def disable_service():
 
 @app.post("/register_interaction")
 def register_interaction(sentence_buf_raw: bytes = Body(...)):
-    """Register interaction - transcribe sentence, identify speaker, and process context."""
+    """Register interaction - transcribe sentence, identify speaker."""
 
     try:
         if len(sentence_buf_raw) == 0:
@@ -103,7 +103,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
 
-        # Use advanced processing with integrated speaker recognition
+        # Step 1: Transcribe and get voice embedding (no NLP)
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
 
@@ -112,7 +112,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
 
         logger.info("Advanced transcription successful")
 
-        # Check for shutdown command first
+        # Step 2: Check for shutdown command (optional)
         if "mira" in transcription_result["text"].lower() and any(
             cancelCMD in transcription_result["text"].lower() for cancelCMD in ("cancel", "exit")
         ):
@@ -120,36 +120,44 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
             disable_service()
             return status
 
+        # Step 3: Assign speaker, create interaction, save basic info
         db = get_db_session()
-
         try:
-            # Assign speaker using robust method from context processor
-            transcription_result["speaker_id"] = processor.assign_speaker(
-                transcription_result["voice_embedding"]
-            )
+            # Assign speaker quickly using advanced clustering (NO heavy NLP)
+            # Pass interaction_id if you want it in advanced cache (optional)
 
-
-            # Create database interaction with speaker assignment
+            # Only create interaction with minimal info for fast response
             interaction = Interaction(
                 **transcription_result,
             )
-
-            # Process interaction through context processor for conversation management
-            if interaction.speaker_id is not None:
-                processor.update_speaker_clustering(
-                    transcription_result["voice_embedding"], interaction.speaker_id
-                )
-
-            # Save to database
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
+
+            speaker_id = processor.assign_speaker(
+                transcription_result["voice_embedding"],
+                session=db,
+                interaction_id=interaction.id,  # Pass interaction_id for advanced cache
+            )
+
+            interaction.speaker_id = speaker_id
+
+            db.commit()
+            db.refresh(interaction)
+
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
 
-            return interaction
+            # Return minimal interaction details for frontend display
+            return {
+                "id": str(interaction.id),
+                "text": interaction.text,
+                "timestamp": interaction.timestamp.isoformat(),
+                "speaker_id": str(interaction.speaker_id),
+                # Optionally, include speaker index or label if you want
+            }
 
         except Exception as db_error:
-            logger.error(f"Database error: {db_error}")
+            logger.error(f"Database error: {db_error}", exc_info=True)
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         finally:
