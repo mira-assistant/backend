@@ -13,13 +13,23 @@ The system is designed for real-time operation and can dynamically select
 the best audio stream for optimal recording quality.
 """
 
-import numpy as np
 import logging
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import threading
-from scipy import signal
+
+# Handle optional dependencies gracefully
+try:
+    import numpy as np
+    from scipy import signal
+    DEPENDENCIES_AVAILABLE = True
+except ImportError:
+    # Fallback when dependencies are not available
+    np = None
+    signal = None
+    DEPENDENCIES_AVAILABLE = False
+    logging.warning("Audio stream scorer dependencies (numpy, scipy) not available. Audio scoring features disabled.")
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +80,7 @@ class AudioStreamScorer:
         self.current_best_client: Optional[str] = None
         self.score_history: Dict[str, List[float]] = {}
         self._lock = threading.Lock()
+        self.dependencies_available = DEPENDENCIES_AVAILABLE
 
         # Scoring weights (can be adjusted based on requirements)
         self.weights = {
@@ -79,7 +90,10 @@ class AudioStreamScorer:
             'phone_distance': 0.1  # Placeholder for future use
         }
 
-        logger.info("AudioStreamScorer initialized")
+        if not self.dependencies_available:
+            logger.warning("Audio stream scorer initialized without full dependencies. Audio quality analysis disabled.")
+        else:
+            logger.info("AudioStreamScorer initialized with full dependencies")
 
     def register_client(self, client_id: str, device_type: Optional[str] = None,
                         location: Optional[Dict] = None) -> bool:
@@ -135,7 +149,7 @@ class AudioStreamScorer:
             logger.info(f"Deregistered client {client_id}")
             return True
 
-    def calculate_snr(self, audio_data: np.ndarray) -> float:
+    def calculate_snr(self, audio_data) -> float:
         """
         Calculate Signal-to-Noise Ratio for audio data.
 
@@ -145,6 +159,10 @@ class AudioStreamScorer:
         Returns:
             float: SNR in dB
         """
+        if not self.dependencies_available or np is None:
+            logger.debug("SNR calculation skipped - dependencies not available")
+            return 0.0
+            
         if len(audio_data) == 0:
             return 0.0
 
@@ -177,7 +195,7 @@ class AudioStreamScorer:
         snr_db = 10 * np.log10(signal_power / noise_power)
         return max(0.0, snr_db)  # Ensure non-negative
 
-    def calculate_speech_clarity(self, audio_data: np.ndarray) -> float:
+    def calculate_speech_clarity(self, audio_data) -> float:
         """
         Calculate speech clarity metric based on spectral analysis.
 
@@ -187,6 +205,10 @@ class AudioStreamScorer:
         Returns:
             float: Speech clarity score (0-100)
         """
+        if not self.dependencies_available or np is None or signal is None:
+            logger.debug("Speech clarity calculation skipped - dependencies not available")
+            return 0.0
+            
         if len(audio_data) == 0:
             return 0.0
 
@@ -226,7 +248,7 @@ class AudioStreamScorer:
         clarity_score = (speech_ratio * 0.7 + clarity_factor * 0.3) * 100
         return min(100.0, max(0.0, clarity_score))
 
-    def update_stream_quality(self, client_id: str, audio_data: np.ndarray) -> Optional[StreamQualityMetrics]:
+    def update_stream_quality(self, client_id: str, audio_data) -> Optional[StreamQualityMetrics]:
         """
         Update quality metrics for a client's audio stream.
 
@@ -247,8 +269,13 @@ class AudioStreamScorer:
             # Calculate quality metrics
             snr = self.calculate_snr(audio_data)
             speech_clarity = self.calculate_speech_clarity(audio_data)
-            volume_level = float(np.sqrt(np.mean(audio_data ** 2)))  # RMS volume
-            noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
+            
+            if self.dependencies_available and np is not None:
+                volume_level = float(np.sqrt(np.mean(audio_data ** 2)))  # RMS volume
+                noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
+            else:
+                volume_level = 0.0
+                noise_level = 0.0
 
             # Update metrics
             metrics = StreamQualityMetrics(
@@ -404,7 +431,16 @@ class AudioStreamScorer:
             for client_id, client_info in list(self.clients.items()):
                 time_diff = (current_time - client_info.last_update).total_seconds()
                 if time_diff > timeout_seconds:
-                    self.deregister_client(client_id)
+                    # Manually remove without calling deregister_client to avoid deadlock
+                    if self.current_best_client == client_id:
+                        self.current_best_client = None
+                        logger.info(f"Best client {client_id} timed out, clearing selection")
+                    
+                    del self.clients[client_id]
+                    if client_id in self.score_history:
+                        del self.score_history[client_id]
+                    
                     removed_clients.append(client_id)
+                    logger.info(f"Removed inactive client {client_id}")
 
             return removed_clients
