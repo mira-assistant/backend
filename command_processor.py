@@ -15,8 +15,7 @@ Features:
 
 import logging
 import threading
-import time
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -42,7 +41,6 @@ class WakeWordConfig:
     sensitivity: float = 0.7  # Detection threshold (0.0-1.0)
     enabled: bool = True
     min_confidence: float = 0.5
-    cooldown_seconds: float = 2.0  # Prevent rapid re-triggering
 
 
 class WakeWordDetector:
@@ -64,10 +62,7 @@ class WakeWordDetector:
         self.sample_rate = sample_rate
         self.wake_words: Dict[str, WakeWordConfig] = {}
         self.detection_callbacks: List[Callable[[WakeWordDetection], None]] = []
-        self.recent_detections: List[WakeWordDetection] = []
-        self.last_detection_time: Dict[str, float] = {}  # Per wake word cooldown
         self._lock = threading.Lock()
-        self.enabled = True
 
         # Default wake words
         self._setup_default_wake_words()
@@ -86,7 +81,6 @@ class WakeWordDetector:
         word: str,
         sensitivity: float = 0.7,
         min_confidence: float = 0.5,
-        cooldown_seconds: float = 2.0,
     ) -> bool:
         """
         Add a new wake word to the detection system.
@@ -111,7 +105,6 @@ class WakeWordDetector:
                 word=word_normalized,
                 sensitivity=max(0.0, min(1.0, sensitivity)),
                 min_confidence=max(0.0, min(1.0, min_confidence)),
-                cooldown_seconds=max(0.1, cooldown_seconds),
             )
 
             self.wake_words[word_normalized] = config
@@ -211,40 +204,31 @@ class WakeWordDetector:
         Returns:
             WakeWordDetection: Detection result if wake word found, None otherwise
         """
-        if not self.enabled or not transcribed_text:
+        if not transcribed_text:
             return None
 
         text_normalized = transcribed_text.lower().strip()
-        current_time = time.time()
 
         with self._lock:
             for wake_word, config in self.wake_words.items():
                 if not config.enabled:
                     continue
 
-                # Check cooldown
-                last_detection = self.last_detection_time.get(f"{client_id}:{wake_word}", 0)
-                if current_time - last_detection < config.cooldown_seconds:
-                    continue
-
                 # Simple text matching (can be enhanced with fuzzy matching)
                 confidence = self._calculate_text_confidence(wake_word, text_normalized)
 
-                if confidence >= config.min_confidence:
+                # Incorporate sensitivity: require higher confidence for lower sensitivity
+                # Effective threshold = min_confidence + (1 - sensitivity) * (1 - min_confidence)
+                effective_threshold = config.min_confidence + (1.0 - config.sensitivity) * (
+                    1.0 - config.min_confidence
+                )
+                if confidence >= effective_threshold:
                     detection = WakeWordDetection(
                         wake_word=wake_word,
                         confidence=confidence,
                         client_id=client_id,
                         audio_snippet_length=audio_length,
                     )
-
-                    # Update cooldown
-                    self.last_detection_time[f"{client_id}:{wake_word}"] = current_time
-
-                    # Store recent detection
-                    self.recent_detections.append(detection)
-                    if len(self.recent_detections) > 50:  # Keep last 50 detections
-                        self.recent_detections.pop(0)
 
                     logger.info(
                         f"Wake word detected: '{wake_word}' from client {client_id} with confidence {confidence:.2f}"
@@ -274,9 +258,6 @@ class WakeWordDetector:
         Returns:
             WakeWordDetection: Detection result if wake word found, None otherwise
         """
-        if not self.enabled:
-            logger.debug("Raw audio wake word detection skipped - detector disabled")
-            return None
 
         # Placeholder for future ML-based wake word detection
         # This could include:
@@ -345,61 +326,3 @@ class WakeWordDetector:
                 callback(detection)
             except Exception as e:
                 logger.error(f"Error in wake word detection callback: {e}")
-
-    def get_recent_detections(self, limit: int = 10) -> List[WakeWordDetection]:
-        """
-        Get recent wake word detections.
-
-        Args:
-            limit: Maximum number of detections to return
-
-        Returns:
-            List[WakeWordDetection]: Recent detections, most recent first
-        """
-        with self._lock:
-            return list(reversed(self.recent_detections[-limit:]))
-
-    def clear_detections(self):
-        """Clear all stored detections and reset cooldowns."""
-        with self._lock:
-            self.recent_detections.clear()
-            self.last_detection_time.clear()
-            logger.info("Cleared all wake word detections and cooldowns")
-
-    def set_enabled(self, enabled: bool):
-        """
-        Enable or disable the entire wake word detection system.
-
-        Args:
-            enabled: Whether wake word detection should be enabled
-        """
-        self.enabled = enabled
-        status = "enabled" if enabled else "disabled"
-        logger.info(f"Wake word detection {status}")
-
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get wake word detection statistics.
-
-        Returns:
-            Dict[str, Any]: Statistics about wake word detection
-        """
-        with self._lock:
-            total_detections = len(self.recent_detections)
-            wake_word_counts = {}
-
-            for detection in self.recent_detections:
-                wake_word_counts[detection.wake_word] = (
-                    wake_word_counts.get(detection.wake_word, 0) + 1
-                )
-
-            return {
-                "enabled": self.enabled,
-                "total_wake_words": len(self.wake_words),
-                "enabled_wake_words": sum(
-                    1 for config in self.wake_words.values() if config.enabled
-                ),
-                "total_detections": total_detections,
-                "detections_by_wake_word": wake_word_counts,
-                "active_callbacks": len(self.detection_callbacks),
-            }

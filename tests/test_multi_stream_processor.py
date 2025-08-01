@@ -2,9 +2,15 @@
 Tests for the Audio Stream Scoring System
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import pytest
 from datetime import datetime, timezone
 import numpy as np
+
 from multi_stream_processor import AudioStreamScorer, StreamQualityMetrics, ClientStreamInfo
 
 
