@@ -21,14 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
 
-# Handle optional dependencies gracefully
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-except ImportError:
-    np = None
-    NUMPY_AVAILABLE = False
-    logging.warning("Numpy not available. Advanced wake word detection features disabled.")
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -279,8 +272,8 @@ class WakeWordDetector:
         Returns:
             WakeWordDetection: Detection result if wake word found, None otherwise
         """
-        if not self.enabled or not NUMPY_AVAILABLE:
-            logger.debug("Raw audio wake word detection skipped - dependencies not available")
+        if not self.enabled:
+            logger.debug("Raw audio wake word detection skipped - detector disabled")
             return None
         
         # Placeholder for future ML-based wake word detection
@@ -402,6 +395,5 @@ class WakeWordDetector:
                 "enabled_wake_words": sum(1 for config in self.wake_words.values() if config.enabled),
                 "total_detections": total_detections,
                 "detections_by_wake_word": wake_word_counts,
-                "active_callbacks": len(self.detection_callbacks),
-                "numpy_available": NUMPY_AVAILABLE
+                "active_callbacks": len(self.detection_callbacks)
             }

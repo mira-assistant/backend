@@ -337,6 +337,17 @@ class AudioStreamScorer:
             if not self.clients:
                 return None
 
+            # Optimization: If only one active client, return it immediately without scoring
+            active_clients = [client_id for client_id, client_info in self.clients.items() if client_info.is_active]
+            
+            if len(active_clients) == 1:
+                single_client = active_clients[0]
+                if single_client != self.current_best_client:
+                    self.current_best_client = single_client
+                    logger.info(f"Single active client: {single_client} (no scoring needed)")
+                # Return a default score for single client
+                return (single_client, 1.0)
+
             best_client = None
             best_score = -1.0
 

@@ -5,25 +5,9 @@ Tests for the Wake Word Detection System
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import Mock
-
-# Handle missing dependencies gracefully
-try:
-    from wake_word_detector import WakeWordDetector, WakeWordConfig, WakeWordDetection
-    WAKE_WORD_AVAILABLE = True
-except ImportError as e:
-    print(f"Skipping wake word detection tests due to missing dependencies: {e}")
-    WAKE_WORD_AVAILABLE = False
-    
-    # Create dummy classes for type hints
-    class WakeWordDetector:
-        pass
-    class WakeWordConfig:
-        pass
-    class WakeWordDetection:
-        pass
+from command_processor import WakeWordDetector, WakeWordConfig, WakeWordDetection
 
 
-@pytest.mark.skipif(not WAKE_WORD_AVAILABLE, reason="Wake word detection dependencies not available")
 class TestWakeWordDetector:
     """Test suite for WakeWordDetector class"""
     

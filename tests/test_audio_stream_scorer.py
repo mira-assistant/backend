@@ -4,26 +4,10 @@ Tests for the Audio Stream Scoring System
 
 import pytest
 from datetime import datetime, timezone
-
-# Handle missing dependencies gracefully
-try:
-    import numpy as np
-    from audio_stream_scorer import AudioStreamScorer, StreamQualityMetrics, ClientStreamInfo
-    DEPENDENCIES_AVAILABLE = True
-except ImportError as e:
-    print(f"Skipping audio stream scorer tests due to missing dependencies: {e}")
-    DEPENDENCIES_AVAILABLE = False
-    
-    # Create dummy classes for type hints
-    class AudioStreamScorer:
-        pass
-    class StreamQualityMetrics:
-        pass
-    class ClientStreamInfo:
-        pass
+import numpy as np
+from multi_stream_processor import AudioStreamScorer, StreamQualityMetrics, ClientStreamInfo
 
 
-@pytest.mark.skipif(not DEPENDENCIES_AVAILABLE, reason="Audio stream scorer dependencies not available")
 class TestAudioStreamScorer:
     """Test suite for AudioStreamScorer class"""
     

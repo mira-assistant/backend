@@ -14,8 +14,8 @@ from models import Interaction, Person, Conversation
 import inference_processor
 import sentence_processor
 import context_processor
-from audio_stream_scorer import AudioStreamScorer
-from wake_word_detector import WakeWordDetector
+from multi_stream_processor import AudioStreamScorer
+from command_processor import WakeWordDetector
 
 
 # Setup logging
@@ -94,7 +94,7 @@ def root():
 
 
 @app.post("/service/client/register/{client_id}")
-def register_client(client_id: str, device_type: str = None, location: dict = None):
+def register_client(client_id: str, device_type: str | None = None, location: dict | None = None):
     """Register a client and initialize stream scoring."""
     status["listening_clients"].append(client_id)
 
