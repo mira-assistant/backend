@@ -15,6 +15,7 @@ import inference_processor
 import sentence_processor
 import context_processor
 from audio_stream_scorer import AudioStreamScorer
+from wake_word_detector import WakeWordDetector
 
 
 # Setup logging
@@ -24,6 +25,9 @@ processor = context_processor.create_context_processor()
 
 # Initialize audio stream scorer
 audio_scorer = AudioStreamScorer()
+
+# Initialize wake word detector
+wake_word_detector = WakeWordDetector()
 
 status: dict = {
     "version": "4.1.1",
@@ -36,7 +40,8 @@ status: dict = {
         "context_summarization": True,
         "database_integration": True,
         "audio_processing": True,
-        "stream_scoring": True,  # New feature
+        "stream_scoring": True,
+        "wake_word_detection": True,  # New feature
     },
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
     "current_best_stream": None,  # Track the best performing stream
@@ -170,6 +175,26 @@ def register_interaction(sentence_buf_raw: bytes = Body(...), client_id: str = N
             # Update best stream selection
             best_stream_info = audio_scorer.get_best_stream()
             status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
+
+        # Step 1.6: Check for wake words in transcribed text
+        if transcription_result and transcription_result.get("text"):
+            # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
+            audio_length = len(sentence_buf_raw) / (16000 * 2)  # bytes / (sample_rate * bytes_per_sample)
+            
+            wake_word_detection = wake_word_detector.process_audio_text(
+                client_id=client_id or "unknown",
+                transcribed_text=transcription_result["text"],
+                audio_length=audio_length
+            )
+            
+            if wake_word_detection:
+                logger.info(f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}")
+                # Wake word detected - could trigger specific actions here
+                # For now, we just log it, but this could be extended to:
+                # - Start/stop recording
+                # - Change system state
+                # - Send notifications
+                # - Trigger specific workflows
 
         # Step 2: Check for shutdown command
         if "mira" in transcription_result["text"].lower() and any(
@@ -583,3 +608,238 @@ def cleanup_inactive_streams(timeout_seconds: int = 300):
     except Exception as e:
         logger.error(f"Error cleaning up streams: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to cleanup streams: {str(e)}")
+
+
+# ============ Wake Word Detection Endpoints ============
+
+@app.get("/wake-words")
+async def get_wake_words():
+    """Get all configured wake words"""
+    try:
+        wake_words = wake_word_detector.get_wake_words()
+        stats = wake_word_detector.get_stats()
+        
+        return {
+            "wake_words": {
+                word: {
+                    "word": config.word,
+                    "sensitivity": config.sensitivity,
+                    "enabled": config.enabled,
+                    "min_confidence": config.min_confidence,
+                    "cooldown_seconds": config.cooldown_seconds
+                }
+                for word, config in wake_words.items()
+            },
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting wake words: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get wake words: {str(e)}")
+
+
+@app.post("/wake-words")
+async def add_wake_word(
+    wake_word_data: dict = Body(...)
+):
+    """Add a new wake word"""
+    try:
+        word = wake_word_data.get("word", "").strip()
+        sensitivity = wake_word_data.get("sensitivity", 0.7)
+        min_confidence = wake_word_data.get("min_confidence", 0.5)
+        cooldown_seconds = wake_word_data.get("cooldown_seconds", 2.0)
+        
+        if not word:
+            raise HTTPException(status_code=400, detail="Wake word cannot be empty")
+        
+        success = wake_word_detector.add_wake_word(
+            word=word,
+            sensitivity=sensitivity,
+            min_confidence=min_confidence,
+            cooldown_seconds=cooldown_seconds
+        )
+        
+        if success:
+            return {
+                "message": f"Wake word '{word}' added successfully",
+                "word": word,
+                "sensitivity": sensitivity,
+                "min_confidence": min_confidence,
+                "cooldown_seconds": cooldown_seconds
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Failed to add wake word")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding wake word: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add wake word: {str(e)}")
+
+
+@app.get("/wake-words/detections")
+async def get_recent_detections(limit: int = 10):
+    """Get recent wake word detections"""
+    try:
+        detections = wake_word_detector.get_recent_detections(limit)
+        
+        return {
+            "detections": [
+                {
+                    "wake_word": detection.wake_word,
+                    "confidence": detection.confidence,
+                    "client_id": detection.client_id,
+                    "timestamp": detection.timestamp.isoformat(),
+                    "audio_snippet_length": detection.audio_snippet_length
+                }
+                for detection in detections
+            ],
+            "count": len(detections),
+            "limit": limit
+        }
+    except Exception as e:
+        logger.error(f"Error getting wake word detections: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get detections: {str(e)}")
+
+
+@app.delete("/wake-words/detections")
+async def clear_detections():
+    """Clear all wake word detections and reset cooldowns"""
+    try:
+        wake_word_detector.clear_detections()
+        return {
+            "message": "All wake word detections cleared",
+            "cleared": True
+        }
+    except Exception as e:
+        logger.error(f"Error clearing wake word detections: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear detections: {str(e)}")
+
+
+@app.patch("/wake-words/enable")
+async def enable_wake_word_detection():
+    """Enable the entire wake word detection system"""
+    try:
+        wake_word_detector.set_enabled(True)
+        return {
+            "message": "Wake word detection enabled",
+            "enabled": True
+        }
+    except Exception as e:
+        logger.error(f"Error enabling wake word detection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enable wake word detection: {str(e)}")
+
+
+@app.patch("/wake-words/disable")
+async def disable_wake_word_detection():
+    """Disable the entire wake word detection system"""
+    try:
+        wake_word_detector.set_enabled(False)
+        return {
+            "message": "Wake word detection disabled",
+            "enabled": False
+        }
+    except Exception as e:
+        logger.error(f"Error disabling wake word detection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disable wake word detection: {str(e)}")
+
+
+@app.post("/wake-words/process")
+async def process_text_for_wake_words(
+    data: dict = Body(...)
+):
+    """Process text for wake word detection (for testing or external integration)"""
+    try:
+        client_id = data.get("client_id", "unknown")
+        text = data.get("text", "")
+        audio_length = data.get("audio_length", 0.0)
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+        
+        detection = wake_word_detector.process_audio_text(client_id, text, audio_length)
+        
+        if detection:
+            return {
+                "detected": True,
+                "wake_word": detection.wake_word,
+                "confidence": detection.confidence,
+                "client_id": detection.client_id,
+                "timestamp": detection.timestamp.isoformat(),
+                "audio_snippet_length": detection.audio_snippet_length
+            }
+        else:
+            return {
+                "detected": False,
+                "message": "No wake word detected in the provided text"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing text for wake words: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process text: {str(e)}")
+
+
+@app.delete("/wake-words/{word}")
+async def remove_wake_word(word: str):
+    """Remove a wake word"""
+    try:
+        success = wake_word_detector.remove_wake_word(word)
+        
+        if success:
+            return {
+                "message": f"Wake word '{word}' removed successfully",
+                "word": word
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing wake word: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to remove wake word: {str(e)}")
+
+
+@app.patch("/wake-words/{word}/enable")
+async def enable_wake_word(word: str):
+    """Enable a wake word"""
+    try:
+        success = wake_word_detector.set_wake_word_enabled(word, True)
+        
+        if success:
+            return {
+                "message": f"Wake word '{word}' enabled",
+                "word": word,
+                "enabled": True
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enabling wake word: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enable wake word: {str(e)}")
+
+
+@app.patch("/wake-words/{word}/disable")
+async def disable_wake_word(word: str):
+    """Disable a wake word"""
+    try:
+        success = wake_word_detector.set_wake_word_enabled(word, False)
+        
+        if success:
+            return {
+                "message": f"Wake word '{word}' disabled",
+                "word": word,
+                "enabled": False
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disabling wake word: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to disable wake word: {str(e)}")
