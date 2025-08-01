@@ -1,5 +1,5 @@
 import uuid
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import json
@@ -30,21 +30,11 @@ audio_scorer = AudioStreamScorer()
 wake_word_detector = WakeWordDetector()
 
 status: dict = {
-    "version": "4.1.1",
+    "version": "4.2.0",
     "listening_clients": list(),
     "enabled": False,
-    "mode": "advanced",
-    "features": {
-        "advanced_nlp": True,
-        "speaker_clustering": True,
-        "context_summarization": True,
-        "database_integration": True,
-        "audio_processing": True,
-        "stream_scoring": True,
-        "wake_word_detection": True,  # New feature
-    },
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
-    "current_best_stream": None,  # Track the best performing stream
+    "current_best_stream": None,
 }
 
 
@@ -100,9 +90,7 @@ def register_client(client_id: str, device_type: str | None = None, location: di
 
     # Register client with audio stream scorer
     success = audio_scorer.register_client(
-        client_id=client_id,
-        device_type=device_type,
-        location=location
+        client_id=client_id, device_type=device_type, location=location
     )
 
     if success:
@@ -145,14 +133,18 @@ def disable_service():
 
 
 @app.post("/interactions/register")
-def register_interaction(sentence_buf_raw: bytes = Body(...), client_id: str = None):
+async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
+
+    sentence_buf_raw = await audio.read()
 
     try:
         if len(sentence_buf_raw) == 0:
             raise ValueError("No audio data received")
 
-        logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}")
+        logger.info(
+            f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
+        )
 
         # Step 1: Update stream quality if client_id provided
         if client_id:
@@ -166,15 +158,19 @@ def register_interaction(sentence_buf_raw: bytes = Body(...), client_id: str = N
             # Update best stream selection
             best_stream_info = audio_scorer.get_best_stream()
             status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-            
+
             # Check if this client has the best stream quality
             if best_stream_info and best_stream_info[0] != client_id:
-                logger.info(f"Interaction from {client_id} not registered - better stream available from {best_stream_info[0]}")
+                logger.info(
+                    f"Interaction from {client_id} not registered - better stream available from {best_stream_info[0]}"
+                )
                 return {
                     "message": "Interaction was not registered due to better audio streams",
                     "best_stream_client": best_stream_info[0],
-                    "current_client_score": round(audio_scorer.get_all_stream_scores().get(client_id, 0), 2),
-                    "best_stream_score": round(best_stream_info[1], 2)
+                    "current_client_score": round(
+                        audio_scorer.get_all_stream_scores().get(client_id, 0), 2
+                    ),
+                    "best_stream_score": round(best_stream_info[1], 2),
                 }
 
         # Step 2: Transcribe and get voice embedding (no NLP)
@@ -189,16 +185,20 @@ def register_interaction(sentence_buf_raw: bytes = Body(...), client_id: str = N
         # Step 2.5: Check for wake words in transcribed text
         if transcription_result and transcription_result.get("text"):
             # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
-            audio_length = len(sentence_buf_raw) / (16000 * 2)  # bytes / (sample_rate * bytes_per_sample)
-            
+            audio_length = len(sentence_buf_raw) / (
+                16000 * 2
+            )  # bytes / (sample_rate * bytes_per_sample)
+
             wake_word_detection = wake_word_detector.process_audio_text(
                 client_id=client_id or "unknown",
                 transcribed_text=transcription_result["text"],
-                audio_length=audio_length
+                audio_length=audio_length,
             )
-            
+
             if wake_word_detection:
-                logger.info(f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}")
+                logger.info(
+                    f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
+                )
                 # Wake word detected - could trigger specific actions here
                 # For now, we just log it, but this could be extended to:
                 # - Start/stop recording
@@ -247,10 +247,12 @@ def register_interaction(sentence_buf_raw: bytes = Body(...), client_id: str = N
             }
 
             # Include stream quality info if available
-            if client_id and client_id in [client.client_id for client in audio_scorer.clients.values()]:
+            if client_id and client_id in [
+                client.client_id for client in audio_scorer.clients.values()
+            ]:
                 response["stream_quality"] = {
                     "client_id": client_id,
-                    "is_best_stream": client_id == status["current_best_stream"]
+                    "is_best_stream": client_id == status["current_best_stream"],
                 }
 
             return response
@@ -455,6 +457,7 @@ def get_speaker(speaker_id: str):
 
 # ============ Phone-Specific Endpoints ============
 
+
 @app.patch("/phone/service/enable")
 def enable_phone_service():
     """Enable the Mira service (phone endpoint)."""
@@ -477,7 +480,7 @@ def get_phone_service_status():
         "version": status["version"],
         "mode": status["mode"],
         "listening_clients": len(status["listening_clients"]),
-        "current_best_stream": status["current_best_stream"]
+        "current_best_stream": status["current_best_stream"],
     }
 
 
@@ -488,7 +491,7 @@ def update_phone_distance(request: dict = Body(...)):
         distance = request.get("distance")
         if distance is None:
             raise HTTPException(status_code=400, detail="Distance value is required")
-        
+
         if not isinstance(distance, (int, float)) or distance < 0:
             raise HTTPException(status_code=400, detail="Distance must be a non-negative number")
 
@@ -507,7 +510,7 @@ def update_phone_distance(request: dict = Body(...)):
             "message": f"Phone distance updated for {len(updated_clients)} clients",
             "distance": distance,
             "updated_clients": updated_clients,
-            "current_best_stream": status["current_best_stream"]
+            "current_best_stream": status["current_best_stream"],
         }
 
     except HTTPException:
@@ -522,26 +525,26 @@ def get_nearest_client():
     """Get the client with the shortest phone distance."""
     try:
         nearest_client = None
-        nearest_distance = float('inf')
-        
+        nearest_distance = float("inf")
+
         for client_id in status["listening_clients"]:
             client_info = audio_scorer.get_client_info(client_id)
             if client_info and client_info.quality_metrics.phone_distance is not None:
                 if client_info.quality_metrics.phone_distance < nearest_distance:
                     nearest_distance = client_info.quality_metrics.phone_distance
                     nearest_client = client_id
-        
+
         if nearest_client is None:
             return {
                 "message": "No clients with distance information available",
                 "nearest_client": None,
-                "distance": None
+                "distance": None,
             }
-        
+
         return {
             "nearest_client": nearest_client,
             "distance": nearest_distance,
-            "total_clients": len(status["listening_clients"])
+            "total_clients": len(status["listening_clients"]),
         }
 
     except Exception as e:
@@ -549,117 +552,8 @@ def get_nearest_client():
         raise HTTPException(status_code=500, detail=f"Failed to get nearest client: {str(e)}")
 
 
-# Database Functions for Phone
-@app.get("/phone/database/interactions/recent")
-def get_recent_interactions_phone(limit: int = 10):
-    """Get recent interactions for phone interface."""
-    try:
-        db = get_db_session()
-        try:
-            interactions = (
-                db.query(Interaction)
-                .order_by(Interaction.timestamp.desc())
-                .limit(limit)
-                .all()
-            )
-            
-            simplified_interactions = []
-            for interaction in interactions:
-                simplified_interactions.append({
-                    "id": str(interaction.id),
-                    "text": interaction.text,
-                    "timestamp": interaction.timestamp.isoformat(),
-                    "speaker_id": str(interaction.speaker_id) if interaction.speaker_id else None
-                })
-            
-            return {
-                "interactions": simplified_interactions,
-                "count": len(simplified_interactions),
-                "limit": limit
-            }
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error fetching recent interactions for phone: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
-
-
-@app.delete("/phone/database/interactions/clear")
-def clear_interactions_phone(confirm: str = None):
-    """Clear all interactions from database (phone endpoint with confirmation)."""
-    try:
-        if confirm != "DELETE_ALL":
-            raise HTTPException(
-                status_code=400, 
-                detail="Please provide 'confirm=DELETE_ALL' to confirm deletion"
-            )
-        
-        db = get_db_session()
-        try:
-            deleted_count = db.query(Interaction).delete()
-            status["recent_interactions"].clear()
-            db.commit()
-            
-            logger.info(f"Phone cleared {deleted_count} interactions from database")
-            
-            return {
-                "message": f"Successfully cleared {deleted_count} interactions",
-                "deleted_count": deleted_count
-            }
-        except Exception as e:
-            db.rollback()
-            raise e
-        finally:
-            db.close()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error clearing interactions via phone: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
-
-
-@app.get("/phone/database/stats")
-def get_database_stats_phone():
-    """Get database statistics for phone interface."""
-    try:
-        db = get_db_session()
-        try:
-            interaction_count = db.query(Interaction).count()
-            person_count = db.query(Person).count()
-            conversation_count = db.query(Conversation).count()
-            
-            # Get most recent interaction
-            recent_interaction = (
-                db.query(Interaction)
-                .order_by(Interaction.timestamp.desc())
-                .first()
-            )
-            
-            last_activity = None
-            if recent_interaction:
-                last_activity = recent_interaction.timestamp.isoformat()
-            
-            return {
-                "database_stats": {
-                    "total_interactions": interaction_count,
-                    "total_speakers": person_count,
-                    "total_conversations": conversation_count,
-                    "last_activity": last_activity
-                },
-                "service_status": {
-                    "enabled": status["enabled"],
-                    "listening_clients": len(status["listening_clients"]),
-                    "best_stream": status["current_best_stream"]
-                }
-            }
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error getting database stats for phone: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get database stats: {str(e)}")
-
-
 # ============ Audio Stream Scoring Endpoints ============
+
 
 @app.get("/streams/best")
 def get_best_stream():
@@ -673,6 +567,9 @@ def get_best_stream():
         client_id, score = best_stream_info
         client_info = audio_scorer.get_client_info(client_id)
 
+        if not client_info:
+            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
         response = {
             "best_stream": {
                 "client_id": client_id,
@@ -684,8 +581,8 @@ def get_best_stream():
                     "noise_level": round(client_info.quality_metrics.noise_level, 4),
                     "phone_distance": client_info.quality_metrics.phone_distance,
                     "last_update": client_info.last_update.isoformat(),
-                    "sample_count": client_info.quality_metrics.sample_count
-                }
+                    "sample_count": client_info.quality_metrics.sample_count,
+                },
             }
         }
 
@@ -716,14 +613,14 @@ def get_all_stream_scores():
                         "phone_distance": client_info.quality_metrics.phone_distance,
                         "last_update": client_info.last_update.isoformat(),
                         "sample_count": client_info.quality_metrics.sample_count,
-                        "is_active": client_info.is_active
-                    }
+                        "is_active": client_info.is_active,
+                    },
                 }
 
         return {
             "active_streams": len(detailed_scores),
             "stream_scores": detailed_scores,
-            "current_best": status["current_best_stream"]
+            "current_best": status["current_best_stream"],
         }
 
     except Exception as e:
@@ -751,7 +648,7 @@ def set_phone_distance(client_id: str, request: dict = Body(...)):
         return {
             "message": f"Phone distance set for {client_id}",
             "distance": distance,
-            "current_best_stream": status["current_best_stream"]
+            "current_best_stream": status["current_best_stream"],
         }
 
     except HTTPException:
@@ -788,8 +685,8 @@ def get_client_stream_info(client_id: str):
                 "noise_level": round(client_info.quality_metrics.noise_level, 4),
                 "phone_distance": client_info.quality_metrics.phone_distance,
                 "sample_count": client_info.quality_metrics.sample_count,
-                "timestamp": client_info.quality_metrics.timestamp.isoformat()
-            }
+                "timestamp": client_info.quality_metrics.timestamp.isoformat(),
+            },
         }
 
     except HTTPException:
@@ -797,265 +694,3 @@ def get_client_stream_info(client_id: str):
     except Exception as e:
         logger.error(f"Error getting client stream info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get client info: {str(e)}")
-
-
-@app.post("/streams/cleanup")
-def cleanup_inactive_streams(timeout_seconds: int = 300):
-    """Remove inactive streams that haven't been updated recently."""
-    try:
-        removed_clients = audio_scorer.cleanup_inactive_clients(timeout_seconds)
-
-        # Also remove from listening_clients list
-        for client_id in removed_clients:
-            if client_id in status["listening_clients"]:
-                status["listening_clients"].remove(client_id)
-
-        # Update best stream selection
-        best_stream_info = audio_scorer.get_best_stream()
-        status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-
-        return {
-            "message": f"Cleaned up {len(removed_clients)} inactive streams",
-            "removed_clients": removed_clients,
-            "timeout_seconds": timeout_seconds,
-            "current_best_stream": status["current_best_stream"]
-        }
-
-    except Exception as e:
-        logger.error(f"Error cleaning up streams: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup streams: {str(e)}")
-
-
-# ============ Wake Word Detection Endpoints ============
-
-@app.get("/wake-words")
-async def get_wake_words():
-    """Get all configured wake words"""
-    try:
-        wake_words = wake_word_detector.get_wake_words()
-        stats = wake_word_detector.get_stats()
-        
-        return {
-            "wake_words": {
-                word: {
-                    "word": config.word,
-                    "sensitivity": config.sensitivity,
-                    "enabled": config.enabled,
-                    "min_confidence": config.min_confidence,
-                    "cooldown_seconds": config.cooldown_seconds
-                }
-                for word, config in wake_words.items()
-            },
-            "stats": stats
-        }
-    except Exception as e:
-        logger.error(f"Error getting wake words: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get wake words: {str(e)}")
-
-
-@app.post("/wake-words")
-async def add_wake_word(
-    wake_word_data: dict = Body(...)
-):
-    """Add a new wake word"""
-    try:
-        word = wake_word_data.get("word", "").strip()
-        sensitivity = wake_word_data.get("sensitivity", 0.7)
-        min_confidence = wake_word_data.get("min_confidence", 0.5)
-        cooldown_seconds = wake_word_data.get("cooldown_seconds", 2.0)
-        
-        if not word:
-            raise HTTPException(status_code=400, detail="Wake word cannot be empty")
-        
-        success = wake_word_detector.add_wake_word(
-            word=word,
-            sensitivity=sensitivity,
-            min_confidence=min_confidence,
-            cooldown_seconds=cooldown_seconds
-        )
-        
-        if success:
-            return {
-                "message": f"Wake word '{word}' added successfully",
-                "word": word,
-                "sensitivity": sensitivity,
-                "min_confidence": min_confidence,
-                "cooldown_seconds": cooldown_seconds
-            }
-        else:
-            raise HTTPException(status_code=400, detail="Failed to add wake word")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error adding wake word: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to add wake word: {str(e)}")
-
-
-@app.get("/wake-words/detections")
-async def get_recent_detections(limit: int = 10):
-    """Get recent wake word detections"""
-    try:
-        detections = wake_word_detector.get_recent_detections(limit)
-        
-        return {
-            "detections": [
-                {
-                    "wake_word": detection.wake_word,
-                    "confidence": detection.confidence,
-                    "client_id": detection.client_id,
-                    "timestamp": detection.timestamp.isoformat(),
-                    "audio_snippet_length": detection.audio_snippet_length
-                }
-                for detection in detections
-            ],
-            "count": len(detections),
-            "limit": limit
-        }
-    except Exception as e:
-        logger.error(f"Error getting wake word detections: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get detections: {str(e)}")
-
-
-@app.delete("/wake-words/detections")
-async def clear_detections():
-    """Clear all wake word detections and reset cooldowns"""
-    try:
-        wake_word_detector.clear_detections()
-        return {
-            "message": "All wake word detections cleared",
-            "cleared": True
-        }
-    except Exception as e:
-        logger.error(f"Error clearing wake word detections: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear detections: {str(e)}")
-
-
-@app.patch("/wake-words/enable")
-async def enable_wake_word_detection():
-    """Enable the entire wake word detection system"""
-    try:
-        wake_word_detector.set_enabled(True)
-        return {
-            "message": "Wake word detection enabled",
-            "enabled": True
-        }
-    except Exception as e:
-        logger.error(f"Error enabling wake word detection: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to enable wake word detection: {str(e)}")
-
-
-@app.patch("/wake-words/disable")
-async def disable_wake_word_detection():
-    """Disable the entire wake word detection system"""
-    try:
-        wake_word_detector.set_enabled(False)
-        return {
-            "message": "Wake word detection disabled",
-            "enabled": False
-        }
-    except Exception as e:
-        logger.error(f"Error disabling wake word detection: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to disable wake word detection: {str(e)}")
-
-
-@app.post("/wake-words/process")
-async def process_text_for_wake_words(
-    data: dict = Body(...)
-):
-    """Process text for wake word detection (for testing or external integration)"""
-    try:
-        client_id = data.get("client_id", "unknown")
-        text = data.get("text", "")
-        audio_length = data.get("audio_length", 0.0)
-        
-        if not text:
-            raise HTTPException(status_code=400, detail="Text cannot be empty")
-        
-        detection = wake_word_detector.process_audio_text(client_id, text, audio_length)
-        
-        if detection:
-            return {
-                "detected": True,
-                "wake_word": detection.wake_word,
-                "confidence": detection.confidence,
-                "client_id": detection.client_id,
-                "timestamp": detection.timestamp.isoformat(),
-                "audio_snippet_length": detection.audio_snippet_length
-            }
-        else:
-            return {
-                "detected": False,
-                "message": "No wake word detected in the provided text"
-            }
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error processing text for wake words: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process text: {str(e)}")
-
-
-@app.delete("/wake-words/{word}")
-async def remove_wake_word(word: str):
-    """Remove a wake word"""
-    try:
-        success = wake_word_detector.remove_wake_word(word)
-        
-        if success:
-            return {
-                "message": f"Wake word '{word}' removed successfully",
-                "word": word
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error removing wake word: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to remove wake word: {str(e)}")
-
-
-@app.patch("/wake-words/{word}/enable")
-async def enable_wake_word(word: str):
-    """Enable a wake word"""
-    try:
-        success = wake_word_detector.set_wake_word_enabled(word, True)
-        
-        if success:
-            return {
-                "message": f"Wake word '{word}' enabled",
-                "word": word,
-                "enabled": True
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error enabling wake word: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to enable wake word: {str(e)}")
-
-
-@app.patch("/wake-words/{word}/disable")
-async def disable_wake_word(word: str):
-    """Disable a wake word"""
-    try:
-        success = wake_word_detector.set_wake_word_enabled(word, False)
-        
-        if success:
-            return {
-                "message": f"Wake word '{word}' disabled",
-                "word": word,
-                "enabled": False
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Wake word '{word}' not found")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error disabling wake word: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to disable wake word: {str(e)}")
