@@ -195,6 +195,7 @@ class AudioStreamScorer:
         # Use smaller nperseg for short audio clips
         nperseg = min(1024, len(audio_data) // 4) if len(audio_data) > 256 else len(audio_data) // 2
         nperseg = max(nperseg, 64)  # Minimum window size
+        nperseg = min(nperseg, len(audio_data))  # Ensure nperseg does not exceed audio length
 
         freqs, psd = signal.welch(audio_data, fs=self.sample_rate, nperseg=nperseg)
 
