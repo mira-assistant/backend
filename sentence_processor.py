@@ -1,5 +1,5 @@
 """
-Live transcription with real-time speaker diarization (up to two speakers) using
+Live interaction with real-time speaker diarization (up to two speakers) using
 local Whisper, WebRTC-VAD, and Resemblyzer with real-time audio denoising.
 
 Supports multilingual speech recognition including English and Indian languages.

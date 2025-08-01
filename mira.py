@@ -175,15 +175,15 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
 
         # Step 2: Transcribe and get voice embedding (no NLP)
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
+        interaction_result = sentence_processor.transcribe_interaction(sentence_buf)
 
-        if transcription_result is None:
+        if interaction_result is None:
             return
 
-        logger.info("Advanced transcription successful")
+        logger.info("Advanced interaction successful")
 
         # Step 2.5: Check for wake words in transcribed text
-        if transcription_result and transcription_result.get("text"):
+        if interaction_result and interaction_result.get("text"):
             # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
             audio_length = len(sentence_buf_raw) / (
                 16000 * 2
@@ -191,7 +191,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
 
             wake_word_detection = wake_word_detector.process_audio_text(
                 client_id=client_id or "unknown",
-                transcribed_text=transcription_result["text"],
+                transcribed_text=interaction_result["text"],
                 audio_length=audio_length,
             )
 
@@ -207,8 +207,8 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 # - Trigger specific workflows
 
         # Step 3: Check for shutdown command
-        if "mira" in transcription_result["text"].lower() and any(
-            cancelCMD in transcription_result["text"].lower() for cancelCMD in ("cancel", "exit")
+        if "mira" in interaction_result["text"].lower() and any(
+            cancelCMD in interaction_result["text"].lower() for cancelCMD in ("cancel", "exit")
         ):
             logger.info("Mira interrupted by voice command")
             disable_service()
@@ -218,14 +218,14 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
         db = get_db_session()
         try:
             interaction = Interaction(
-                **transcription_result,
+                **interaction_result,
             )
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
 
             speaker_id = processor.assign_speaker(
-                transcription_result["voice_embedding"],
+                interaction_result["voice_embedding"],
                 session=db,
                 interaction_id=interaction.id,  # Pass interaction_id for advanced cache
             )
@@ -334,7 +334,7 @@ def inference_endpoint(interaction_id: str):
 
 @app.get("/interactions", deprecated=True)
 def get_interactions(limit: int = 0):
-    """Get recent interactions for live transcription display."""
+    """Get recent interactions for live interaction display."""
     try:
         db = get_db_session()
         query = db.query(Interaction).order_by(Interaction.timestamp.desc())
@@ -350,52 +350,30 @@ def get_interactions(limit: int = 0):
         raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
 
 
-@app.delete("/interactions")
-def delete_interactions(limit: int = 0):
-    """Clear all interactions from the database."""
+@app.delete("/interactions/{interaction_id}")
+def delete_interaction(interaction_id: str):
+    """Delete a specific interaction from the database."""
     try:
         db = get_db_session()
         try:
-            if limit != 0:
-                # If limit is specified, first get the IDs to delete
-                interactions_to_delete = (
-                    db.query(Interaction.id)
-                    .order_by(Interaction.timestamp.asc())
-                    .limit(limit)
-                    .all()
-                )
-                interaction_ids = [interaction.id for interaction in interactions_to_delete]
-                deleted_count = (
-                    db.query(Interaction)
-                    .filter(Interaction.id.in_(interaction_ids))
-                    .delete(synchronize_session=False)
-                )
+            interaction = db.query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
+            if not interaction:
+                raise HTTPException(status_code=404, detail="Interaction not found")
 
-                status["recent_interactions"] = deque(
-                    [i for i in status["recent_interactions"] if i not in interaction_ids],
-                    maxlen=10,
-                )
-
-            else:
-                # Delete all interactions
-                deleted_count = db.query(Interaction).delete()
-                status["recent_interactions"].clear()
-
+            db.delete(interaction)
             db.commit()
 
-            logger.info(f"Cleared {deleted_count} interactions from database")
+            status["recent_interactions"].remove(interaction.id)
 
-            return {
-                "deleted_count": deleted_count,
-            }
+            return {"detail": "Interaction deleted successfully"}
         except Exception as e:
             db.rollback()
             raise e
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Error clearing interactions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
+        logger.error(f"Error deleting interaction: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete interaction: {str(e)}")
 
 
 @app.get("/conversations")
