@@ -9,11 +9,23 @@ from fastapi.testclient import TestClient
 import sys
 import os
 
+# Store original modules if they exist, so we can restore them later
+_original_modules = {}
+_modules_to_mock = [
+    'whisper', 'resemblyzer', 'noisereduce', 'spacy', 
+    'sentence_transformers', 'transformers', 'sklearn', 'scikit-learn',
+    'db', 'models', 'inference_processor', 'sentence_processor', 'context_processor'
+]
+
+for module_name in _modules_to_mock:
+    if module_name in sys.modules:
+        _original_modules[module_name] = sys.modules[module_name]
+
 # Mock heavy dependencies that aren't needed for API testing
+# Note: We specifically avoid mocking scipy.signal as it interferes with other tests
 sys.modules['whisper'] = Mock()
 sys.modules['resemblyzer'] = Mock()
 sys.modules['noisereduce'] = Mock()
-sys.modules['scipy.signal'] = Mock()
 sys.modules['spacy'] = Mock()
 sys.modules['sentence_transformers'] = Mock()
 sys.modules['transformers'] = Mock()
@@ -47,6 +59,17 @@ with patch.dict('sys.modules', {
     'sentence_processor': Mock(),
 }):
     from mira import app
+
+def teardown_module():
+    """Clean up global module mocks after tests complete"""
+    # Restore original modules
+    for module_name, original_module in _original_modules.items():
+        sys.modules[module_name] = original_module
+    
+    # Remove mocked modules that weren't originally present
+    for module_name in _modules_to_mock:
+        if module_name not in _original_modules and module_name in sys.modules:
+            del sys.modules[module_name]
 
 client = TestClient(app)
 
