@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StreamQualityMetrics:
     """Container for stream quality metrics"""
+
     snr: float = 0.0
     speech_clarity: float = 0.0
     volume_level: float = 0.0
@@ -41,6 +42,7 @@ class StreamQualityMetrics:
 @dataclass
 class ClientStreamInfo:
     """Information about a connected client's audio stream"""
+
     client_id: str
     is_active: bool = True
     last_update: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -73,19 +75,15 @@ class AudioStreamScorer:
 
         # Scoring weights (can be adjusted based on requirements)
         self.weights = {
-            'snr': 0.4,
-            'speech_clarity': 0.4,
-            'volume_level': 0.1,
-            'phone_distance': 0.1  # Placeholder for future use
+            "snr": 0.4,
+            "speech_clarity": 0.4,
+            "volume_level": 0.1,
+            "phone_distance": 0.1,  # Placeholder for future use
         }
 
-        if not self.dependencies_available:
-            logger.warning("Audio stream scorer initialized without full dependencies. Audio quality analysis disabled.")
-        else:
-            logger.info("AudioStreamScorer initialized with full dependencies")
-
-    def register_client(self, client_id: str, device_type: Optional[str] = None,
-                        location: Optional[Dict] = None) -> bool:
+    def register_client(
+        self, client_id: str, device_type: Optional[str] = None, location: Optional[Dict] = None
+    ) -> bool:
         """
         Register a new client for stream scoring.
 
@@ -102,9 +100,7 @@ class AudioStreamScorer:
                 logger.warning(f"Client {client_id} already registered, updating info")
 
             self.clients[client_id] = ClientStreamInfo(
-                client_id=client_id,
-                device_type=device_type,
-                location=location
+                client_id=client_id, device_type=device_type, location=location
             )
             self.score_history[client_id] = []
 
@@ -148,10 +144,7 @@ class AudioStreamScorer:
         Returns:
             float: SNR in dB
         """
-        if not self.dependencies_available or np is None:
-            logger.debug("SNR calculation skipped - dependencies not available")
-            return 0.0
-            
+
         if len(audio_data) == 0:
             return 0.0
 
@@ -170,12 +163,12 @@ class AudioStreamScorer:
             noise_power = signal_power * 0.1  # Assume 10% noise
         else:
             for i in range(0, len(audio_data) - window_size, window_size):
-                window = audio_data[i:i + window_size]
+                window = audio_data[i : i + window_size]
                 windowed_power.append(np.var(window))
 
             # Use bottom 20% as noise estimate
             windowed_power.sort()
-            noise_power = np.mean(windowed_power[:max(1, len(windowed_power) // 5)])
+            noise_power = np.mean(windowed_power[: max(1, len(windowed_power) // 5)])
 
         if noise_power <= 0:
             noise_power = signal_power * 0.01  # Fallback to 1% of signal
@@ -194,10 +187,7 @@ class AudioStreamScorer:
         Returns:
             float: Speech clarity score (0-100)
         """
-        if not self.dependencies_available or np is None or signal is None:
-            logger.debug("Speech clarity calculation skipped - dependencies not available")
-            return 0.0
-            
+
         if len(audio_data) == 0:
             return 0.0
 
@@ -235,7 +225,7 @@ class AudioStreamScorer:
 
         # Combine speech ratio and clarity factor
         clarity_score = (speech_ratio * 0.7 + clarity_factor * 0.3) * 100
-        return min(100.0, max(0.0, clarity_score))
+        return min(100.0, max(0.0, float(clarity_score)))
 
     def update_stream_quality(self, client_id: str, audio_data) -> Optional[StreamQualityMetrics]:
         """
@@ -258,13 +248,9 @@ class AudioStreamScorer:
             # Calculate quality metrics
             snr = self.calculate_snr(audio_data)
             speech_clarity = self.calculate_speech_clarity(audio_data)
-            
-            if self.dependencies_available and np is not None:
-                volume_level = float(np.sqrt(np.mean(audio_data ** 2)))  # RMS volume
-                noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
-            else:
-                volume_level = 0.0
-                noise_level = 0.0
+
+            volume_level = float(np.sqrt(np.mean(audio_data**2)))  # RMS volume
+            noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
 
             # Update metrics
             metrics = StreamQualityMetrics(
@@ -273,14 +259,16 @@ class AudioStreamScorer:
                 volume_level=volume_level,
                 noise_level=noise_level,
                 phone_distance=client_info.quality_metrics.phone_distance,  # Preserve existing value
-                sample_count=client_info.quality_metrics.sample_count + 1
+                sample_count=client_info.quality_metrics.sample_count + 1,
             )
 
             client_info.quality_metrics = metrics
             client_info.last_update = datetime.now(timezone.utc)
             client_info.is_active = True
 
-            logger.debug(f"Updated quality for {client_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}")
+            logger.debug(
+                f"Updated quality for {client_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}"
+            )
             return metrics
 
     def calculate_overall_score(self, metrics: StreamQualityMetrics) -> float:
@@ -307,10 +295,10 @@ class AudioStreamScorer:
 
         # Calculate weighted score
         overall_score = (
-            self.weights['snr'] * snr_score
-            + self.weights['speech_clarity'] * clarity_score
-            + self.weights['volume_level'] * volume_score
-            + self.weights['phone_distance'] * distance_score
+            self.weights["snr"] * snr_score
+            + self.weights["speech_clarity"] * clarity_score
+            + self.weights["volume_level"] * volume_score
+            + self.weights["phone_distance"] * distance_score
         )
 
         return min(100.0, max(0.0, overall_score))
@@ -327,8 +315,12 @@ class AudioStreamScorer:
                 return None
 
             # Optimization: If only one active client, return it immediately without scoring
-            active_clients = [client_id for client_id, client_info in self.clients.items() if client_info.is_active]
-            
+            active_clients = [
+                client_id
+                for client_id, client_info in self.clients.items()
+                if client_info.is_active
+            ]
+
             if len(active_clients) == 1:
                 single_client = active_clients[0]
                 if single_client != self.current_best_client:
@@ -363,7 +355,9 @@ class AudioStreamScorer:
             if best_client != self.current_best_client:
                 old_best = self.current_best_client
                 self.current_best_client = best_client
-                logger.info(f"Best stream changed from {old_best} to {best_client} (score: {best_score:.1f})")
+                logger.info(
+                    f"Best stream changed from {old_best} to {best_client} (score: {best_score:.1f})"
+                )
 
             return (best_client, best_score) if best_client else None
 
@@ -435,11 +429,11 @@ class AudioStreamScorer:
                     if self.current_best_client == client_id:
                         self.current_best_client = None
                         logger.info(f"Best client {client_id} timed out, clearing selection")
-                    
+
                     del self.clients[client_id]
                     if client_id in self.score_history:
                         del self.score_history[client_id]
-                    
+
                     removed_clients.append(client_id)
                     logger.info(f"Removed inactive client {client_id}")
 

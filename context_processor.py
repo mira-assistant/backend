@@ -75,7 +75,7 @@ class ContextProcessor:
         try:
             interactions = (
                 session.query(Interaction)
-                .filter(Interaction.voice_embedding != None, Interaction.speaker_id != None)
+                .filter(Interaction.voice_embedding.isnot(None), Interaction.speaker_id.isnot(None))
                 .all()
             )
             self._speaker_embeddings = [
@@ -195,7 +195,10 @@ class ContextProcessor:
 
             print("best similarity:", best_sim)
 
-            if best_sim < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD:
+            if (
+                best_sim
+                < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD
+            ):
                 new_index = (
                     session.query(Person.index).order_by(Person.index.desc()).first() or [0]
                 )[0] + 1
