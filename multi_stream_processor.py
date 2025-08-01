@@ -18,18 +18,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import threading
-
-# Handle optional dependencies gracefully
-try:
-    import numpy as np
-    from scipy import signal
-    DEPENDENCIES_AVAILABLE = True
-except ImportError:
-    # Fallback when dependencies are not available
-    np = None
-    signal = None
-    DEPENDENCIES_AVAILABLE = False
-    logging.warning("Audio stream scorer dependencies (numpy, scipy) not available. Audio scoring features disabled.")
+import numpy as np
+from scipy import signal
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +70,6 @@ class AudioStreamScorer:
         self.current_best_client: Optional[str] = None
         self.score_history: Dict[str, List[float]] = {}
         self._lock = threading.Lock()
-        self.dependencies_available = DEPENDENCIES_AVAILABLE
 
         # Scoring weights (can be adjusted based on requirements)
         self.weights = {
