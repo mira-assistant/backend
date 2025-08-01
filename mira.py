@@ -34,6 +34,8 @@ status: dict = {
         "audio_processing": True,
     },
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
+    "audio_recording": False,  # Track audio recording state
+    "vad_active": False,  # Track VAD process state
 }
 
 
@@ -102,13 +104,92 @@ def deregister_client(client_id: str):
 @app.patch("/service/enable")
 def enable_service():
     status["enabled"] = True
+    logger.info("Service enabled successfully")
     return {"message": "Service enabled successfully"}
 
 
 @app.patch("/service/disable")
 def disable_service():
     status["enabled"] = False
+    status["audio_recording"] = False
+    status["vad_active"] = False
+    logger.info("Service disabled successfully - audio recording and VAD processes stopped")
     return {"message": "Service disabled successfully"}
+
+
+@app.post("/audio/stop")
+def stop_audio_recording():
+    """Stop audio recording and terminate VAD processes."""
+    logger.info("Audio recording stop request received")
+    
+    previous_audio_state = status["audio_recording"]
+    previous_vad_state = status["vad_active"]
+    
+    # Stop audio recording and VAD processes
+    status["audio_recording"] = False
+    status["vad_active"] = False
+    
+    logger.info(f"Audio recording stopped - previous audio state: {previous_audio_state}, previous VAD state: {previous_vad_state}")
+    logger.info("VAD processes terminated successfully")
+    
+    return {
+        "message": "Audio recording stopped successfully",
+        "audio_recording": status["audio_recording"],
+        "vad_active": status["vad_active"],
+        "previous_states": {
+            "audio_recording": previous_audio_state,
+            "vad_active": previous_vad_state
+        }
+    }
+
+
+@app.post("/audio/start")
+def start_audio_recording():
+    """Start audio recording and initialize VAD processes."""
+    logger.info("Audio recording start request received")
+    
+    if not status["enabled"]:
+        logger.warning("Cannot start audio recording - service is disabled")
+        return {
+            "message": "Cannot start audio recording - service is disabled",
+            "audio_recording": False,
+            "vad_active": False,
+            "service_enabled": False
+        }
+    
+    previous_audio_state = status["audio_recording"]
+    previous_vad_state = status["vad_active"]
+    
+    # Start audio recording and VAD processes
+    status["audio_recording"] = True
+    status["vad_active"] = True
+    
+    logger.info(f"Audio recording started - previous audio state: {previous_audio_state}, previous VAD state: {previous_vad_state}")
+    logger.info("VAD processes initialized successfully")
+    
+    return {
+        "message": "Audio recording started successfully",
+        "audio_recording": status["audio_recording"],
+        "vad_active": status["vad_active"],
+        "previous_states": {
+            "audio_recording": previous_audio_state,
+            "vad_active": previous_vad_state
+        }
+    }
+
+
+@app.get("/audio/status")
+def get_audio_status():
+    """Get current audio recording and VAD status."""
+    audio_status = {
+        "service_enabled": status["enabled"],
+        "audio_recording": status["audio_recording"],
+        "vad_active": status["vad_active"],
+        "listening_clients": len(status["listening_clients"]),
+        "client_list": status["listening_clients"]
+    }
+    logger.info(f"Audio status requested: {audio_status}")
+    return audio_status
 
 
 @app.post("/interactions/register")
@@ -116,6 +197,15 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
     """Register interaction - transcribe sentence, identify speaker."""
 
     try:
+        # Check if service is enabled and audio recording is active
+        if not status["enabled"]:
+            logger.warning("Interaction registration rejected - service is disabled")
+            return {"message": "Service is disabled", "status": "rejected"}
+            
+        if not status["audio_recording"]:
+            logger.warning("Interaction registration rejected - audio recording is stopped")
+            return {"message": "Audio recording is stopped", "status": "rejected"}
+
         if len(sentence_buf_raw) == 0:
             raise ValueError("No audio data received")
 
@@ -126,7 +216,8 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
         transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
 
         if transcription_result is None:
-            return
+            logger.info("Transcription returned no result - audio may be too short or silent")
+            return {"message": "No transcription result", "status": "no_content"}
 
         logger.info("Advanced transcription successful")
 
@@ -168,6 +259,7 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
                 "text": interaction.text,
                 "timestamp": interaction.timestamp.isoformat(),
                 "speaker_id": str(interaction.speaker_id),
+                "status": "success"
             }
 
         except Exception as db_error:

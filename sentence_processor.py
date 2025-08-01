@@ -186,6 +186,7 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
     """
+    logger.info("Starting transcribe_interaction process")
 
     # Use cached models instead of loading them each time
     asr_model, spk_encoder = get_models()
@@ -196,18 +197,24 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
 
     interaction = dict()
 
+    logger.info(f"Processing audio buffer of size: {len(sentence_buf)} bytes")
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
+    
     if len(audio_f32) < SAMPLE_RATE * 1:
         # Not enough float32 samples (1 second worth)
+        logger.warning(f"Audio buffer too short: {len(audio_f32)} samples, minimum required: {SAMPLE_RATE}")
         return None
 
+    logger.info("Applying real-time audio denoising")
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
     denoised_audio = denoised_audio.astype(np.float32)
 
     if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
+        logger.error("Audio contains NaN or Inf values after denoising")
         raise ValueError("Audio contains NaN or Inf values")
 
+    logger.info("Starting ASR transcription")
     result = asr_model.transcribe(denoised_audio)
     text = str(
         " ".join(result["text"]).strip()
@@ -216,12 +223,17 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     )
 
     if not text:
+        logger.warning("Transcription resulted in empty text")
         return None
 
+    logger.info(f"Transcription successful: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+
+    logger.info("Generating voice embedding")
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
 
     interaction["text"] = text
     interaction["voice_embedding"] = embedding.tolist()
 
+    logger.info("Transcribe_interaction process completed successfully")
     return interaction
