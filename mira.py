@@ -1,5 +1,5 @@
 import uuid
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import json
@@ -14,6 +14,8 @@ from models import Interaction, Person, Conversation
 import inference_processor
 import sentence_processor
 import context_processor
+from multi_stream_processor import AudioStreamScorer
+from command_processor import WakeWordDetector
 
 
 # Setup logging
@@ -21,19 +23,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 processor = context_processor.create_context_processor()
 
+# Initialize audio stream scorer
+audio_scorer = AudioStreamScorer()
+
+# Initialize wake word detector
+wake_word_detector = WakeWordDetector()
+
 status: dict = {
-    "version": "4.1.1",
+    "version": "4.2.0",
     "listening_clients": list(),
     "enabled": False,
-    "mode": "advanced",
-    "features": {
-        "advanced_nlp": True,
-        "speaker_clustering": True,
-        "context_summarization": True,
-        "database_integration": True,
-        "audio_processing": True,
-    },
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
+    "current_best_stream": None,
 }
 
 
@@ -83,20 +84,40 @@ def root():
 
 
 @app.post("/service/client/register/{client_id}")
-def register_client(client_id: str):
+def register_client(client_id: str, device_type: str | None = None, location: dict | None = None):
+    """Register a client and initialize stream scoring."""
     status["listening_clients"].append(client_id)
-    return {"message": f"{client_id} registered successfully"}
+
+    # Register client with audio stream scorer
+    success = audio_scorer.register_client(
+        client_id=client_id, device_type=device_type, location=location
+    )
+
+    if success:
+        logger.info(f"Client {client_id} registered for stream scoring")
+
+    return {"message": f"{client_id} registered successfully", "stream_scoring_enabled": success}
 
 
 @app.delete("/service/client/deregister/{client_id}")
 def deregister_client(client_id: str):
+    """Deregister a client and remove from stream scoring."""
     if client_id in status["listening_clients"]:
         status["listening_clients"].remove(client_id)
     else:
         print("Client already deregistered or not found:", client_id)
+
+    # Deregister from audio stream scorer
+    success = audio_scorer.deregister_client(client_id)
+
+    # Update best stream if this client was selected
+    best_stream_info = audio_scorer.get_best_stream()
+    status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
+
+    if client_id not in status["listening_clients"] and not success:
         return {"message": f"{client_id} already deregistered or not found"}
 
-    return {"message": f"{client_id} deregistered successfully"}
+    return {"message": f"{client_id} deregistered successfully", "stream_scoring_removed": success}
 
 
 @app.patch("/service/enable")
@@ -112,44 +133,99 @@ def disable_service():
 
 
 @app.post("/interactions/register")
-def register_interaction(sentence_buf_raw: bytes = Body(...)):
-    """Register interaction - transcribe sentence, identify speaker."""
+async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
+    """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
+
+    sentence_buf_raw = await audio.read()
 
     try:
         if len(sentence_buf_raw) == 0:
             raise ValueError("No audio data received")
 
-        logger.info(f"Processing audio data: {len(sentence_buf_raw)} bytes")
+        logger.info(
+            f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
+        )
 
-        # Step 1: Transcribe and get voice embedding (no NLP)
+        # Step 1: Update stream quality if client_id provided
+        if client_id:
+            # Convert audio for quality analysis first
+            audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
+            metrics = audio_scorer.update_stream_quality(client_id, audio_float)
+
+            if metrics:
+                logger.debug(f"Updated stream quality for {client_id}: SNR={metrics.snr:.1f}dB")
+
+            # Update best stream selection
+            best_stream_info = audio_scorer.get_best_stream()
+            status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
+
+            # Check if this client has the best stream quality
+            if best_stream_info and best_stream_info[0] != client_id:
+                logger.info(
+                    f"Interaction from {client_id} not registered - better stream available from {best_stream_info[0]}"
+                )
+                return {
+                    "message": "Interaction was not registered due to better audio streams",
+                    "best_stream_client": best_stream_info[0],
+                    "current_client_score": round(
+                        audio_scorer.get_all_stream_scores().get(client_id, 0), 2
+                    ),
+                    "best_stream_score": round(best_stream_info[1], 2),
+                }
+
+        # Step 2: Transcribe and get voice embedding (no NLP)
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
+        interaction_result = sentence_processor.transcribe_interaction(sentence_buf)
 
-        if transcription_result is None:
+        if interaction_result is None:
             return
 
-        logger.info("Advanced transcription successful")
+        logger.info("Advanced interaction successful")
 
-        # Step 2: Check for shutdown command
-        if "mira" in transcription_result["text"].lower() and any(
-            cancelCMD in transcription_result["text"].lower() for cancelCMD in ("cancel", "exit")
+        # Step 2.5: Check for wake words in transcribed text
+        if interaction_result and interaction_result.get("text"):
+            # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
+            audio_length = len(sentence_buf_raw) / (
+                16000 * 2
+            )  # bytes / (sample_rate * bytes_per_sample)
+
+            wake_word_detection = wake_word_detector.process_audio_text(
+                client_id=client_id or "unknown",
+                transcribed_text=interaction_result["text"],
+                audio_length=audio_length,
+            )
+
+            if wake_word_detection:
+                logger.info(
+                    f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
+                )
+                # Wake word detected - could trigger specific actions here
+                # For now, we just log it, but this could be extended to:
+                # - Start/stop recording
+                # - Change system state
+                # - Send notifications
+                # - Trigger specific workflows
+
+        # Step 3: Check for shutdown command
+        if "mira" in interaction_result["text"].lower() and any(
+            cancelCMD in interaction_result["text"].lower() for cancelCMD in ("cancel", "exit")
         ):
             logger.info("Mira interrupted by voice command")
             disable_service()
             return {"message": "Service disabled by voice command"}
 
-        # Step 3: Assign speaker, create interaction, save basic info
+        # Step 4: Assign speaker, create interaction, save basic info
         db = get_db_session()
         try:
             interaction = Interaction(
-                **transcription_result,
+                **interaction_result,
             )
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
 
             speaker_id = processor.assign_speaker(
-                transcription_result["voice_embedding"],
+                interaction_result["voice_embedding"],
                 session=db,
                 interaction_id=interaction.id,  # Pass interaction_id for advanced cache
             )
@@ -163,12 +239,23 @@ def register_interaction(sentence_buf_raw: bytes = Body(...)):
             status["recent_interactions"].append(interaction.id)
 
             # Return minimal interaction details for frontend display
-            return {
+            response = {
                 "id": str(interaction.id),
                 "text": interaction.text,
                 "timestamp": interaction.timestamp.isoformat(),
                 "speaker_id": str(interaction.speaker_id),
             }
+
+            # Include stream quality info if available
+            if client_id and client_id in [
+                client.client_id for client in audio_scorer.clients.values()
+            ]:
+                response["stream_quality"] = {
+                    "client_id": client_id,
+                    "is_best_stream": client_id == status["current_best_stream"],
+                }
+
+            return response
 
         except Exception as db_error:
             logger.error(f"Database error: {db_error}", exc_info=True)
@@ -247,7 +334,7 @@ def inference_endpoint(interaction_id: str):
 
 @app.get("/interactions", deprecated=True)
 def get_interactions(limit: int = 0):
-    """Get recent interactions for live transcription display."""
+    """Get recent interactions for live interaction display."""
     try:
         db = get_db_session()
         query = db.query(Interaction).order_by(Interaction.timestamp.desc())
@@ -263,52 +350,30 @@ def get_interactions(limit: int = 0):
         raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
 
 
-@app.delete("/interactions")
-def delete_interactions(limit: int = 0):
-    """Clear all interactions from the database."""
+@app.delete("/interactions/{interaction_id}")
+def delete_interaction(interaction_id: str):
+    """Delete a specific interaction from the database."""
     try:
         db = get_db_session()
         try:
-            if limit != 0:
-                # If limit is specified, first get the IDs to delete
-                interactions_to_delete = (
-                    db.query(Interaction.id)
-                    .order_by(Interaction.timestamp.asc())
-                    .limit(limit)
-                    .all()
-                )
-                interaction_ids = [interaction.id for interaction in interactions_to_delete]
-                deleted_count = (
-                    db.query(Interaction)
-                    .filter(Interaction.id.in_(interaction_ids))
-                    .delete(synchronize_session=False)
-                )
+            interaction = db.query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
+            if not interaction:
+                raise HTTPException(status_code=404, detail="Interaction not found")
 
-                status["recent_interactions"] = deque(
-                    [i for i in status["recent_interactions"] if i not in interaction_ids],
-                    maxlen=10,
-                )
-
-            else:
-                # Delete all interactions
-                deleted_count = db.query(Interaction).delete()
-                status["recent_interactions"].clear()
-
+            db.delete(interaction)
             db.commit()
 
-            logger.info(f"Cleared {deleted_count} interactions from database")
+            status["recent_interactions"].remove(interaction.id)
 
-            return {
-                "deleted_count": deleted_count,
-            }
+            return {"detail": "Interaction deleted successfully"}
         except Exception as e:
             db.rollback()
             raise e
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Error clearing interactions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear interactions: {str(e)}")
+        logger.error(f"Error deleting interaction: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete interaction: {str(e)}")
 
 
 @app.get("/conversations")
@@ -350,19 +415,260 @@ def get_recent_conversations(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
 
 
-@app.get("/speakers/{speaker_id}")
-def get_speaker(speaker_id: str):
-    """Get a specific speaker by ID."""
+@app.get("/person/{person_id}")
+def get_person(person_id: str):
+    """Get a specific person by ID."""
     try:
         db = get_db_session()
         try:
-            speaker = db.query(Person).filter_by(id=uuid.UUID(speaker_id)).first()
-            if not speaker:
-                raise HTTPException(status_code=404, detail="Speaker not found")
+            person = db.query(Person).filter_by(id=uuid.UUID(person_id)).first()
+            if not person:
+                raise HTTPException(status_code=404, detail="Person not found")
 
-            return speaker
+            return person
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Error fetching speaker: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch speaker: {str(e)}")
+        logger.error(f"Error fetching person: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch person: {str(e)}")
+
+
+# ============ Phone-Specific Endpoints ============
+
+
+@app.patch("/phone/service/enable")
+def enable_phone_service():
+    """Enable the Mira service (phone endpoint)."""
+    status["enabled"] = True
+    return {"message": "Mira service enabled successfully", "enabled": True}
+
+
+@app.patch("/phone/service/disable")
+def disable_phone_service():
+    """Disable the Mira service (phone endpoint)."""
+    status["enabled"] = False
+    return {"message": "Mira service disabled successfully", "enabled": False}
+
+
+@app.get("/phone/service/status")
+def get_phone_service_status():
+    """Get the current service status (phone endpoint)."""
+    return {
+        "enabled": status["enabled"],
+        "version": status["version"],
+        "mode": status["mode"],
+        "listening_clients": len(status["listening_clients"]),
+        "current_best_stream": status["current_best_stream"],
+    }
+
+
+@app.post("/phone/distance/update")
+def update_phone_distance(request: dict = Body(...)):
+    """Update phone distance to all clients (affects stream scoring)."""
+    try:
+        distance = request.get("distance")
+        if distance is None:
+            raise HTTPException(status_code=400, detail="Distance value is required")
+
+        if not isinstance(distance, (int, float)) or distance < 0:
+            raise HTTPException(status_code=400, detail="Distance must be a non-negative number")
+
+        # Update distance for all active clients
+        updated_clients = []
+        for client_id in status["listening_clients"]:
+            success = audio_scorer.set_phone_distance(client_id, distance)
+            if success:
+                updated_clients.append(client_id)
+
+        # Update best stream selection after distance changes
+        best_stream_info = audio_scorer.get_best_stream()
+        status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
+
+        return {
+            "message": f"Phone distance updated for {len(updated_clients)} clients",
+            "distance": distance,
+            "updated_clients": updated_clients,
+            "current_best_stream": status["current_best_stream"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating phone distance: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update phone distance: {str(e)}")
+
+
+@app.get("/phone/distance/nearest_client")
+def get_nearest_client():
+    """Get the client with the shortest phone distance."""
+    try:
+        nearest_client = None
+        nearest_distance = float("inf")
+
+        for client_id in status["listening_clients"]:
+            client_info = audio_scorer.get_client_info(client_id)
+            if client_info and client_info.quality_metrics.phone_distance is not None:
+                if client_info.quality_metrics.phone_distance < nearest_distance:
+                    nearest_distance = client_info.quality_metrics.phone_distance
+                    nearest_client = client_id
+
+        if nearest_client is None:
+            return {
+                "message": "No clients with distance information available",
+                "nearest_client": None,
+                "distance": None,
+            }
+
+        return {
+            "nearest_client": nearest_client,
+            "distance": nearest_distance,
+            "total_clients": len(status["listening_clients"]),
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting nearest client: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get nearest client: {str(e)}")
+
+
+# ============ Audio Stream Scoring Endpoints ============
+
+
+@app.get("/streams/best")
+def get_best_stream():
+    """Get the currently selected best audio stream."""
+    try:
+        best_stream_info = audio_scorer.get_best_stream()
+
+        if not best_stream_info:
+            return {"message": "No active streams available", "best_stream": None}
+
+        client_id, score = best_stream_info
+        client_info = audio_scorer.get_client_info(client_id)
+
+        if not client_info:
+            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
+        response = {
+            "best_stream": {
+                "client_id": client_id,
+                "score": round(score, 2),
+                "metrics": {
+                    "snr": round(client_info.quality_metrics.snr, 2),
+                    "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
+                    "volume_level": round(client_info.quality_metrics.volume_level, 4),
+                    "noise_level": round(client_info.quality_metrics.noise_level, 4),
+                    "phone_distance": client_info.quality_metrics.phone_distance,
+                    "last_update": client_info.last_update.isoformat(),
+                    "sample_count": client_info.quality_metrics.sample_count,
+                },
+            }
+        }
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting best stream: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get best stream: {str(e)}")
+
+
+@app.get("/streams/scores")
+def get_all_stream_scores():
+    """Get quality scores for all active streams."""
+    try:
+        scores = audio_scorer.get_all_stream_scores()
+
+        detailed_scores = {}
+        for client_id, score in scores.items():
+            client_info = audio_scorer.get_client_info(client_id)
+            if client_info:
+                detailed_scores[client_id] = {
+                    "score": round(score, 2),
+                    "metrics": {
+                        "snr": round(client_info.quality_metrics.snr, 2),
+                        "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
+                        "volume_level": round(client_info.quality_metrics.volume_level, 4),
+                        "noise_level": round(client_info.quality_metrics.noise_level, 4),
+                        "phone_distance": client_info.quality_metrics.phone_distance,
+                        "last_update": client_info.last_update.isoformat(),
+                        "sample_count": client_info.quality_metrics.sample_count,
+                        "is_active": client_info.is_active,
+                    },
+                }
+
+        return {
+            "active_streams": len(detailed_scores),
+            "stream_scores": detailed_scores,
+            "current_best": status["current_best_stream"],
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting stream scores: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get stream scores: {str(e)}")
+
+
+@app.post("/streams/{client_id}/distance")
+def set_phone_distance(client_id: str, request: dict = Body(...)):
+    """Set phone distance for a client (future feature)."""
+    try:
+        distance = request.get("distance")
+        if distance is None:
+            raise HTTPException(status_code=400, detail="Distance value is required")
+
+        success = audio_scorer.set_phone_distance(client_id, distance)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
+        # Update best stream selection after distance change
+        best_stream_info = audio_scorer.get_best_stream()
+        status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
+
+        return {
+            "message": f"Phone distance set for {client_id}",
+            "distance": distance,
+            "current_best_stream": status["current_best_stream"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting phone distance: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set phone distance: {str(e)}")
+
+
+@app.get("/streams/{client_id}/info")
+def get_client_stream_info(client_id: str):
+    """Get detailed information about a specific client's stream."""
+    try:
+        client_info = audio_scorer.get_client_info(client_id)
+
+        if not client_info:
+            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
+        # Calculate current score
+        current_score = audio_scorer.calculate_overall_score(client_info.quality_metrics)
+
+        return {
+            "client_id": client_info.client_id,
+            "is_active": client_info.is_active,
+            "device_type": client_info.device_type,
+            "location": client_info.location,
+            "last_update": client_info.last_update.isoformat(),
+            "current_score": round(current_score, 2),
+            "is_best_stream": client_id == status["current_best_stream"],
+            "quality_metrics": {
+                "snr": round(client_info.quality_metrics.snr, 2),
+                "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
+                "volume_level": round(client_info.quality_metrics.volume_level, 4),
+                "noise_level": round(client_info.quality_metrics.noise_level, 4),
+                "phone_distance": client_info.quality_metrics.phone_distance,
+                "sample_count": client_info.quality_metrics.sample_count,
+                "timestamp": client_info.quality_metrics.timestamp.isoformat(),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting client stream info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get client info: {str(e)}")

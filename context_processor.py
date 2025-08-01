@@ -22,8 +22,66 @@ from models import (
     Interaction,
     Conversation,
 )
-from context_config import ContextProcessorConfig
 from db import get_db_session
+
+from typing import Literal
+
+
+class ContextProcessorConfig:
+    """Configuration class for the context processor."""
+
+    class SpeakerRecognitionConfig:
+        """Speaker recognition parameters."""
+
+        SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
+        """Cosine similarity threshold for determining if two voice samples are from the same speaker.
+        Lowering this value decreases sensitivity, making it less likely to group different speakers together,
+        but may increase false negatives (splitting the same speaker into multiple clusters)."""
+        DBSCAN_EPS: float = 0.9
+        """Epsilon parameter for DBSCAN clustering algorithm, controlling the maximum distance between samples in a cluster."""
+        DBSCAN_MIN_SAMPLES: Literal[2] = 2
+        """Minimum number of samples required to form a cluster in DBSCAN."""
+
+    class NLPConfig:
+        """Natural Language Processing parameters."""
+
+        SPACY_MODEL: Literal["en_core_web_sm"] = "en_core_web_sm"
+        """spaCy language model used for natural language processing tasks."""
+        CONTEXT_SIMILARITY_THRESHOLD: float = 0.7
+        """Threshold for semantic similarity when comparing contexts.
+        Lowering this value makes the system more likely to consider contexts as similar,
+        potentially increasing recall but reducing precision."""
+
+    class ContextManagementParameters:
+        """Parameters for managing context and conversation boundaries."""
+
+        CONVERSATION_GAP_THRESHOLD: Literal[300] = 300
+        """Time gap in seconds used to determine conversation boundaries.
+        Lowering this value will result in more frequent splitting of conversations."""
+        SHORT_TERM_CONTEXT_MAX_RESULTS: Literal[20] = 20
+        """Maximum number of recent interactions to include in the short-term context."""
+        LONG_TERM_CONTEXT_MAX_RESULTS: Literal[5] = 5
+        """Maximum number of results to retrieve from long-term context storage."""
+        SUMMARY_MAX_LENGTH: Literal[200] = 200
+        """Maximum length (in tokens or characters) for generated context summaries."""
+
+    class PerformanceConfig:
+        """Performance optimization parameters."""
+
+        BATCH_PROCESSING: Literal[False] = False
+        """Enable or disable batch processing to improve performance on large datasets."""
+        CACHE_EMBEDDINGS: Literal[True] = True
+        """Enable or disable caching of voice and text embeddings to speed up repeated computations."""
+        ASYNC_PROCESSING: Literal[False] = False
+        """Enable or disable asynchronous processing for improved throughput."""
+
+    class DebugConfig:
+        """Debugging and logging parameters."""
+
+        DEBUG_MODE: Literal[False] = False
+        """Enable or disable debug mode for verbose logging and additional diagnostics."""
+        LOG_LEVEL: Literal["INFO"] = "INFO"
+        """Logging level for controlling the verbosity of log output."""
 
 
 class ContextProcessor:
@@ -37,7 +95,7 @@ class ContextProcessor:
 
         # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: List[np.ndarray] = []
-        self._speaker_person_ids: List[uuid.UUID] = []
+        self._speaker_ids: List[uuid.UUID] = []
         self._speaker_interaction_ids: List[uuid.UUID] = []
         self._cluster_labels: List[int] = []
         self._clusters_dirty: bool = True
@@ -75,13 +133,13 @@ class ContextProcessor:
         try:
             interactions = (
                 session.query(Interaction)
-                .filter(Interaction.voice_embedding != None, Interaction.speaker_id != None)
+                .filter(Interaction.voice_embedding.isnot(None), Interaction.speaker_id.isnot(None))
                 .all()
             )
             self._speaker_embeddings = [
                 np.array(i.voice_embedding, dtype=np.float32) for i in interactions
             ]
-            self._speaker_person_ids = [i.speaker_id for i in interactions]
+            self._speaker_ids = [i.speaker_id for i in interactions]
             self._speaker_interaction_ids = [i.id for i in interactions]
             self._clusters_dirty = True
         finally:
@@ -147,7 +205,7 @@ class ContextProcessor:
             # Helper to append to cache with correct types
             def _append_cache(embedding, person_id, interaction_id):
                 self._speaker_embeddings.append(embedding)
-                self._speaker_person_ids.append(person_id)
+                self._speaker_ids.append(person_id)
                 self._speaker_interaction_ids.append(interaction_id)
                 self._clusters_dirty = True
 
@@ -195,7 +253,10 @@ class ContextProcessor:
 
             print("best similarity:", best_sim)
 
-            if best_sim < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD:
+            if (
+                best_sim
+                < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD
+            ):
                 new_index = (
                     session.query(Person.index).order_by(Person.index.desc()).first() or [0]
                 )[0] + 1
@@ -211,7 +272,7 @@ class ContextProcessor:
                 return new_person.id
 
             # Assign to the Person of the best match in the cluster
-            matched_person_id = self._speaker_person_ids[best_idx]
+            matched_person_id = self._speaker_ids[best_idx]
             matched_person = session.query(Person).filter_by(id=matched_person_id).first()
             if matched_person and matched_person.voice_embedding is not None:
                 old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
@@ -231,12 +292,12 @@ class ContextProcessor:
         Interactions in cache must match the order of cluster_labels.
         """
         if (
-            len(self._speaker_person_ids) == 0
+            len(self._speaker_ids) == 0
             or len(cluster_labels) == 0
-            or len(self._speaker_person_ids) != len(cluster_labels)
+            or len(self._speaker_ids) != len(cluster_labels)
         ):
             return
-        for person_id, label in zip(self._speaker_person_ids, cluster_labels):
+        for person_id, label in zip(self._speaker_ids, cluster_labels):
             if person_id is None:
                 continue
             person = session.query(Person).filter_by(id=person_id).first()
