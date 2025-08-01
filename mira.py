@@ -437,22 +437,22 @@ def get_recent_conversations(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
 
 
-@app.get("/speakers/{speaker_id}")
-def get_speaker(speaker_id: str):
-    """Get a specific speaker by ID."""
+@app.get("/person/{person_id}")
+def get_person(person_id: str):
+    """Get a specific person by ID."""
     try:
         db = get_db_session()
         try:
-            speaker = db.query(Person).filter_by(id=uuid.UUID(speaker_id)).first()
-            if not speaker:
-                raise HTTPException(status_code=404, detail="Speaker not found")
+            person = db.query(Person).filter_by(id=uuid.UUID(person_id)).first()
+            if not person:
+                raise HTTPException(status_code=404, detail="Person not found")
 
-            return speaker
+            return person
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Error fetching speaker: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch speaker: {str(e)}")
+        logger.error(f"Error fetching person: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch person: {str(e)}")
 
 
 # ============ Phone-Specific Endpoints ============

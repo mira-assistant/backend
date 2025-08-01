@@ -37,7 +37,7 @@ class ContextProcessor:
 
         # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: List[np.ndarray] = []
-        self._speaker_person_ids: List[uuid.UUID] = []
+        self._speaker_ids: List[uuid.UUID] = []
         self._speaker_interaction_ids: List[uuid.UUID] = []
         self._cluster_labels: List[int] = []
         self._clusters_dirty: bool = True
@@ -81,7 +81,7 @@ class ContextProcessor:
             self._speaker_embeddings = [
                 np.array(i.voice_embedding, dtype=np.float32) for i in interactions
             ]
-            self._speaker_person_ids = [i.speaker_id for i in interactions]
+            self._speaker_ids = [i.speaker_id for i in interactions]
             self._speaker_interaction_ids = [i.id for i in interactions]
             self._clusters_dirty = True
         finally:
@@ -147,7 +147,7 @@ class ContextProcessor:
             # Helper to append to cache with correct types
             def _append_cache(embedding, person_id, interaction_id):
                 self._speaker_embeddings.append(embedding)
-                self._speaker_person_ids.append(person_id)
+                self._speaker_ids.append(person_id)
                 self._speaker_interaction_ids.append(interaction_id)
                 self._clusters_dirty = True
 
@@ -214,7 +214,7 @@ class ContextProcessor:
                 return new_person.id
 
             # Assign to the Person of the best match in the cluster
-            matched_person_id = self._speaker_person_ids[best_idx]
+            matched_person_id = self._speaker_ids[best_idx]
             matched_person = session.query(Person).filter_by(id=matched_person_id).first()
             if matched_person and matched_person.voice_embedding is not None:
                 old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
@@ -234,12 +234,12 @@ class ContextProcessor:
         Interactions in cache must match the order of cluster_labels.
         """
         if (
-            len(self._speaker_person_ids) == 0
+            len(self._speaker_ids) == 0
             or len(cluster_labels) == 0
-            or len(self._speaker_person_ids) != len(cluster_labels)
+            or len(self._speaker_ids) != len(cluster_labels)
         ):
             return
-        for person_id, label in zip(self._speaker_person_ids, cluster_labels):
+        for person_id, label in zip(self._speaker_ids, cluster_labels):
             if person_id is None:
                 continue
             person = session.query(Person).filter_by(id=person_id).first()
