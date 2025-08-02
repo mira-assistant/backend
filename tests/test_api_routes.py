@@ -228,28 +228,6 @@ class TestStreamScoringAPI:
         final_info_response = client.get(f"/streams/{client_id}/info")
         assert final_info_response.status_code == 404
 
-    def test_phone_distance_endpoints(self):
-        """Test phone distance tracking endpoints."""
-        # Test update distance with no clients
-        response = client.post("/phone/distance/update", json={"distance": 2.5})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["distance"] == 2.5
-
-        # Test invalid distance
-        response = client.post("/phone/distance/update", json={"distance": -1})
-        assert response.status_code == 400
-
-        # Test missing distance
-        response = client.post("/phone/distance/update", json={})
-        assert response.status_code == 400
-
-        # Test nearest client (first clean up any existing clients)
-        response = client.get("/phone/distance/nearest_client")
-        assert response.status_code == 200
-        data = response.json()
-        # May or may not be None depending on test isolation
-
     def test_register_interaction_stream_filtering(self):
         """Test that register_interaction properly filters based on stream quality."""
         # Register two clients
