@@ -392,12 +392,14 @@ class TestClientStreamInfo:
         """Test setting phone location for a client"""
         scorer = AudioStreamScorer()
         scorer.register_client("test_client")
-        
+
         location = {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0}
         result = scorer.set_phone_location("test_client", location)
         assert result is True
-        
+
         client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
         assert client_info.quality_metrics.location == location
 
     def test_set_phone_location_nonexistent_client(self):
@@ -411,12 +413,14 @@ class TestClientStreamInfo:
         """Test setting phone RSSI for a client"""
         scorer = AudioStreamScorer()
         scorer.register_client("test_client")
-        
+
         rssi = -50.0
         result = scorer.set_phone_rssi("test_client", rssi)
         assert result is True
-        
+
         client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
         assert client_info.quality_metrics.rssi == rssi
 
     def test_set_phone_rssi_nonexistent_client(self):
@@ -429,7 +433,7 @@ class TestClientStreamInfo:
     def test_calculate_overall_score_with_location_and_rssi(self):
         """Test overall score calculation with location and RSSI"""
         scorer = AudioStreamScorer()
-        
+
         # Test with good location and RSSI
         metrics = StreamQualityMetrics(
             snr=25.0,
@@ -440,7 +444,7 @@ class TestClientStreamInfo:
         )
         score = scorer.calculate_overall_score(metrics)
         assert 0 <= score <= 100
-        
+
         # Test with poor location and RSSI
         poor_metrics = StreamQualityMetrics(
             snr=25.0,
@@ -456,19 +460,21 @@ class TestClientStreamInfo:
         """Test that new fields are preserved during metric updates"""
         scorer = AudioStreamScorer()
         scorer.register_client("test_client")
-        
+
         # Set initial location and RSSI
         location = {"latitude": 40.7128, "longitude": -74.0060}
         rssi = -55.0
         scorer.set_phone_location("test_client", location)
         scorer.set_phone_rssi("test_client", rssi)
-        
+
         # Update stream quality (should preserve location and RSSI)
         test_audio = np.random.normal(0, 0.1, 1000)
         scorer.update_stream_quality("test_client", test_audio)
-        
+
         # Check that location and RSSI are preserved
         client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
         assert client_info.quality_metrics.location == location
         assert client_info.quality_metrics.rssi == rssi
 

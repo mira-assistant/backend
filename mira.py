@@ -31,7 +31,7 @@ audio_scorer = AudioStreamScorer()
 wake_word_detector = WakeWordDetector()
 
 status: dict = {
-    "version": "4.2.0",
+    "version": "4.3.0",
     "connected_clients": dict(),  # Dictionary of client dictionaries
     "enabled": False,
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
@@ -90,7 +90,7 @@ def register_client(client_id: str, request: Request):
     # Get client IP address and connection time
     client_ip = request.client.host if request.client else "unknown"
     connection_time = datetime.now(timezone.utc).isoformat()
-    
+
     # Store client information in connected_clients dictionary
     status["connected_clients"][client_id] = {
         "ip": client_ip,
@@ -558,26 +558,26 @@ def update_phone_location(request: dict = Body(...)):
     try:
         client_id = request.get("client_id")
         location = request.get("location")
-        
+
         if not client_id:
             raise HTTPException(status_code=400, detail="client_id is required")
         if not location:
             raise HTTPException(status_code=400, detail="location data is required")
-        
+
         # Validate location data structure
         required_fields = ["latitude", "longitude"]
         for field in required_fields:
             if field not in location:
                 raise HTTPException(status_code=400, detail=f"location.{field} is required")
-        
+
         # Update phone location in audio scorer
         success = audio_scorer.set_phone_location(client_id, location)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-            
+
         logger.info(f"Updated phone location for {client_id}: {location}")
-        
+
         return {
             "message": f"Phone location updated successfully for {client_id}",
             "location": location
@@ -597,22 +597,22 @@ def update_phone_rssi(request: dict = Body(...)):
         phone_client_id = request.get("phone_client_id")  # The phone doing the measurement
         target_client_id = request.get("target_client_id")  # The client being measured
         rssi = request.get("rssi")
-        
+
         if not phone_client_id:
             raise HTTPException(status_code=400, detail="phone_client_id is required")
         if not target_client_id:
             raise HTTPException(status_code=400, detail="target_client_id is required")
         if rssi is None:
             raise HTTPException(status_code=400, detail="rssi value is required")
-        
+
         # Update RSSI between phone and target client
         success = audio_scorer.set_phone_rssi(target_client_id, rssi)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail=f"Target client {target_client_id} not found")
-            
+
         logger.info(f"Updated RSSI from {phone_client_id} to {target_client_id}: {rssi} dBm")
-        
+
         return {
             "message": f"RSSI updated successfully from {phone_client_id} to {target_client_id}",
             "rssi": rssi
