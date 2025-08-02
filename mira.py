@@ -1,5 +1,5 @@
 import uuid
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form, Request
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import json
@@ -31,7 +31,7 @@ wake_word_detector = WakeWordDetector()
 
 status: dict = {
     "version": "4.2.0",
-    "connected_clients": dict(),  # Changed from list to dict for clientId: clientIP mapping
+    "listening_clients": list(),
     "enabled": False,
     "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
     "current_best_stream": None,
@@ -84,19 +84,15 @@ def root():
 
 
 @app.post("/service/client/register/{client_id}")
-def register_client(client_id: str, request: Request, device_type: str | None = None, location: dict | None = None):
+def register_client(client_id: str):
     """Register a client and initialize stream scoring."""
-    # Get client IP address
-    client_ip = request.client.host if request.client else "unknown"
-    status["connected_clients"][client_id] = client_ip
+    status["listening_clients"].append(client_id)
 
     # Register client with audio stream scorer
-    success = audio_scorer.register_client(
-        client_id=client_id, device_type=device_type, location=location
-    )
+    success = audio_scorer.register_client(client_id=client_id)
 
     if success:
-        logger.info(f"Client {client_id} registered for stream scoring from IP {client_ip}")
+        logger.info(f"Client {client_id} registered for stream scoring")
 
     return {"message": f"{client_id} registered successfully", "stream_scoring_enabled": success}
 
@@ -104,8 +100,8 @@ def register_client(client_id: str, request: Request, device_type: str | None = 
 @app.delete("/service/client/deregister/{client_id}")
 def deregister_client(client_id: str):
     """Deregister a client and remove from stream scoring."""
-    if client_id in status["connected_clients"]:
-        del status["connected_clients"][client_id]
+    if client_id in status["listening_clients"]:
+        status["listening_clients"].remove(client_id)
     else:
         print("Client already deregistered or not found:", client_id)
 
@@ -116,7 +112,7 @@ def deregister_client(client_id: str):
     best_stream_info = audio_scorer.get_best_stream()
     status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
 
-    if client_id not in status["connected_clients"] and not success:
+    if client_id not in status["listening_clients"] and not success:
         return {"message": f"{client_id} already deregistered or not found"}
 
     return {"message": f"{client_id} deregistered successfully", "stream_scoring_removed": success}
@@ -460,8 +456,6 @@ def get_best_stream():
                     "volume_level": round(client_info.quality_metrics.volume_level, 4),
                     "noise_level": round(client_info.quality_metrics.noise_level, 4),
                     "phone_distance": client_info.quality_metrics.phone_distance,
-                    "location": client_info.quality_metrics.location,
-                    "rssi": client_info.quality_metrics.rssi,
                     "last_update": client_info.last_update.isoformat(),
                     "sample_count": client_info.quality_metrics.sample_count,
                 },
@@ -493,8 +487,6 @@ def get_all_stream_scores():
                         "volume_level": round(client_info.quality_metrics.volume_level, 4),
                         "noise_level": round(client_info.quality_metrics.noise_level, 4),
                         "phone_distance": client_info.quality_metrics.phone_distance,
-                        "location": client_info.quality_metrics.location,
-                        "rssi": client_info.quality_metrics.rssi,
                         "last_update": client_info.last_update.isoformat(),
                         "sample_count": client_info.quality_metrics.sample_count,
                         "is_active": client_info.is_active,
@@ -510,74 +502,6 @@ def get_all_stream_scores():
     except Exception as e:
         logger.error(f"Error getting stream scores: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stream scores: {str(e)}")
-
-
-@app.post("/streams/phone/location")
-def update_phone_location(request: dict = Body(...)):
-    """Update GPS-based location data for phone proximity tracking."""
-    try:
-        client_id = request.get("client_id")
-        location = request.get("location")
-        
-        if not client_id:
-            raise HTTPException(status_code=400, detail="client_id is required")
-        if not location:
-            raise HTTPException(status_code=400, detail="location data is required")
-
-        success = audio_scorer.set_phone_location(client_id, location)
-
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-
-        # Update best stream selection after location change
-        best_stream_info = audio_scorer.get_best_stream()
-        status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-
-        return {
-            "message": f"Location updated for {client_id}",
-            "location": location,
-            "current_best_stream": status["current_best_stream"],
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating phone location: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update phone location: {str(e)}")
-
-
-@app.post("/streams/phone/rssi")
-def update_phone_rssi(request: dict = Body(...)):
-    """Update RSSI-based proximity data for phone tracking."""
-    try:
-        client_id = request.get("client_id")
-        rssi = request.get("rssi")
-        
-        if not client_id:
-            raise HTTPException(status_code=400, detail="client_id is required")
-        if rssi is None:
-            raise HTTPException(status_code=400, detail="rssi value is required")
-
-        success = audio_scorer.set_phone_rssi(client_id, rssi)
-
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-
-        # Update best stream selection after RSSI change
-        best_stream_info = audio_scorer.get_best_stream()
-        status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-
-        return {
-            "message": f"RSSI updated for {client_id}",
-            "rssi": rssi,
-            "current_best_stream": status["current_best_stream"],
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating phone RSSI: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update phone RSSI: {str(e)}")
 
 
 @app.post("/streams/{client_id}/distance")
@@ -636,8 +560,6 @@ def get_client_stream_info(client_id: str):
                 "volume_level": round(client_info.quality_metrics.volume_level, 4),
                 "noise_level": round(client_info.quality_metrics.noise_level, 4),
                 "phone_distance": client_info.quality_metrics.phone_distance,
-                "location": client_info.quality_metrics.location,
-                "rssi": client_info.quality_metrics.rssi,
                 "sample_count": client_info.quality_metrics.sample_count,
                 "timestamp": client_info.quality_metrics.timestamp.isoformat(),
             },
