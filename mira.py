@@ -530,8 +530,6 @@ def get_client_stream_info(client_id: str):
         return {
             "client_id": client_info.client_id,
             "is_active": client_info.is_active,
-            "device_type": client_info.device_type,
-            "location": client_info.location,
             "last_update": client_info.last_update.isoformat(),
             "current_score": round(current_score, 2),
             "is_best_stream": client_id == status["current_best_stream"],

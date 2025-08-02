@@ -117,8 +117,8 @@ class TestStreamScoringAPI:
         assert "test_client_basic registered successfully" in data["message"]
 
     def test_register_client_with_metadata(self):
-        """Test client registration with device type"""
-        response = client.post("/service/client/register/test_client_metadata?device_type=phone")
+        """Test client registration (no longer accepts device_type)"""
+        response = client.post("/service/client/register/test_client_metadata")
         assert response.status_code == 200
         data = response.json()
         assert data["stream_scoring_enabled"] is True
@@ -154,22 +154,36 @@ class TestStreamScoringAPI:
         assert isinstance(data["active_streams"], int)
 
     def test_set_phone_distance_nonexistent_client(self):
-        """Test setting phone distance for non-existent client"""
-        response = client.post("/streams/nonexistent_client/distance", json={"distance": 5.0})
+        """Test setting location for non-existent client"""
+        location_data = {
+            "client_id": "nonexistent_client",
+            "location": {
+                "latitude": 37.7749,
+                "longitude": -122.4194
+            }
+        }
+        response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 404
 
     def test_set_phone_distance_valid_client(self):
-        """Test setting phone distance for valid client"""
+        """Test setting location for valid client"""
         # Register client first
         client.post("/service/client/register/test_client_distance")
 
-        # Set distance
-        response = client.post("/streams/test_client_distance/distance", json={"distance": 3.5})
+        # Set location
+        location_data = {
+            "client_id": "test_client_distance",
+            "location": {
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "accuracy": 3.5
+            }
+        }
+        response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 200
         data = response.json()
-        assert "distance" in data
-        assert data["distance"] == 3.5
-        assert "current_best_stream" in data
+        assert "location" in data
+        assert data["location"]["latitude"] == 37.7749
 
     def test_get_client_stream_info_nonexistent(self):
         """Test getting stream info for non-existent client"""
@@ -179,15 +193,13 @@ class TestStreamScoringAPI:
     def test_get_client_stream_info_valid(self):
         """Test getting stream info for valid client"""
         # Register client first
-        client.post("/service/client/register/test_client_info?device_type=tablet")
+        client.post("/service/client/register/test_client_info")
 
         response = client.get("/streams/test_client_info/info")
         assert response.status_code == 200
         data = response.json()
         assert "client_id" in data
         assert data["client_id"] == "test_client_info"
-        assert "device_type" in data
-        assert data["device_type"] == "tablet"
         assert "quality_metrics" in data
         assert "current_score" in data
         assert "is_best_stream" in data
@@ -197,34 +209,51 @@ class TestStreamScoringAPI:
         client_id = "workflow_test_client"
 
         # 1. Register client
-        register_response = client.post(f"/service/client/register/{client_id}?device_type=phone")
+        register_response = client.post(f"/service/client/register/{client_id}")
         assert register_response.status_code == 200
 
-        # 2. Set phone distance
-        distance_response = client.post(f"/streams/{client_id}/distance", json={"distance": 2.5})
-        assert distance_response.status_code == 200
+        # 2. Set phone location
+        location_data = {
+            "client_id": client_id,
+            "location": {
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "accuracy": 2.5
+            }
+        }
+        location_response = client.post("/streams/phone/location", json=location_data)
+        assert location_response.status_code == 200
 
-        # 3. Get client info
+        # 3. Set RSSI
+        rssi_data = {
+            "phone_client_id": "phone_device",
+            "target_client_id": client_id,
+            "rssi": -45.0
+        }
+        rssi_response = client.post("/streams/phone/rssi", json=rssi_data)
+        assert rssi_response.status_code == 200
+
+        # 4. Get client info
         info_response = client.get(f"/streams/{client_id}/info")
         assert info_response.status_code == 200
         info_data = info_response.json()
-        assert info_data["quality_metrics"]["phone_distance"] == 2.5
+        assert "quality_metrics" in info_data
 
-        # 4. Check all scores
+        # 5. Check all scores
         scores_response = client.get("/streams/scores")
         assert scores_response.status_code == 200
         scores_data = scores_response.json()
         assert client_id in scores_data["stream_scores"]
 
-        # 5. Get best stream
+        # 6. Get best stream
         best_response = client.get("/streams/best")
         assert best_response.status_code == 200
 
-        # 6. Deregister
+        # 7. Deregister
         deregister_response = client.delete(f"/service/client/deregister/{client_id}")
         assert deregister_response.status_code == 200
 
-        # 7. Verify client is gone
+        # 8. Verify client is gone
         final_info_response = client.get(f"/streams/{client_id}/info")
         assert final_info_response.status_code == 404
 
@@ -276,7 +305,8 @@ class TestStreamScoringAPI:
         
         # Test setting RSSI
         rssi_data = {
-            "client_id": "rssi_test_client",
+            "phone_client_id": "phone_device",
+            "target_client_id": "rssi_test_client",
             "rssi": -45.5
         }
         response = client.post("/streams/phone/rssi", json=rssi_data)
@@ -300,7 +330,8 @@ class TestStreamScoringAPI:
     def test_rssi_endpoint_nonexistent_client(self):
         """Test RSSI endpoint with non-existent client"""
         rssi_data = {
-            "client_id": "nonexistent_client",
+            "phone_client_id": "phone_device",
+            "target_client_id": "nonexistent_client",
             "rssi": -50.0
         }
         response = client.post("/streams/phone/rssi", json=rssi_data)
