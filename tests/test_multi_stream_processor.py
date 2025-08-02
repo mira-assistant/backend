@@ -25,32 +25,27 @@ class TestAudioStreamScorer:
         """Test scorer initialization"""
         assert self.scorer.sample_rate == 16000
         assert len(self.scorer.clients) == 0
-        assert self.scorer.current_best_client is None
-        assert len(self.scorer.score_history) == 0
 
     def test_register_client(self):
         """Test client registration"""
         client_id = "test_client_1"
-        success = self.scorer.register_client(client_id, device_type="phone")
+        success = self.scorer.register_client(client_id)
 
         assert success is True
         assert client_id in self.scorer.clients
-        assert client_id in self.scorer.score_history
-        assert self.scorer.clients[client_id].device_type == "phone"
-        assert self.scorer.clients[client_id].is_active is True
+        assert self.scorer.clients[client_id].client_id == client_id
 
     def test_register_duplicate_client(self):
         """Test registering the same client twice"""
         client_id = "test_client_1"
 
         # First registration
-        success1 = self.scorer.register_client(client_id, device_type="phone")
+        success1 = self.scorer.register_client(client_id)
         assert success1 is True
 
         # Second registration (should update existing)
-        success2 = self.scorer.register_client(client_id, device_type="tablet")
+        success2 = self.scorer.register_client(client_id)
         assert success2 is True
-        assert self.scorer.clients[client_id].device_type == "tablet"
 
     def test_deregister_client(self):
         """Test client deregistration"""
@@ -64,7 +59,6 @@ class TestAudioStreamScorer:
         success = self.scorer.deregister_client(client_id)
         assert success is True
         assert client_id not in self.scorer.clients
-        assert client_id not in self.scorer.score_history
 
     def test_deregister_nonexistent_client(self):
         """Test deregistering a client that doesn't exist"""
@@ -75,25 +69,36 @@ class TestAudioStreamScorer:
         """Test deregistering the currently best client"""
         client_id = "test_client_1"
 
-        # Register and set as best client
+        # Register client
         self.scorer.register_client(client_id)
-        self.scorer.current_best_client = client_id
+        
+        # Simulate some audio data to make it the best stream
+        audio_data = np.random.normal(0, 0.1, 1000) + 0.5 * np.sin(2 * np.pi * 440 * np.arange(1000) / 16000)
+        self.scorer.update_stream_quality(client_id, audio_data)
+        
+        # Verify it's the best stream before deregistration
+        best_stream = self.scorer.get_best_stream()
+        if best_stream and best_stream.get("client_id"):
+            assert best_stream["client_id"] == client_id
 
         # Deregister
         success = self.scorer.deregister_client(client_id)
         assert success is True
-        assert self.scorer.current_best_client is None
+        
+        # After deregistration, no best client should exist
+        best_stream_after = self.scorer.get_best_stream()
+        assert best_stream_after["client_id"] is None
 
     def test_calculate_snr_empty_audio(self):
         """Test SNR calculation with empty audio"""
         empty_audio = np.array([])
-        snr = self.scorer.calculate_snr(empty_audio)
+        snr = self.scorer._calculate_snr(empty_audio)
         assert snr == 0.0
 
     def test_calculate_snr_silent_audio(self):
         """Test SNR calculation with silent audio"""
         silent_audio = np.zeros(1000)
-        snr = self.scorer.calculate_snr(silent_audio)
+        snr = self.scorer._calculate_snr(silent_audio)
         assert snr == 0.0
 
     def test_calculate_snr_noisy_audio(self):
@@ -111,14 +116,14 @@ class TestAudioStreamScorer:
         noise = 0.1 * np.random.normal(0, 1, len(signal))
         noisy_audio = signal + noise
 
-        snr = self.scorer.calculate_snr(noisy_audio)
+        snr = self.scorer._calculate_snr(noisy_audio)
         assert snr > 0.0  # Should have positive SNR
         assert snr < 50.0  # Reasonable upper bound
 
     def test_calculate_speech_clarity_empty_audio(self):
         """Test speech clarity calculation with empty audio"""
         empty_audio = np.array([])
-        clarity = self.scorer.calculate_speech_clarity(empty_audio)
+        clarity = self.scorer._calculate_speech_clarity(empty_audio)
         assert clarity == 0.0
 
     def test_calculate_speech_clarity_valid_audio(self):
@@ -136,7 +141,7 @@ class TestAudioStreamScorer:
             + 0.3 * np.sin(2 * np.pi * 2000 * t)
         )
 
-        clarity = self.scorer.calculate_speech_clarity(speech_audio)
+        clarity = self.scorer._calculate_speech_clarity(speech_audio)
         assert 0.0 <= clarity <= 100.0
         assert clarity > 0.0  # Should have some speech clarity
 
@@ -168,7 +173,6 @@ class TestAudioStreamScorer:
         client_info = self.scorer.get_client_info(client_id)
 
         assert client_info is not None
-        assert client_info.is_active is True
         assert client_info.quality_metrics == metrics
 
     def test_calculate_overall_score(self):
@@ -178,7 +182,6 @@ class TestAudioStreamScorer:
             speech_clarity=75.0,  # Good clarity
             volume_level=0.1,  # Reasonable volume
             noise_level=0.01,  # Low noise
-            phone_distance=None,  # No distance info
         )
 
         score = self.scorer.calculate_overall_score(metrics)
@@ -186,14 +189,15 @@ class TestAudioStreamScorer:
         assert 0.0 <= score <= 100.0
         assert score > 0.0  # Should have positive score
 
-    def test_calculate_overall_score_with_distance(self):
-        """Test overall score calculation with phone distance"""
+    def test_calculate_overall_score_with_proximity(self):
+        """Test overall score calculation with location and RSSI data"""
         metrics = StreamQualityMetrics(
             snr=20.0,
             speech_clarity=75.0,
             volume_level=0.1,
             noise_level=0.01,
-            phone_distance=2.0,  # 2 meters
+            location={"latitude": 37.7749, "longitude": -122.4194, "accuracy": 2.0},
+            rssi=-45.0,  # Good RSSI signal
         )
 
         score = self.scorer.calculate_overall_score(metrics)
@@ -204,7 +208,9 @@ class TestAudioStreamScorer:
     def test_get_best_stream_no_clients(self):
         """Test getting best stream when no clients are registered"""
         result = self.scorer.get_best_stream()
-        assert result is None
+        assert result is not None
+        assert result["client_id"] is None
+        assert result["score"] == 0.0
 
     def test_get_best_stream_single_client(self):
         """Test getting best stream with single client"""
@@ -212,16 +218,15 @@ class TestAudioStreamScorer:
         self.scorer.register_client(client_id)
 
         # Update with some audio data
-        audio_data = np.random.normal(0, 0.1, 1000)
+        audio_data = np.random.normal(0, 0.1, 1000) + 0.5 * np.sin(2 * np.pi * 440 * np.arange(1000) / 16000)
         self.scorer.update_stream_quality(client_id, audio_data)
 
         result = self.scorer.get_best_stream()
 
         assert result is not None
-        best_client, score = result
-        assert best_client == client_id
-        assert 0.0 <= score <= 100.0
-        assert self.scorer.current_best_client == client_id
+        assert result["client_id"] == client_id
+        assert result["score"] > 0.0
+        assert 0.0 <= result["score"] <= 100.0
 
     def test_get_best_stream_multiple_clients(self):
         """Test getting best stream with multiple clients"""
@@ -240,9 +245,8 @@ class TestAudioStreamScorer:
         result = self.scorer.get_best_stream()
 
         assert result is not None
-        best_client, score = result
-        assert best_client in clients
-        assert 0.0 <= score <= 100.0
+        assert result["client_id"] in clients
+        assert 0.0 <= result["score"] <= 100.0
 
     def test_get_all_stream_scores(self):
         """Test getting scores for all streams"""
@@ -261,39 +265,35 @@ class TestAudioStreamScorer:
             assert client in scores
             assert 0.0 <= scores[client] <= 100.0
 
-    def test_set_phone_distance(self):
-        """Test setting phone distance"""
+    def test_set_phone_location(self):
+        """Test setting phone location"""
         client_id = "test_client_1"
         self.scorer.register_client(client_id)
 
-        distance = 5.0
-        success = self.scorer.set_phone_distance(client_id, distance)
+        location = {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0}
+        success = self.scorer.set_phone_location(client_id, location)
         client_info = self.scorer.get_client_info(client_id)
 
         assert success is True
         assert client_info is not None
-        assert client_info.quality_metrics.phone_distance == distance
+        assert client_info.quality_metrics.location == location
 
-    def test_set_phone_distance_nonexistent_client(self):
-        """Test setting phone distance for non-existent client"""
-        success = self.scorer.set_phone_distance("nonexistent_client", 5.0)
+    def test_set_phone_location_nonexistent_client(self):
+        """Test setting phone location for non-existent client"""
+        location = {"latitude": 37.7749, "longitude": -122.4194}
+        success = self.scorer.set_phone_location("nonexistent_client", location)
         assert success is False
 
     def test_get_client_info(self):
         """Test getting client info"""
         client_id = "test_client_1"
-        device_type = "phone"
-        location = {"lat": 37.7749, "lng": -122.4194}
 
-        self.scorer.register_client(client_id, device_type=device_type, location=location)
+        self.scorer.register_client(client_id)
 
         client_info = self.scorer.get_client_info(client_id)
 
         assert client_info is not None
         assert client_info.client_id == client_id
-        assert client_info.device_type == device_type
-        assert client_info.location == location
-        assert client_info.is_active is True
 
     def test_get_client_info_nonexistent(self):
         """Test getting info for non-existent client"""
@@ -330,20 +330,23 @@ class TestStreamQualityMetrics:
         assert metrics.speech_clarity == 0.0
         assert metrics.volume_level == 0.0
         assert metrics.noise_level == 0.0
-        assert metrics.phone_distance is None
+        assert metrics.location is None
+        assert metrics.rssi is None
         assert isinstance(metrics.timestamp, datetime)
         assert metrics.sample_count == 0
 
     def test_custom_initialization(self):
         """Test custom initialization of metrics"""
         custom_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        location = {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 3.0}
 
         metrics = StreamQualityMetrics(
             snr=25.0,
             speech_clarity=80.0,
             volume_level=0.15,
             noise_level=0.02,
-            phone_distance=3.5,
+            location=location,
+            rssi=-45.0,
             timestamp=custom_time,
             sample_count=10,
         )
@@ -352,7 +355,8 @@ class TestStreamQualityMetrics:
         assert metrics.speech_clarity == 80.0
         assert metrics.volume_level == 0.15
         assert metrics.noise_level == 0.02
-        assert metrics.phone_distance == 3.5
+        assert metrics.location == location
+        assert metrics.rssi == -45.0
         assert metrics.timestamp == custom_time
         assert metrics.sample_count == 10
 
@@ -366,35 +370,115 @@ class TestClientStreamInfo:
         info = ClientStreamInfo(client_id=client_id)
 
         assert info.client_id == client_id
-        assert info.is_active is True
         assert isinstance(info.last_update, datetime)
         assert isinstance(info.quality_metrics, StreamQualityMetrics)
-        assert info.device_type is None
-        assert info.location is None
 
     def test_custom_initialization(self):
         """Test custom initialization of client info"""
         client_id = "test_client"
-        device_type = "tablet"
-        location = {"lat": 40.7128, "lng": -74.0060}
         custom_time = datetime(2023, 1, 1, tzinfo=timezone.utc)
         custom_metrics = StreamQualityMetrics(snr=20.0)
 
         info = ClientStreamInfo(
             client_id=client_id,
-            is_active=False,
             last_update=custom_time,
             quality_metrics=custom_metrics,
-            device_type=device_type,
-            location=location,
         )
 
         assert info.client_id == client_id
-        assert info.is_active is False
         assert info.last_update == custom_time
         assert info.quality_metrics == custom_metrics
-        assert info.device_type == device_type
-        assert info.location == location
+
+
+    def test_set_phone_location(self):
+        """Test setting phone location for a client"""
+        scorer = AudioStreamScorer()
+        scorer.register_client("test_client")
+
+        location = {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0}
+        result = scorer.set_phone_location("test_client", location)
+        assert result is True
+
+        client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
+        assert client_info.quality_metrics.location == location
+
+    def test_set_phone_location_nonexistent_client(self):
+        """Test setting phone location for non-existent client"""
+        scorer = AudioStreamScorer()
+        location = {"latitude": 37.7749, "longitude": -122.4194}
+        result = scorer.set_phone_location("nonexistent_client", location)
+        assert result is False
+
+    def test_set_phone_rssi(self):
+        """Test setting phone RSSI for a client"""
+        scorer = AudioStreamScorer()
+        scorer.register_client("test_client")
+
+        rssi = -50.0
+        result = scorer.set_phone_rssi("test_client", rssi)
+        assert result is True
+
+        client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
+        assert client_info.quality_metrics.rssi == rssi
+
+    def test_set_phone_rssi_nonexistent_client(self):
+        """Test setting phone RSSI for non-existent client"""
+        scorer = AudioStreamScorer()
+        rssi = -60.0
+        result = scorer.set_phone_rssi("nonexistent_client", rssi)
+        assert result is False
+
+    def test_calculate_overall_score_with_location_and_rssi(self):
+        """Test overall score calculation with location and RSSI"""
+        scorer = AudioStreamScorer()
+
+        # Test with good location and RSSI
+        metrics = StreamQualityMetrics(
+            snr=25.0,
+            speech_clarity=80.0,
+            volume_level=0.5,
+            location={"accuracy": 5.0},  # Good accuracy
+            rssi=-40.0  # Good RSSI
+        )
+        score = scorer.calculate_overall_score(metrics)
+        assert 0 <= score <= 100
+
+        # Test with poor location and RSSI
+        poor_metrics = StreamQualityMetrics(
+            snr=25.0,
+            speech_clarity=80.0,
+            volume_level=0.5,
+            location={"accuracy": 100.0},  # Poor accuracy
+            rssi=-85.0  # Poor RSSI
+        )
+        poor_score = scorer.calculate_overall_score(poor_metrics)
+        assert poor_score < score  # Should be worse than good metrics
+
+    def test_metrics_with_new_fields(self):
+        """Test that new fields are preserved during metric updates"""
+        scorer = AudioStreamScorer()
+        scorer.register_client("test_client")
+
+        # Set initial location and RSSI
+        location = {"latitude": 40.7128, "longitude": -74.0060}
+        rssi = -55.0
+        scorer.set_phone_location("test_client", location)
+        scorer.set_phone_rssi("test_client", rssi)
+
+        # Update stream quality (should preserve location and RSSI)
+        test_audio = np.random.normal(0, 0.1, 1000)
+        scorer.update_stream_quality("test_client", test_audio)
+
+        # Check that location and RSSI are preserved
+        client_info = scorer.get_client_info("test_client")
+
+        assert client_info is not None
+        assert client_info.quality_metrics.location == location
+        assert client_info.quality_metrics.rssi == rssi
 
 
 if __name__ == "__main__":

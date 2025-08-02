@@ -14,7 +14,7 @@ the best audio stream for optimal recording quality.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import threading
@@ -33,10 +33,13 @@ class StreamQualityMetrics:
     speech_clarity: float = 0.0
     volume_level: float = 0.0
     noise_level: float = 0.0
-    # Placeholder for future phone distance feature
-    phone_distance: Optional[float] = None
+    # GPS-based location data for this client
+    location: Optional[Dict] = None
+    # RSSI signal strength for this client (from phone perspective)
+    rssi: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sample_count: int = 0
+    score: float = field(init=False, default=0.0)
 
 
 @dataclass
@@ -44,12 +47,8 @@ class ClientStreamInfo:
     """Information about a connected client's audio stream"""
 
     client_id: str
-    is_active: bool = True
     last_update: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     quality_metrics: StreamQualityMetrics = field(default_factory=StreamQualityMetrics)
-    # Metadata for future features
-    device_type: Optional[str] = None
-    location: Optional[Dict] = None  # For future distance calculation
 
 
 class AudioStreamScorer:
@@ -69,28 +68,23 @@ class AudioStreamScorer:
         """
         self.sample_rate = sample_rate
         self.clients: Dict[str, ClientStreamInfo] = {}
-        self.current_best_client: Optional[str] = None
-        self.score_history: Dict[str, List[float]] = {}
         self._lock = threading.Lock()
 
         # Scoring weights (can be adjusted based on requirements)
         self.weights = {
-            "snr": 0.4,
-            "speech_clarity": 0.4,
+            "snr": 0.3,
+            "speech_clarity": 0.3,
             "volume_level": 0.1,
-            "phone_distance": 0.1,  # Placeholder for future use
+            "location": 0.15,  # GPS-based location scoring
+            "rssi": 0.15,  # RSSI-based proximity scoring
         }
 
-    def register_client(
-        self, client_id: str, device_type: Optional[str] = None, location: Optional[Dict] = None
-    ) -> bool:
+    def register_client(self, client_id: str) -> bool:
         """
         Register a new client for stream scoring.
 
         Args:
             client_id: Unique identifier for the client
-            device_type: Type of device (phone, tablet, etc.) - for future use
-            location: Location information for distance calculation - for future use
 
         Returns:
             bool: True if registration successful
@@ -99,10 +93,7 @@ class AudioStreamScorer:
             if client_id in self.clients:
                 logger.warning(f"Client {client_id} already registered, updating info")
 
-            self.clients[client_id] = ClientStreamInfo(
-                client_id=client_id, device_type=device_type, location=location
-            )
-            self.score_history[client_id] = []
+            self.clients[client_id] = ClientStreamInfo(client_id=client_id)
 
             logger.info(f"Registered client {client_id} for stream scoring")
             return True
@@ -122,19 +113,12 @@ class AudioStreamScorer:
                 logger.warning(f"Client {client_id} not found for deregistration")
                 return False
 
-            # If this was the best client, clear the selection
-            if self.current_best_client == client_id:
-                self.current_best_client = None
-                logger.info(f"Best client {client_id} deregistered, clearing selection")
-
             del self.clients[client_id]
-            if client_id in self.score_history:
-                del self.score_history[client_id]
 
             logger.info(f"Deregistered client {client_id}")
             return True
 
-    def calculate_snr(self, audio_data) -> float:
+    def _calculate_snr(self, audio_data) -> float:
         """
         Calculate Signal-to-Noise Ratio for audio data.
 
@@ -177,7 +161,7 @@ class AudioStreamScorer:
         snr_db = 10 * np.log10(signal_power / noise_power)
         return max(0.0, snr_db)  # Ensure non-negative
 
-    def calculate_speech_clarity(self, audio_data) -> float:
+    def _calculate_speech_clarity(self, audio_data) -> float:
         """
         Calculate speech clarity metric based on spectral analysis.
 
@@ -247,8 +231,8 @@ class AudioStreamScorer:
             client_info = self.clients[client_id]
 
             # Calculate quality metrics
-            snr = self.calculate_snr(audio_data)
-            speech_clarity = self.calculate_speech_clarity(audio_data)
+            snr = self._calculate_snr(audio_data)
+            speech_clarity = self._calculate_speech_clarity(audio_data)
 
             volume_level = float(np.sqrt(np.mean(audio_data**2)))  # RMS volume
             noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
@@ -259,13 +243,13 @@ class AudioStreamScorer:
                 speech_clarity=speech_clarity,
                 volume_level=volume_level,
                 noise_level=noise_level,
-                phone_distance=client_info.quality_metrics.phone_distance,  # Preserve existing value
+                location=client_info.quality_metrics.location,  # Preserve existing value
+                rssi=client_info.quality_metrics.rssi,  # Preserve existing value
                 sample_count=client_info.quality_metrics.sample_count + 1,
             )
 
             client_info.quality_metrics = metrics
             client_info.last_update = datetime.now(timezone.utc)
-            client_info.is_active = True
 
             logger.debug(
                 f"Updated quality for {client_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}"
@@ -287,80 +271,53 @@ class AudioStreamScorer:
         clarity_score = metrics.speech_clarity  # Already 0-100
         volume_score = min(100.0, metrics.volume_level * 1000)  # Scale volume appropriately
 
-        # Distance score placeholder (will be 100 if no distance info)
-        distance_score = 100.0
-        if metrics.phone_distance is not None:
-            # Closer distance = higher score (future implementation)
-            # For now, just placeholder logic
-            distance_score = max(0.0, 100.0 - (metrics.phone_distance * 10))
+        # Location score (will be 100 if no location info)
+        location_score = 100.0
+        if metrics.location is not None:
+            # Simple scoring based on location accuracy - better accuracy = higher score
+            accuracy = metrics.location.get("accuracy", 100.0)  # meters
+            location_score = max(0.0, 100.0 - (accuracy / 10.0))  # Better accuracy = higher score
+
+        # RSSI score (will be 100 if no RSSI info)
+        rssi_score = 100.0
+        if metrics.rssi is not None:
+            # Higher RSSI (less negative) = better signal = higher score
+            # Typical RSSI range: -30 (excellent) to -90 (poor)
+            rssi_normalized = max(-90.0, min(-30.0, metrics.rssi))  # Clamp to typical range
+            rssi_score = ((rssi_normalized + 90.0) / 60.0) * 100.0  # Convert to 0-100
 
         # Calculate weighted score
         overall_score = (
             self.weights["snr"] * snr_score
             + self.weights["speech_clarity"] * clarity_score
             + self.weights["volume_level"] * volume_score
-            + self.weights["phone_distance"] * distance_score
+            + self.weights["location"] * location_score
+            + self.weights["rssi"] * rssi_score
         )
 
         return min(100.0, max(0.0, overall_score))
 
-    def get_best_stream(self) -> Optional[Tuple[str, float]]:
+    def get_best_stream(self) -> Dict[str, float]:
         """
         Get the client ID with the best current stream quality.
 
         Returns:
-            Tuple[str, float]: (client_id, score) of best stream, or None if no active clients
+            Dict[str, float]: {"client_id": client_id, "score": score} of best stream
         """
-        with self._lock:
-            if not self.clients:
-                return None
+        best_stream = {
+            "client_id": None,
+            "score": 0.0,
+        }
 
-            # Optimization: If only one active client, return it immediately without scoring
-            active_clients = [
-                client_id
-                for client_id, client_info in self.clients.items()
-                if client_info.is_active
-            ]
+        for client_id, client_info in self.clients.items():
+            # Calculate current score for this client
+            current_score = self.calculate_overall_score(client_info.quality_metrics)
+            client_info.quality_metrics.score = current_score
+            
+            if current_score > best_stream["score"]:
+                best_stream = {"client_id": client_id, "score": current_score}
 
-            if len(active_clients) == 1:
-                single_client = active_clients[0]
-                if single_client != self.current_best_client:
-                    self.current_best_client = single_client
-                    logger.info(f"Single active client: {single_client} (no scoring needed)")
-                # Return a default score for single client
-                return (single_client, 1.0)
-
-            best_client = None
-            best_score = -1.0
-
-            for client_id, client_info in self.clients.items():
-                if not client_info.is_active:
-                    continue
-
-                score = self.calculate_overall_score(client_info.quality_metrics)
-
-                # Store score history
-                if client_id not in self.score_history:
-                    self.score_history[client_id] = []
-                self.score_history[client_id].append(score)
-
-                # Keep only recent history (last 10 scores)
-                if len(self.score_history[client_id]) > 10:
-                    self.score_history[client_id] = self.score_history[client_id][-10:]
-
-                if score > best_score:
-                    best_score = score
-                    best_client = client_id
-
-            # Update current best client
-            if best_client != self.current_best_client:
-                old_best = self.current_best_client
-                self.current_best_client = best_client
-                logger.info(
-                    f"Best stream changed from {old_best} to {best_client} (score: {best_score:.1f})"
-                )
-
-            return (best_client, best_score) if best_client else None
+        return best_stream
 
     def get_all_stream_scores(self) -> Dict[str, float]:
         """
@@ -372,29 +329,11 @@ class AudioStreamScorer:
         with self._lock:
             scores = {}
             for client_id, client_info in self.clients.items():
-                if client_info.is_active:
-                    scores[client_id] = self.calculate_overall_score(client_info.quality_metrics)
+                score = self.calculate_overall_score(client_info.quality_metrics)
+
+                scores[client_id] = score
+                client_info.quality_metrics.score = score
             return scores
-
-    def set_phone_distance(self, client_id: str, distance: float) -> bool:
-        """
-        Set phone distance for a client (future feature placeholder).
-
-        Args:
-            client_id: Unique identifier for the client
-            distance: Distance in meters
-
-        Returns:
-            bool: True if distance was set successfully
-        """
-        with self._lock:
-            if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not found for distance update")
-                return False
-
-            self.clients[client_id].quality_metrics.phone_distance = distance
-            logger.info(f"Set phone distance for {client_id}: {distance}m")
-            return True
 
     def get_client_info(self, client_id: str) -> Optional[ClientStreamInfo]:
         """
@@ -426,16 +365,49 @@ class AudioStreamScorer:
             for client_id, client_info in list(self.clients.items()):
                 time_diff = (current_time - client_info.last_update).total_seconds()
                 if time_diff > timeout_seconds:
-                    # Manually remove without calling deregister_client to avoid deadlock
-                    if self.current_best_client == client_id:
-                        self.current_best_client = None
-                        logger.info(f"Best client {client_id} timed out, clearing selection")
-
                     del self.clients[client_id]
-                    if client_id in self.score_history:
-                        del self.score_history[client_id]
 
                     removed_clients.append(client_id)
                     logger.info(f"Removed inactive client {client_id}")
 
             return removed_clients
+
+    def set_phone_location(self, client_id: str, location: Dict) -> bool:
+        """
+        Set GPS location data for a client.
+
+        Args:
+            client_id: Unique identifier for the client
+            location: GPS location data (lat, lng, accuracy, etc.)
+
+        Returns:
+            bool: True if location was set successfully
+        """
+        with self._lock:
+            if client_id not in self.clients:
+                logger.warning(f"Client {client_id} not found for location update")
+                return False
+
+            self.clients[client_id].quality_metrics.location = location
+            logger.info(f"Set location for {client_id}: {location}")
+            return True
+
+    def set_phone_rssi(self, client_id: str, rssi: float) -> bool:
+        """
+        Set RSSI signal strength for a client.
+
+        Args:
+            client_id: Unique identifier for the client
+            rssi: RSSI signal strength in dBm
+
+        Returns:
+            bool: True if RSSI was set successfully
+        """
+        with self._lock:
+            if client_id not in self.clients:
+                logger.warning(f"Client {client_id} not found for RSSI update")
+                return False
+
+            self.clients[client_id].quality_metrics.rssi = rssi
+            logger.info(f"Set RSSI for {client_id}: {rssi} dBm")
+            return True
