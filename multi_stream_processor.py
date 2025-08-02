@@ -14,7 +14,7 @@ the best audio stream for optimal recording quality.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import threading
@@ -39,6 +39,7 @@ class StreamQualityMetrics:
     rssi: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sample_count: int = 0
+    score: float = field(init=False, default=0.0)
 
 
 @dataclass
@@ -46,7 +47,6 @@ class ClientStreamInfo:
     """Information about a connected client's audio stream"""
 
     client_id: str
-    is_active: bool = True
     last_update: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     quality_metrics: StreamQualityMetrics = field(default_factory=StreamQualityMetrics)
 
@@ -68,8 +68,6 @@ class AudioStreamScorer:
         """
         self.sample_rate = sample_rate
         self.clients: Dict[str, ClientStreamInfo] = {}
-        self.current_best_client: Optional[str] = None
-        self.score_history: Dict[str, List[float]] = {}
         self._lock = threading.Lock()
 
         # Scoring weights (can be adjusted based on requirements)
@@ -96,7 +94,6 @@ class AudioStreamScorer:
                 logger.warning(f"Client {client_id} already registered, updating info")
 
             self.clients[client_id] = ClientStreamInfo(client_id=client_id)
-            self.score_history[client_id] = []
 
             logger.info(f"Registered client {client_id} for stream scoring")
             return True
@@ -116,19 +113,12 @@ class AudioStreamScorer:
                 logger.warning(f"Client {client_id} not found for deregistration")
                 return False
 
-            # If this was the best client, clear the selection
-            if self.current_best_client == client_id:
-                self.current_best_client = None
-                logger.info(f"Best client {client_id} deregistered, clearing selection")
-
             del self.clients[client_id]
-            if client_id in self.score_history:
-                del self.score_history[client_id]
 
             logger.info(f"Deregistered client {client_id}")
             return True
 
-    def calculate_snr(self, audio_data) -> float:
+    def _calculate_snr(self, audio_data) -> float:
         """
         Calculate Signal-to-Noise Ratio for audio data.
 
@@ -171,7 +161,7 @@ class AudioStreamScorer:
         snr_db = 10 * np.log10(signal_power / noise_power)
         return max(0.0, snr_db)  # Ensure non-negative
 
-    def calculate_speech_clarity(self, audio_data) -> float:
+    def _calculate_speech_clarity(self, audio_data) -> float:
         """
         Calculate speech clarity metric based on spectral analysis.
 
@@ -241,8 +231,8 @@ class AudioStreamScorer:
             client_info = self.clients[client_id]
 
             # Calculate quality metrics
-            snr = self.calculate_snr(audio_data)
-            speech_clarity = self.calculate_speech_clarity(audio_data)
+            snr = self._calculate_snr(audio_data)
+            speech_clarity = self._calculate_speech_clarity(audio_data)
 
             volume_level = float(np.sqrt(np.mean(audio_data**2)))  # RMS volume
             noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
@@ -260,7 +250,6 @@ class AudioStreamScorer:
 
             client_info.quality_metrics = metrics
             client_info.last_update = datetime.now(timezone.utc)
-            client_info.is_active = True
 
             logger.debug(
                 f"Updated quality for {client_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}"
@@ -308,63 +297,25 @@ class AudioStreamScorer:
 
         return min(100.0, max(0.0, overall_score))
 
-    def get_best_stream(self) -> Optional[Tuple[str, float]]:
+    def get_best_stream(self) -> Optional[Dict[str, float]]:
         """
         Get the client ID with the best current stream quality.
 
         Returns:
-            Tuple[str, float]: (client_id, score) of best stream, or None if no active clients
+            Dict[str, float]: {"client_id": client_id, "score": score} of best stream, or None if no active clients
         """
-        with self._lock:
-            if not self.clients:
-                return None
 
-            # Optimization: If only one active client, return it immediately without scoring
-            active_clients = [
-                client_id
-                for client_id, client_info in self.clients.items()
-                if client_info.is_active
-            ]
+        best_stream = {
+            "client_id": None,
+            "score": 0.0,
+        }
 
-            if len(active_clients) == 1:
-                single_client = active_clients[0]
-                if single_client != self.current_best_client:
-                    self.current_best_client = single_client
-                    logger.info(f"Single active client: {single_client} (no scoring needed)")
-                # Return a default score for single client
-                return (single_client, 1.0)
+        for client_id, client_info in self.clients.items():
+            if best_stream is None or client_info.quality_metrics.score > best_stream["score"]:
+                best_stream = {"client_id": client_id, "score": client_info.quality_metrics.score}
+                continue
 
-            best_client = None
-            best_score = -1.0
-
-            for client_id, client_info in self.clients.items():
-                if not client_info.is_active:
-                    continue
-
-                score = self.calculate_overall_score(client_info.quality_metrics)
-
-                # Store score history
-                if client_id not in self.score_history:
-                    self.score_history[client_id] = []
-                self.score_history[client_id].append(score)
-
-                # Keep only recent history (last 10 scores)
-                if len(self.score_history[client_id]) > 10:
-                    self.score_history[client_id] = self.score_history[client_id][-10:]
-
-                if score > best_score:
-                    best_score = score
-                    best_client = client_id
-
-            # Update current best client
-            if best_client != self.current_best_client:
-                old_best = self.current_best_client
-                self.current_best_client = best_client
-                logger.info(
-                    f"Best stream changed from {old_best} to {best_client} (score: {best_score:.1f})"
-                )
-
-            return (best_client, best_score) if best_client else None
+        return best_stream
 
     def get_all_stream_scores(self) -> Dict[str, float]:
         """
@@ -376,8 +327,10 @@ class AudioStreamScorer:
         with self._lock:
             scores = {}
             for client_id, client_info in self.clients.items():
-                if client_info.is_active:
-                    scores[client_id] = self.calculate_overall_score(client_info.quality_metrics)
+                score = self.calculate_overall_score(client_info.quality_metrics)
+
+                scores[client_id] = score
+                client_info.quality_metrics.score = score
             return scores
 
     def get_client_info(self, client_id: str) -> Optional[ClientStreamInfo]:
@@ -410,14 +363,7 @@ class AudioStreamScorer:
             for client_id, client_info in list(self.clients.items()):
                 time_diff = (current_time - client_info.last_update).total_seconds()
                 if time_diff > timeout_seconds:
-                    # Manually remove without calling deregister_client to avoid deadlock
-                    if self.current_best_client == client_id:
-                        self.current_best_client = None
-                        logger.info(f"Best client {client_id} timed out, clearing selection")
-
                     del self.clients[client_id]
-                    if client_id in self.score_history:
-                        del self.score_history[client_id]
 
                     removed_clients.append(client_id)
                     logger.info(f"Removed inactive client {client_id}")

@@ -85,13 +85,13 @@ class TestAudioStreamScorer:
     def test_calculate_snr_empty_audio(self):
         """Test SNR calculation with empty audio"""
         empty_audio = np.array([])
-        snr = self.scorer.calculate_snr(empty_audio)
+        snr = self.scorer._calculate_snr(empty_audio)
         assert snr == 0.0
 
     def test_calculate_snr_silent_audio(self):
         """Test SNR calculation with silent audio"""
         silent_audio = np.zeros(1000)
-        snr = self.scorer.calculate_snr(silent_audio)
+        snr = self.scorer._calculate_snr(silent_audio)
         assert snr == 0.0
 
     def test_calculate_snr_noisy_audio(self):
@@ -109,14 +109,14 @@ class TestAudioStreamScorer:
         noise = 0.1 * np.random.normal(0, 1, len(signal))
         noisy_audio = signal + noise
 
-        snr = self.scorer.calculate_snr(noisy_audio)
+        snr = self.scorer._calculate_snr(noisy_audio)
         assert snr > 0.0  # Should have positive SNR
         assert snr < 50.0  # Reasonable upper bound
 
     def test_calculate_speech_clarity_empty_audio(self):
         """Test speech clarity calculation with empty audio"""
         empty_audio = np.array([])
-        clarity = self.scorer.calculate_speech_clarity(empty_audio)
+        clarity = self.scorer._calculate_speech_clarity(empty_audio)
         assert clarity == 0.0
 
     def test_calculate_speech_clarity_valid_audio(self):
@@ -134,7 +134,7 @@ class TestAudioStreamScorer:
             + 0.3 * np.sin(2 * np.pi * 2000 * t)
         )
 
-        clarity = self.scorer.calculate_speech_clarity(speech_audio)
+        clarity = self.scorer._calculate_speech_clarity(speech_audio)
         assert 0.0 <= clarity <= 100.0
         assert clarity > 0.0  # Should have some speech clarity
 

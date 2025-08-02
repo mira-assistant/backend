@@ -5,7 +5,7 @@ import json
 import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import uuid
 import numpy as np
 

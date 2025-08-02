@@ -32,10 +32,10 @@ wake_word_detector = WakeWordDetector()
 
 status: dict = {
     "version": "4.3.0",
-    "connected_clients": dict(),  # Dictionary of client dictionaries
+    "connected_clients": dict(),
+    "best_client": None,
     "enabled": False,
-    "recent_interactions": deque(maxlen=10),  # Use deque as a queue with a max size
-    "current_best_stream": None,
+    "recent_interactions": deque(maxlen=10),
 }
 
 
@@ -81,6 +81,11 @@ def log_once(message, flag_name=None):
 
 @app.get("/")
 def root():
+    scores = audio_scorer.get_all_stream_scores()
+    status["best_client"] = audio_scorer.get_best_stream()
+    for client_id, score in scores.items():
+        status["connected_clients"][client_id]["score"] = score
+
     return status
 
 
@@ -117,10 +122,6 @@ def deregister_client(client_id: str):
     # Deregister from audio stream scorer
     success = audio_scorer.deregister_client(client_id)
 
-    # Update best stream if this client was selected
-    best_stream_info = audio_scorer.get_best_stream()
-    status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-
     if client_id not in status["connected_clients"] and not success:
         return {"message": f"{client_id} already deregistered or not found"}
 
@@ -145,6 +146,11 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
 
     sentence_buf_raw = await audio.read()
 
+    if not client_id:
+        raise HTTPException(
+            status_code=400, detail="client_id is required for interaction registration"
+        )
+
     try:
         if len(sentence_buf_raw) == 0:
             raise ValueError("No audio data received")
@@ -153,88 +159,69 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
         )
 
-        # Step 1: Update stream quality if client_id provided
-        if client_id:
-            # Convert audio for quality analysis first
-            audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
-            metrics = audio_scorer.update_stream_quality(client_id, audio_float)
+        best_stream_info = audio_scorer.get_best_stream()
 
-            if metrics:
-                logger.debug(f"Updated stream quality for {client_id}: SNR={metrics.snr:.1f}dB")
-
-            # Update best stream selection
-            best_stream_info = audio_scorer.get_best_stream()
-            status["current_best_stream"] = best_stream_info[0] if best_stream_info else None
-
-            # Check if this client has the best stream quality
-            if best_stream_info and best_stream_info[0] != client_id:
-                logger.info(
-                    f"Interaction from {client_id} not registered - better stream available from {best_stream_info[0]}"
-                )
-                return {
-                    "message": "Interaction was not registered due to better audio streams",
-                    "best_stream_client": best_stream_info[0],
-                    "current_client_score": round(
-                        audio_scorer.get_all_stream_scores().get(client_id, 0), 2
-                    ),
-                    "best_stream_score": round(best_stream_info[1], 2),
-                }
-
-        # Step 2: Transcribe and get voice embedding (no NLP)
-        sentence_buf = bytearray(sentence_buf_raw)
-        interaction_result = sentence_processor.transcribe_interaction(sentence_buf)
-
-        if interaction_result is None:
-            return
-
-        logger.info("Advanced interaction successful")
-
-        # Step 2.5: Check for wake words in transcribed text
-        if interaction_result and interaction_result.get("text"):
-            # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
-            audio_length = len(sentence_buf_raw) / (
-                16000 * 2
-            )  # bytes / (sample_rate * bytes_per_sample)
-
-            wake_word_detection = wake_word_detector.process_audio_text(
-                client_id=client_id or "unknown",
-                transcribed_text=interaction_result["text"],
-                audio_length=audio_length,
+        if not best_stream_info:
+            raise HTTPException(
+                status_code=404,
+                detail="No active audio streams found. Please ensure clients are registered.",
             )
 
-            if wake_word_detection:
-                logger.info(
-                    f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
-                )
-                # Wake word detected - could trigger specific actions here
-                # For now, we just log it, but this could be extended to:
-                # - Start/stop recording
-                # - Change system state
-                # - Send notifications
-                # - Trigger specific workflows
+        # Check if this client has the best stream quality
+        if best_stream_info["client_id"] != client_id:
+            logger.info(
+                f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
+            )
+            return {
+                "message": "Interaction was not registered due to better audio streams",
+                "best_stream_client": best_stream_info["client_id"],
+                "current_client_score": round(
+                    audio_scorer.get_all_stream_scores().get(client_id, 0), 2
+                ),
+                "best_stream_score": round(best_stream_info["score"], 2),
+            }
 
-        # Step 3: Check for shutdown command
-        if "mira" in interaction_result["text"].lower() and any(
-            cancelCMD in interaction_result["text"].lower() for cancelCMD in ("cancel", "exit")
-        ):
-            logger.info("Mira interrupted by voice command")
-            disable_service()
-            return {"message": "Service disabled by voice command"}
+        sentence_buf = bytearray(sentence_buf_raw)
+        transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
 
-        # Step 4: Assign speaker, create interaction, save basic info
+        if not transcription_result or not transcription_result.get("text"):
+            raise HTTPException(
+                status_code=400, detail="Transcription failed. Please check the audio quality."
+            )
+
+        # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
+        audio_length = len(sentence_buf_raw) / (16000 * 2)
+
+        wake_word_detection = wake_word_detector.process_audio_text(
+            client_id=client_id or "unknown",
+            transcribed_text=transcription_result["text"],
+            audio_length=audio_length,
+        )
+
+        if wake_word_detection:
+            logger.info(
+                f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
+            )
+            # Wake word detected - could trigger specific actions here
+            # For now, we just log it, but this could be extended to:
+            # - Start/stop recording
+            # - Send notifications
+            # - Trigger specific workflows
+
         db = get_db_session()
+
         try:
             interaction = Interaction(
-                **interaction_result,
+                **transcription_result,
             )
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
 
             speaker_id = processor.assign_speaker(
-                interaction_result["voice_embedding"],
+                transcription_result["voice_embedding"],
                 session=db,
-                interaction_id=interaction.id,  # Pass interaction_id for advanced cache
+                interaction_id=interaction.id,
             )
 
             interaction.speaker_id = speaker_id
@@ -245,7 +232,6 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
             status["recent_interactions"].append(interaction.id)
 
-            # Return minimal interaction details for frontend display
             response = {
                 "id": str(interaction.id),
                 "text": interaction.text,
@@ -253,14 +239,8 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 "speaker_id": str(interaction.speaker_id),
             }
 
-            # Include stream quality info if available
-            if client_id and client_id in [
-                client.client_id for client in audio_scorer.clients.values()
-            ]:
-                response["stream_quality"] = {
-                    "client_id": client_id,
-                    "is_best_stream": client_id == status["current_best_stream"],
-                }
+            audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
+            audio_scorer.update_stream_quality(client_id, audio_float)
 
             return response
 
@@ -443,113 +423,36 @@ def get_person(person_id: str):
 @app.get("/streams/best")
 def get_best_stream():
     """Get the currently selected best audio stream."""
-    try:
-        best_stream_info = audio_scorer.get_best_stream()
+    best_stream_info = audio_scorer.get_best_stream()
 
-        if not best_stream_info:
-            return {"message": "No active streams available", "best_stream": None}
+    if not best_stream_info:
+        raise HTTPException(status_code=404, detail="No active streams found")
 
-        client_id, score = best_stream_info
-        client_info = audio_scorer.get_client_info(client_id)
-
-        if not client_info:
-            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-
-        response = {
-            "best_stream": {
-                "client_id": client_id,
-                "score": round(score, 2),
-                "metrics": {
-                    "snr": round(client_info.quality_metrics.snr, 2),
-                    "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
-                    "volume_level": round(client_info.quality_metrics.volume_level, 4),
-                    "noise_level": round(client_info.quality_metrics.noise_level, 4),
-                    "location": client_info.quality_metrics.location,
-                    "rssi": client_info.quality_metrics.rssi,
-                    "last_update": client_info.last_update.isoformat(),
-                    "sample_count": client_info.quality_metrics.sample_count,
-                },
-            }
-        }
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error getting best stream: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get best stream: {str(e)}")
+    return best_stream_info
 
 
 @app.get("/streams/scores")
 def get_all_stream_scores():
     """Get quality scores for all active streams."""
+
     try:
-        scores = audio_scorer.get_all_stream_scores()
-
-        detailed_scores = {}
-        for client_id, score in scores.items():
-            client_info = audio_scorer.get_client_info(client_id)
-            if client_info:
-                detailed_scores[client_id] = {
-                    "score": round(score, 2),
-                    "metrics": {
-                        "snr": round(client_info.quality_metrics.snr, 2),
-                        "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
-                        "volume_level": round(client_info.quality_metrics.volume_level, 4),
-                        "noise_level": round(client_info.quality_metrics.noise_level, 4),
-                        "location": client_info.quality_metrics.location,
-                        "rssi": client_info.quality_metrics.rssi,
-                        "last_update": client_info.last_update.isoformat(),
-                        "sample_count": client_info.quality_metrics.sample_count,
-                        "is_active": client_info.is_active,
-                    },
-                }
-
-        return {
-            "active_streams": len(detailed_scores),
-            "stream_scores": detailed_scores,
-            "current_best": status["current_best_stream"],
-        }
+        return audio_scorer.clients
 
     except Exception as e:
         logger.error(f"Error getting stream scores: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stream scores: {str(e)}")
 
 
-@app.get("/streams/{client_id}/info")
-def get_client_stream_info(client_id: str):
-    """Get detailed information about a specific client's stream."""
-    try:
-        client_info = audio_scorer.get_client_info(client_id)
+@app.get("/service/{client_id}")
+def get_client_info(client_id: str):
+    """Get detailed information about a specific client."""
 
-        if not client_info:
-            raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+    client_dict = status["connected_clients"].get(client_id)
 
-        # Calculate current score
-        current_score = audio_scorer.calculate_overall_score(client_info.quality_metrics)
+    if not client_dict:
+        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
 
-        return {
-            "client_id": client_info.client_id,
-            "is_active": client_info.is_active,
-            "last_update": client_info.last_update.isoformat(),
-            "current_score": round(current_score, 2),
-            "is_best_stream": client_id == status["current_best_stream"],
-            "quality_metrics": {
-                "snr": round(client_info.quality_metrics.snr, 2),
-                "speech_clarity": round(client_info.quality_metrics.speech_clarity, 2),
-                "volume_level": round(client_info.quality_metrics.volume_level, 4),
-                "noise_level": round(client_info.quality_metrics.noise_level, 4),
-                "location": client_info.quality_metrics.location,
-                "rssi": client_info.quality_metrics.rssi,
-                "sample_count": client_info.quality_metrics.sample_count,
-                "timestamp": client_info.quality_metrics.timestamp.isoformat(),
-            },
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting client stream info: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get client info: {str(e)}")
+    return client_dict
 
 
 @app.post("/streams/phone/location")
@@ -580,7 +483,7 @@ def update_phone_location(request: dict = Body(...)):
 
         return {
             "message": f"Phone location updated successfully for {client_id}",
-            "location": location
+            "location": location,
         }
 
     except HTTPException:
@@ -609,13 +512,15 @@ def update_phone_rssi(request: dict = Body(...)):
         success = audio_scorer.set_phone_rssi(target_client_id, rssi)
 
         if not success:
-            raise HTTPException(status_code=404, detail=f"Target client {target_client_id} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Target client {target_client_id} not found"
+            )
 
         logger.info(f"Updated RSSI from {phone_client_id} to {target_client_id}: {rssi} dBm")
 
         return {
             "message": f"RSSI updated successfully from {phone_client_id} to {target_client_id}",
-            "rssi": rssi
+            "rssi": rssi,
         }
 
     except HTTPException:
