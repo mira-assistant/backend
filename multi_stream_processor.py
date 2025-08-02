@@ -297,23 +297,25 @@ class AudioStreamScorer:
 
         return min(100.0, max(0.0, overall_score))
 
-    def get_best_stream(self) -> Optional[Dict[str, float]]:
+    def get_best_stream(self) -> Dict[str, float]:
         """
         Get the client ID with the best current stream quality.
 
         Returns:
-            Dict[str, float]: {"client_id": client_id, "score": score} of best stream, or None if no active clients
+            Dict[str, float]: {"client_id": client_id, "score": score} of best stream
         """
-
         best_stream = {
             "client_id": None,
             "score": 0.0,
         }
 
         for client_id, client_info in self.clients.items():
-            if best_stream is None or client_info.quality_metrics.score > best_stream["score"]:
-                best_stream = {"client_id": client_id, "score": client_info.quality_metrics.score}
-                continue
+            # Calculate current score for this client
+            current_score = self.calculate_overall_score(client_info.quality_metrics)
+            client_info.quality_metrics.score = current_score
+            
+            if current_score > best_stream["score"]:
+                best_stream = {"client_id": client_id, "score": current_score}
 
         return best_stream
 

@@ -83,8 +83,22 @@ def log_once(message, flag_name=None):
 def root():
     scores = audio_scorer.get_all_stream_scores()
     status["best_client"] = audio_scorer.get_best_stream()
-    for client_id, score in scores.items():
-        status["connected_clients"][client_id]["score"] = score
+    
+    # Update connection runtime for all connected clients
+    current_time = datetime.now(timezone.utc)
+    for client_id, client_info in status["connected_clients"].items():
+        if "connection_start_time" in client_info:
+            connection_start = client_info["connection_start_time"]
+            if isinstance(connection_start, str):
+                # Handle backward compatibility if stored as string
+                connection_start = datetime.fromisoformat(connection_start.replace('Z', '+00:00'))
+            
+            runtime_seconds = (current_time - connection_start).total_seconds()
+            client_info["connection_runtime"] = round(runtime_seconds, 2)
+        
+        # Add score information
+        if client_id in scores:
+            client_info["score"] = scores[client_id]
 
     return status
 
@@ -92,14 +106,15 @@ def root():
 @app.post("/service/client/register/{client_id}")
 def register_client(client_id: str, request: Request):
     """Register a client and initialize stream scoring."""
-    # Get client IP address and connection time
+    # Get client IP address and connection start time
     client_ip = request.client.host if request.client else "unknown"
-    connection_time = datetime.now(timezone.utc).isoformat()
+    connection_start_time = datetime.now(timezone.utc)
 
     # Store client information in connected_clients dictionary
     status["connected_clients"][client_id] = {
         "ip": client_ip,
-        "connection_time": connection_time,
+        "connection_start_time": connection_start_time,
+        "connection_runtime": 0.0,  # Runtime in seconds, updated dynamically
     }
 
     # Register client with audio stream scorer
@@ -182,7 +197,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = sentence_processor.transcribe_interaction(sentence_buf)
+        transcription_result = sentence_processor.transcribe_interaction(sentence_buf, use_advanced_speaker_id=True)
 
         if not transcription_result or not transcription_result.get("text"):
             raise HTTPException(
@@ -218,16 +233,17 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             db.commit()
             db.refresh(interaction)
 
-            speaker_id = processor.assign_speaker(
-                transcription_result["voice_embedding"],
-                session=db,
-                interaction_id=interaction.id,
-            )
-
-            interaction.speaker_id = speaker_id
-
-            db.commit()
-            db.refresh(interaction)
+            # Speaker ID is already assigned by transcribe_interaction, but we might update it
+            # using the context processor if needed for additional features
+            if interaction.speaker_id is None and transcription_result.get("voice_embedding"):
+                speaker_id = processor.assign_speaker(
+                    transcription_result["voice_embedding"],
+                    session=db,
+                    interaction_id=interaction.id,
+                )
+                interaction.speaker_id = speaker_id
+                db.commit()
+                db.refresh(interaction)
 
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
             status["recent_interactions"].append(interaction.id)
@@ -426,9 +442,9 @@ def get_best_stream():
     best_stream_info = audio_scorer.get_best_stream()
 
     if not best_stream_info:
-        raise HTTPException(status_code=404, detail="No active streams found")
+        return {"best_stream": None}
 
-    return best_stream_info
+    return {"best_stream": best_stream_info}
 
 
 @app.get("/streams/scores")
@@ -436,11 +452,40 @@ def get_all_stream_scores():
     """Get quality scores for all active streams."""
 
     try:
-        return audio_scorer.clients
+        clients_info = audio_scorer.clients
+        scores = audio_scorer.get_all_stream_scores()
+        best_stream = audio_scorer.get_best_stream()
+        
+        return {
+            "active_streams": len(clients_info),
+            "stream_scores": scores,
+            "current_best": best_stream,
+        }
 
     except Exception as e:
         logger.error(f"Error getting stream scores: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stream scores: {str(e)}")
+
+
+@app.get("/streams/{client_id}/info")
+def get_client_stream_info(client_id: str):
+    """Get detailed stream information about a specific client."""
+    
+    if client_id not in audio_scorer.clients:
+        raise HTTPException(status_code=404, detail=f"Client {client_id} not found in stream scoring")
+    
+    client_info = audio_scorer.clients[client_id]
+    current_score = audio_scorer.get_all_stream_scores().get(client_id, 0.0)
+    best_stream = audio_scorer.get_best_stream()
+    is_best_stream = best_stream and best_stream.get("client_id") == client_id
+    
+    return {
+        "client_id": client_id,
+        "quality_metrics": client_info.quality_metrics.__dict__,
+        "current_score": round(current_score, 2),
+        "is_best_stream": is_best_stream,
+        "last_update": client_info.last_update,
+    }
 
 
 @app.get("/service/{client_id}")

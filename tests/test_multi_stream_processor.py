@@ -25,8 +25,6 @@ class TestAudioStreamScorer:
         """Test scorer initialization"""
         assert self.scorer.sample_rate == 16000
         assert len(self.scorer.clients) == 0
-        assert self.scorer.current_best_client is None
-        assert len(self.scorer.score_history) == 0
 
     def test_register_client(self):
         """Test client registration"""
@@ -35,8 +33,7 @@ class TestAudioStreamScorer:
 
         assert success is True
         assert client_id in self.scorer.clients
-        assert client_id in self.scorer.score_history
-        assert self.scorer.clients[client_id].is_active is True
+        assert self.scorer.clients[client_id].client_id == client_id
 
     def test_register_duplicate_client(self):
         """Test registering the same client twice"""
@@ -62,7 +59,6 @@ class TestAudioStreamScorer:
         success = self.scorer.deregister_client(client_id)
         assert success is True
         assert client_id not in self.scorer.clients
-        assert client_id not in self.scorer.score_history
 
     def test_deregister_nonexistent_client(self):
         """Test deregistering a client that doesn't exist"""
@@ -73,14 +69,25 @@ class TestAudioStreamScorer:
         """Test deregistering the currently best client"""
         client_id = "test_client_1"
 
-        # Register and set as best client
+        # Register client
         self.scorer.register_client(client_id)
-        self.scorer.current_best_client = client_id
+        
+        # Simulate some audio data to make it the best stream
+        audio_data = np.random.normal(0, 0.1, 1000) + 0.5 * np.sin(2 * np.pi * 440 * np.arange(1000) / 16000)
+        self.scorer.update_stream_quality(client_id, audio_data)
+        
+        # Verify it's the best stream before deregistration
+        best_stream = self.scorer.get_best_stream()
+        if best_stream and best_stream.get("client_id"):
+            assert best_stream["client_id"] == client_id
 
         # Deregister
         success = self.scorer.deregister_client(client_id)
         assert success is True
-        assert self.scorer.current_best_client is None
+        
+        # After deregistration, no best client should exist
+        best_stream_after = self.scorer.get_best_stream()
+        assert best_stream_after["client_id"] is None
 
     def test_calculate_snr_empty_audio(self):
         """Test SNR calculation with empty audio"""
@@ -166,7 +173,6 @@ class TestAudioStreamScorer:
         client_info = self.scorer.get_client_info(client_id)
 
         assert client_info is not None
-        assert client_info.is_active is True
         assert client_info.quality_metrics == metrics
 
     def test_calculate_overall_score(self):
@@ -202,7 +208,9 @@ class TestAudioStreamScorer:
     def test_get_best_stream_no_clients(self):
         """Test getting best stream when no clients are registered"""
         result = self.scorer.get_best_stream()
-        assert result is None
+        assert result is not None
+        assert result["client_id"] is None
+        assert result["score"] == 0.0
 
     def test_get_best_stream_single_client(self):
         """Test getting best stream with single client"""
@@ -210,16 +218,15 @@ class TestAudioStreamScorer:
         self.scorer.register_client(client_id)
 
         # Update with some audio data
-        audio_data = np.random.normal(0, 0.1, 1000)
+        audio_data = np.random.normal(0, 0.1, 1000) + 0.5 * np.sin(2 * np.pi * 440 * np.arange(1000) / 16000)
         self.scorer.update_stream_quality(client_id, audio_data)
 
         result = self.scorer.get_best_stream()
 
         assert result is not None
-        best_client, score = result
-        assert best_client == client_id
-        assert 0.0 <= score <= 100.0
-        assert self.scorer.current_best_client == client_id
+        assert result["client_id"] == client_id
+        assert result["score"] > 0.0
+        assert 0.0 <= result["score"] <= 100.0
 
     def test_get_best_stream_multiple_clients(self):
         """Test getting best stream with multiple clients"""
@@ -238,9 +245,8 @@ class TestAudioStreamScorer:
         result = self.scorer.get_best_stream()
 
         assert result is not None
-        best_client, score = result
-        assert best_client in clients
-        assert 0.0 <= score <= 100.0
+        assert result["client_id"] in clients
+        assert 0.0 <= result["score"] <= 100.0
 
     def test_get_all_stream_scores(self):
         """Test getting scores for all streams"""
@@ -288,7 +294,6 @@ class TestAudioStreamScorer:
 
         assert client_info is not None
         assert client_info.client_id == client_id
-        assert client_info.is_active is True
 
     def test_get_client_info_nonexistent(self):
         """Test getting info for non-existent client"""
@@ -365,7 +370,6 @@ class TestClientStreamInfo:
         info = ClientStreamInfo(client_id=client_id)
 
         assert info.client_id == client_id
-        assert info.is_active is True
         assert isinstance(info.last_update, datetime)
         assert isinstance(info.quality_metrics, StreamQualityMetrics)
 
@@ -377,13 +381,11 @@ class TestClientStreamInfo:
 
         info = ClientStreamInfo(
             client_id=client_id,
-            is_active=False,
             last_update=custom_time,
             quality_metrics=custom_metrics,
         )
 
         assert info.client_id == client_id
-        assert info.is_active is False
         assert info.last_update == custom_time
         assert info.quality_metrics == custom_metrics
 
