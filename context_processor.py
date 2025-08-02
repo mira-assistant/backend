@@ -9,7 +9,6 @@ from typing import List, Optional, Tuple
 import uuid
 import numpy as np
 
-from sklearn.cluster import DBSCAN
 import spacy
 from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
@@ -29,18 +28,6 @@ from typing import Literal
 
 class ContextProcessorConfig:
     """Configuration class for the context processor."""
-
-    class SpeakerRecognitionConfig:
-        """Speaker recognition parameters."""
-
-        SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
-        """Cosine similarity threshold for determining if two voice samples are from the same speaker.
-        Lowering this value decreases sensitivity, making it less likely to group different speakers together,
-        but may increase false negatives (splitting the same speaker into multiple clusters)."""
-        DBSCAN_EPS: float = 0.9
-        """Epsilon parameter for DBSCAN clustering algorithm, controlling the maximum distance between samples in a cluster."""
-        DBSCAN_MIN_SAMPLES: Literal[2] = 2
-        """Minimum number of samples required to form a cluster in DBSCAN."""
 
     class NLPConfig:
         """Natural Language Processing parameters."""
@@ -93,19 +80,6 @@ class ContextProcessor:
         """Initialize the context processor."""
         self.conversation_cache: deque = deque(maxlen=100)
 
-        # Speaker detection state variables for advanced clustering
-        self._speaker_embeddings: List[np.ndarray] = []
-        self._speaker_ids: List[uuid.UUID] = []
-        self._speaker_interaction_ids: List[uuid.UUID] = []
-        self._cluster_labels: List[int] = []
-        self._clusters_dirty: bool = True
-
-        self.dbscan = DBSCAN(
-            eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
-            min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
-            metric="cosine",
-        )
-
         self.current_conversation_id = None
         self.current_participants = set()
 
@@ -126,185 +100,7 @@ class ContextProcessor:
         )
 
     # --- ADVANCED SPEAKER DETECTION SECTION START ---
-
-    def _refresh_speaker_cache(self):
-        """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
-        session = get_db_session()
-        try:
-            interactions = (
-                session.query(Interaction)
-                .filter(Interaction.voice_embedding.isnot(None), Interaction.speaker_id.isnot(None))
-                .all()
-            )
-            self._speaker_embeddings = [
-                np.array(i.voice_embedding, dtype=np.float32) for i in interactions
-            ]
-            self._speaker_ids = [i.speaker_id for i in interactions]
-            self._speaker_interaction_ids = [i.id for i in interactions]
-            self._clusters_dirty = True
-        finally:
-            session.close()
-
-    def _recompute_clusters(self):
-        """Run DBSCAN clustering on all cached embeddings and update labels."""
-        if not self._speaker_embeddings or (
-            isinstance(self._speaker_embeddings, np.ndarray) and self._speaker_embeddings.size == 0
-        ):
-            self._cluster_labels = []
-            return
-        X = np.stack(self._speaker_embeddings)
-        self._cluster_labels = self.dbscan.fit_predict(X).tolist()
-        self._clusters_dirty = False
-
-    def assign_speaker(
-        self,
-        embedding: np.ndarray,
-        session: Optional[Session] = None,
-        interaction_id=None,
-    ):
-        """
-        Assign a speaker using DBSCAN clustering over all embeddings.
-        Returns the Person.id of the most similar speaker (if above threshold) or creates a new one.
-        Also updates clusters in the database.
-
-        Args:
-            embedding: The new voice embedding (np.ndarray)
-            session: Optional SQLAlchemy session to reuse
-            interaction_id: The interaction UUID to use for the new embedding, if available
-        """
-
-        embedding = np.array(embedding, dtype=np.float32)
-
-        own_session = session is None
-        session = session or get_db_session()
-        try:
-            if (
-                not self._speaker_embeddings
-                or (
-                    isinstance(self._speaker_embeddings, np.ndarray)
-                    and self._speaker_embeddings.size == 0
-                )
-                or self._clusters_dirty
-            ):
-                self._refresh_speaker_cache()
-                self._recompute_clusters()
-                self._recompute_clusters()
-
-            # Add the new embedding to the cached ones for clustering
-            all_embeddings = self._speaker_embeddings + [embedding]
-            X = np.stack(all_embeddings)
-            dbscan = DBSCAN(
-                eps=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_EPS,
-                min_samples=ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES,
-                metric="cosine",
-            )
-
-            labels = dbscan.fit_predict(X)
-            new_label = labels[-1]
-
-            # Helper to append to cache with correct types
-            def _append_cache(embedding, person_id, interaction_id):
-                self._speaker_embeddings.append(embedding)
-                self._speaker_ids.append(person_id)
-                self._speaker_interaction_ids.append(interaction_id)
-                self._clusters_dirty = True
-
-            if new_label == -1:
-                new_index = (
-                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                )[0] + 1
-                new_person = Person(
-                    voice_embedding=(
-                        embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
-                    ),
-                    index=new_index,
-                )
-                session.add(new_person)
-                session.commit()
-                session.refresh(new_person)
-                _append_cache(embedding, new_person.id, interaction_id)
-                self._update_db_clusters(session, labels[:-1] + [-1])
-                return new_person.id
-
-            cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
-            if not cluster_indices:
-                new_index = (
-                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                )[0] + 1
-                new_person = Person(
-                    voice_embedding=embedding.tolist(),
-                    index=new_index,
-                )
-                session.add(new_person)
-                session.commit()
-                session.refresh(new_person)
-                _append_cache(embedding, new_person.id, interaction_id)
-                self._update_db_clusters(session, labels[:-1] + [-1])
-                return new_person.id
-
-            similarities = []
-            for idx in cluster_indices:
-                emb = all_embeddings[idx]
-                sim = float(
-                    np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb))
-                )
-                similarities.append((idx, sim))
-            best_idx, best_sim = max(similarities, key=lambda x: x[1])
-
-            print("best similarity:", best_sim)
-
-            if (
-                best_sim
-                < ContextProcessorConfig.SpeakerRecognitionConfig.SPEAKER_SIMILARITY_THRESHOLD
-            ):
-                new_index = (
-                    session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-                )[0] + 1
-                new_person = Person(
-                    voice_embedding=embedding.tolist(),
-                    index=new_index,
-                )
-                session.add(new_person)
-                session.commit()
-                session.refresh(new_person)
-                _append_cache(embedding, new_person.id, interaction_id)
-                self._update_db_clusters(session, labels[:-1] + [-1])
-                return new_person.id
-
-            # Assign to the Person of the best match in the cluster
-            matched_person_id = self._speaker_ids[best_idx]
-            matched_person = session.query(Person).filter_by(id=matched_person_id).first()
-            if matched_person and matched_person.voice_embedding is not None:
-                old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
-                updated_emb = 0.8 * old_emb + 0.2 * embedding
-                matched_person.voice_embedding = updated_emb.tolist()
-                session.commit()
-            _append_cache(embedding, matched_person_id, interaction_id)
-            self._update_db_clusters(session, labels)
-            return matched_person_id
-        finally:
-            if own_session:
-                session.close()
-
-    def _update_db_clusters(self, session: Session, cluster_labels):
-        """
-        Update DB cluster assignments for all Persons based on current cache and cluster_labels.
-        Interactions in cache must match the order of cluster_labels.
-        """
-        if (
-            len(self._speaker_ids) == 0
-            or len(cluster_labels) == 0
-            or len(self._speaker_ids) != len(cluster_labels)
-        ):
-            return
-        for person_id, label in zip(self._speaker_ids, cluster_labels):
-            if person_id is None:
-                continue
-            person = session.query(Person).filter_by(id=person_id).first()
-            if person:
-                person.cluster_id = int(label) if label != -1 else None
-        session.commit()
-
+    # All speaker identification logic has been migrated to sentence_processor.py
     # --- ADVANCED SPEAKER DETECTION SECTION END ---
 
     # ... all other ContextProcessor methods remain unchanged ...
@@ -422,35 +218,6 @@ class ContextProcessor:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def _update_clusters_db(self, session):
-        """Update DBSCAN clustering for all speakers using database."""
-        persons = session.query(Person).filter(Person.voice_embedding.isnot(None)).all()
-
-        if len(persons) < ContextProcessorConfig.SpeakerRecognitionConfig.DBSCAN_MIN_SAMPLES:
-            return
-
-        try:
-            all_embeddings = []
-            person_ids = []
-
-            for person in persons:
-                all_embeddings.append(np.array(person.voice_embedding))
-                person_ids.append(person.id)
-
-            all_embeddings = np.array(all_embeddings)
-            cluster_labels = self.dbscan.fit_predict(all_embeddings)
-
-            # Update cluster IDs in database
-            for i, person_id in enumerate(person_ids):
-                person = session.query(Person).filter_by(id=person_id).first()
-                if person:
-                    person.cluster_id = int(cluster_labels[i]) if cluster_labels[i] != -1 else None
-
-            session.commit()
-
-        except Exception as e:
-            self.logger.error(f"Clustering update failed: {e}")
-
     def add_interaction(
         self,
         interaction: Interaction,
@@ -462,7 +229,9 @@ class ContextProcessor:
         try:
             # Handle speaker recognition if voice embedding provided
             if voice_embedding is not None:
-                person_id = self.assign_speaker(voice_embedding)
+                # Delegate speaker assignment to sentence processor
+                from sentence_processor import assign_speaker_advanced
+                person_id = assign_speaker_advanced(voice_embedding, session)
                 interaction.speaker_id = person_id
 
             # Check if we need to start a new conversation or continue existing one
@@ -534,7 +303,7 @@ class ContextProcessor:
 
             if (
                 similarity
-                < ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+                < ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD
             ):
                 return True
 
@@ -667,7 +436,7 @@ class ContextProcessor:
                 similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
                 if (
                     similarity
-                    >= ContextProcessorConfig.ContextManagementParameters.context_similarity_threshold
+                    >= ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD
                 ):
                     similarities.append((interaction, similarity))
             except Exception as e:
