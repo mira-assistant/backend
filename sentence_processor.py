@@ -36,6 +36,7 @@ from models import Person
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 from typing import Optional
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,10 @@ _spk_encoder = None
 _speaker_centroids: list[np.ndarray] = []
 
 # ---------- Advanced Speaker Identification State Variables ----------
-from collections import deque
-from sklearn.cluster import DBSCAN
-import uuid
 
 class SpeakerIdentificationState:
     """State variables for advanced speaker identification moved from context_processor."""
-    
+
     def __init__(self):
         # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: list[np.ndarray] = []
@@ -72,12 +70,12 @@ class SpeakerIdentificationState:
         self._speaker_interaction_ids: list[uuid.UUID] = []
         self._cluster_labels: list[int] = []
         self._clusters_dirty: bool = True
-        
+
         # DBSCAN configuration
         self.SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
-        
+
         self.dbscan = DBSCAN(
             eps=self.DBSCAN_EPS,
             min_samples=self.DBSCAN_MIN_SAMPLES,
@@ -218,7 +216,7 @@ def assign_speaker(new_embedding: np.ndarray):
 def _refresh_speaker_cache():
     """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
     from models import Interaction
-    
+
     session = get_db_session()
     try:
         interactions = (
@@ -263,7 +261,7 @@ def assign_speaker_advanced(
         session: Optional SQLAlchemy session to reuse
         interaction_id: The interaction UUID to use for the new embedding, if available
     """
-    
+
     embedding = np.array(embedding, dtype=np.float32)
 
     own_session = session is None
@@ -397,7 +395,7 @@ def _update_db_clusters(session: Session, cluster_labels):
 def transcribe_interaction(sentence_buf: bytearray, use_advanced_speaker_id: bool = True) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
-    
+
     Args:
         sentence_buf: Audio buffer containing the sentence
         use_advanced_speaker_id: Whether to use advanced clustering-based speaker identification
@@ -439,7 +437,7 @@ def transcribe_interaction(sentence_buf: bytearray, use_advanced_speaker_id: boo
 
     interaction["text"] = text
     interaction["voice_embedding"] = embedding.tolist()
-    
+
     # Use advanced speaker identification if requested
     if use_advanced_speaker_id:
         try:
