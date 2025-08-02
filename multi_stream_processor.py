@@ -35,6 +35,10 @@ class StreamQualityMetrics:
     noise_level: float = 0.0
     # Placeholder for future phone distance feature
     phone_distance: Optional[float] = None
+    # GPS-based location data
+    location: Optional[Dict] = None
+    # RSSI-based proximity data
+    rssi: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sample_count: int = 0
 
@@ -75,10 +79,12 @@ class AudioStreamScorer:
 
         # Scoring weights (can be adjusted based on requirements)
         self.weights = {
-            "snr": 0.4,
-            "speech_clarity": 0.4,
+            "snr": 0.3,
+            "speech_clarity": 0.3,
             "volume_level": 0.1,
             "phone_distance": 0.1,  # Placeholder for future use
+            "location": 0.1,  # GPS-based location scoring
+            "rssi": 0.1,  # RSSI-based proximity scoring
         }
 
     def register_client(
@@ -260,6 +266,8 @@ class AudioStreamScorer:
                 volume_level=volume_level,
                 noise_level=noise_level,
                 phone_distance=client_info.quality_metrics.phone_distance,  # Preserve existing value
+                location=client_info.quality_metrics.location,  # Preserve existing value
+                rssi=client_info.quality_metrics.rssi,  # Preserve existing value
                 sample_count=client_info.quality_metrics.sample_count + 1,
             )
 
@@ -294,12 +302,30 @@ class AudioStreamScorer:
             # For now, just placeholder logic
             distance_score = max(0.0, 100.0 - (metrics.phone_distance * 10))
 
+        # Location score (will be 100 if no location info)
+        location_score = 100.0
+        if metrics.location is not None:
+            # Simple scoring based on location accuracy or other GPS metrics
+            # For now, just placeholder logic - could use GPS accuracy, speed, etc.
+            accuracy = metrics.location.get("accuracy", 100.0)  # meters
+            location_score = max(0.0, 100.0 - (accuracy / 10.0))  # Better accuracy = higher score
+
+        # RSSI score (will be 100 if no RSSI info)
+        rssi_score = 100.0
+        if metrics.rssi is not None:
+            # Higher RSSI (less negative) = better signal = higher score
+            # Typical RSSI range: -30 (excellent) to -90 (poor)
+            rssi_normalized = max(-90.0, min(-30.0, metrics.rssi))  # Clamp to typical range
+            rssi_score = ((rssi_normalized + 90.0) / 60.0) * 100.0  # Convert to 0-100
+
         # Calculate weighted score
         overall_score = (
             self.weights["snr"] * snr_score
             + self.weights["speech_clarity"] * clarity_score
             + self.weights["volume_level"] * volume_score
             + self.weights["phone_distance"] * distance_score
+            + self.weights["location"] * location_score
+            + self.weights["rssi"] * rssi_score
         )
 
         return min(100.0, max(0.0, overall_score))
@@ -394,6 +420,46 @@ class AudioStreamScorer:
 
             self.clients[client_id].quality_metrics.phone_distance = distance
             logger.info(f"Set phone distance for {client_id}: {distance}m")
+            return True
+
+    def set_phone_location(self, client_id: str, location: Dict) -> bool:
+        """
+        Set GPS location data for a client.
+
+        Args:
+            client_id: Unique identifier for the client
+            location: GPS location data (lat, lng, accuracy, etc.)
+
+        Returns:
+            bool: True if location was set successfully
+        """
+        with self._lock:
+            if client_id not in self.clients:
+                logger.warning(f"Client {client_id} not found for location update")
+                return False
+
+            self.clients[client_id].quality_metrics.location = location
+            logger.info(f"Set location for {client_id}: {location}")
+            return True
+
+    def set_phone_rssi(self, client_id: str, rssi: float) -> bool:
+        """
+        Set RSSI proximity data for a client.
+
+        Args:
+            client_id: Unique identifier for the client
+            rssi: RSSI value in dBm
+
+        Returns:
+            bool: True if RSSI was set successfully
+        """
+        with self._lock:
+            if client_id not in self.clients:
+                logger.warning(f"Client {client_id} not found for RSSI update")
+                return False
+
+            self.clients[client_id].quality_metrics.rssi = rssi
+            logger.info(f"Set RSSI for {client_id}: {rssi}dBm")
             return True
 
     def get_client_info(self, client_id: str) -> Optional[ClientStreamInfo]:
