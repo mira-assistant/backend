@@ -16,8 +16,7 @@ import inference_processor
 import sentence_processor
 import context_processor
 from multi_stream_processor import AudioStreamScorer
-from command_processor import WakeWordDetector
-import command_workflow
+from command_processor import WakeWordDetector, process_wake_word_command, get_command_processor, CommandProcessingResult
 
 
 # Setup logging
@@ -224,33 +223,24 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             )
             
             # Process the command through the AI workflow
-            try:
-                command_result = command_workflow.process_wake_word_command(
-                    interaction_text=transcription_result["text"],
-                    client_id=client_id,
-                    context=None  # Could enhance with conversation context later
-                )
-                
-                # Store the result in status for monitoring
-                status["last_command_result"] = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "client_id": client_id,
-                    "wake_word": wake_word_detection.wake_word,
-                    "callback_executed": command_result.callback_executed,
-                    "callback_name": command_result.callback_name,
-                    "user_response": command_result.user_response,
-                    "error": command_result.error
-                }
-                
-                logger.info(f"Command processing result: callback_executed={command_result.callback_executed}, callback_name={command_result.callback_name}")
-                
-            except Exception as e:
-                logger.error(f"Error in command processing: {e}")
-                command_result = command_workflow.CommandProcessingResult(
-                    callback_executed=False,
-                    user_response="Sorry, I encountered an error processing that command.",
-                    error=str(e)
-                )
+            command_result = process_wake_word_command(
+                interaction_text=transcription_result["text"],
+                client_id=client_id,
+                context=None  # Could enhance with conversation context later
+            )
+            
+            # Store the result in status for monitoring
+            status["last_command_result"] = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "client_id": client_id,
+                "wake_word": wake_word_detection.wake_word,
+                "callback_executed": command_result.callback_executed,
+                "callback_name": command_result.callback_name,
+                "user_response": command_result.user_response,
+                "error": command_result.error
+            }
+            
+            logger.info(f"Command processing result: callback_executed={command_result.callback_executed}, callback_name={command_result.callback_name}")
 
         db = get_db_session()
 
@@ -290,6 +280,12 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                     "user_response": command_result.user_response,
                     "error": command_result.error
                 }
+                
+                # Return the user response if callback was executed, otherwise return None
+                if command_result.callback_executed and command_result.callback_name:
+                    return command_result.user_response
+                else:
+                    return None
 
             audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
             audio_scorer.update_stream_quality(client_id, audio_float)
@@ -620,7 +616,7 @@ def get_last_command_result():
 @app.get("/commands/callbacks")
 def get_available_callbacks():
     """Get list of available callback functions."""
-    processor = command_workflow.get_command_processor()
+    processor = get_command_processor()
     return {
         "available_functions": processor.callback_registry.get_function_list(),
         "function_descriptions": processor.callback_registry.get_function_descriptions()

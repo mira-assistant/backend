@@ -1,5 +1,5 @@
 """
-Unit tests for CommandWorkflow and CallbackRegistry from command_workflow.py
+Unit tests for CommandWorkflow and CallbackRegistry from command_processor.py
 """
 
 import sys
@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
-from command_workflow import (
+from command_processor import (
     CallbackRegistry, 
     CommandProcessor, 
     CallbackFunction, 
@@ -125,10 +125,11 @@ class TestCallbackRegistry:
         assert success is True
         assert "weather" in result.lower()
         
-        # Test disableMira
-        success, result = self.registry.execute("disableMira")
-        assert success is True
-        assert "disabled" in result.lower()
+        # Test disableMira with proper mocking
+        with patch.dict('sys.modules', {'mira': Mock(status={"enabled": True})}):
+            success, result = self.registry.execute("disableMira")
+            assert success is True
+            assert "disabled" in result.lower()
 
 
 class TestCommandProcessor:
@@ -188,14 +189,12 @@ class TestCommandProcessor:
 
     @patch('inference_processor.send_prompt')
     def test_process_command_ai_error(self, mock_send_prompt):
-        """Test processing command when AI communication fails"""
+        """Test processing command when AI communication fails - should raise exception"""
         mock_send_prompt.side_effect = Exception("AI communication error")
         
-        result = self.processor.process_command("Test command", "test_client")
-        
-        assert result.callback_executed is False
-        assert result.error == "No AI response received"
-        assert "didn't understand" in result.user_response
+        # The server should crash when ML model is offline, not handle it gracefully
+        with pytest.raises(Exception, match="AI communication error"):
+            self.processor.process_command("Test command", "test_client")
 
     @patch('inference_processor.send_prompt')
     def test_process_command_no_ai_response(self, mock_send_prompt):
@@ -234,7 +233,7 @@ class TestGlobalFunctions:
         assert processor1 is processor2  # Should return same instance
         assert isinstance(processor1, CommandProcessor)
 
-    @patch('command_workflow.get_command_processor')
+    @patch('command_processor.get_command_processor')
     def test_process_wake_word_command(self, mock_get_processor):
         """Test convenience function for wake word command processing"""
         mock_processor = Mock()

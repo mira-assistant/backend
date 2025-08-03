@@ -18,7 +18,7 @@ def send_prompt(prompt: str, context=None) -> dict[str, str]:
     message = {"role": "user", "content": prompt}
 
     payload = {
-        "model": "nous-hermes-2-mistral-7b-dpo",
+        "model": "microsoft/DialoGPT-small",  # Lightweight model good for NLP
         "messages": [message],
         "max_tokens": -1,
         "stream": False,
@@ -35,10 +35,7 @@ def send_prompt(prompt: str, context=None) -> dict[str, str]:
 
     generated_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-    try:
-        result = json.loads(generated_text)
-    except json.JSONDecodeError:
-        result = {"error": "Invalid JSON", "raw": generated_text}
+    result = json.loads(generated_text)
     return result
 
 
