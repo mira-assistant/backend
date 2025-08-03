@@ -55,12 +55,13 @@ class Interaction(Base):
     conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True)
 
     # Speaker Identification features
-    voice_embedding = Column(JSON, nullable=True)
+    voice_embedding = Column(JSON, nullable=True)  # For speaker recognition (voice characteristics)
     speaker_id = Column(
         UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True
     )  # Link to Person
 
     # NLP-extracted features
+    text_embedding = Column(JSON, nullable=True)  # For semantic text similarity
     entities = Column(JSON, nullable=True)  # Named entities extracted from text
     topics = Column(JSON, nullable=True)  # Topic modeling results
     sentiment = Column(Float, nullable=True)  # Sentiment score

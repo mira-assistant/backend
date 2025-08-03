@@ -304,7 +304,7 @@ class TestGlobalFunctions:
         assert result.callback_executed is True
         assert result.callback_name == "getTime"
         mock_processor.process_command.assert_called_once_with(
-            "What time is it?", "test_client", None
+            "What time is it?", "test_client"
         )
 
 

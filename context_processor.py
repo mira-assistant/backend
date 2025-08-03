@@ -87,11 +87,10 @@ class ContextProcessor:
         self._init_nlp_components()
 
     def _init_nlp_components(self):
-        self.nlp_components = {}
-
-        self.nlp_components["spacy"] = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
-        self.nlp_components["sentence_transformer"] = SentenceTransformer("all-MiniLM-L6-v2")
-        self.nlp_components["sentiment"] = pipeline(
+        """Initialize NLP models as individual state variables."""
+        self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+        self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+        self.sentiment_pipeline = pipeline(
             task="text-classification",
             model="cardiffnlp/twitter-roberta-base-sentiment-latest",
             top_k=None,
@@ -102,7 +101,7 @@ class ContextProcessor:
 
         try:
             # Named Entity Recognition
-            doc = self.nlp_components["spacy"](interaction.text)
+            doc = self.spacy_model(interaction.text)
             entities_list = [
                 {
                     "text": ent.text,
@@ -116,7 +115,7 @@ class ContextProcessor:
             interaction.entities = json.dumps(entities_list)
 
             # Sentiment Analysis
-            sentiment_result = self.nlp_components["sentiment"](interaction.text)
+            sentiment_result = self.sentiment_pipeline(interaction.text)
             if sentiment_result and len(sentiment_result[0]) > 0:
                 # Get the positive sentiment score
                 positive_score = next(
@@ -125,10 +124,10 @@ class ContextProcessor:
                 )
                 interaction.sentiment = positive_score
 
-            # Text Embedding for semantic similarity
-            embedding = self.nlp_components["sentence_transformer"].encode(interaction.text)
-            # Store embedding as JSON in voice_embedding field (reusing existing field)
-            interaction.voice_embedding = embedding.tolist()
+            # Text Embedding for semantic similarity (NOT voice embedding)
+            embedding = self.sentence_transformer.encode(interaction.text)
+            # Store text embedding in the correct field
+            interaction.text_embedding = embedding.tolist()
 
         except Exception as e:
             self.logger.error(f"NLP processing failed: {e}")
@@ -247,9 +246,9 @@ class ContextProcessor:
                 relevant_interactions.extend(keyword_results)
 
             # Semantic similarity retrieval using embeddings
-            if current_interaction and current_interaction.voice_embedding is not None:
+            if current_interaction and current_interaction.text_embedding is not None:
                 semantic_results = self._get_semantic_similar_interactions_db(
-                    current_interaction.voice_embedding, session, max_results
+                    current_interaction.text_embedding, session, max_results
                 )
                 relevant_interactions.extend(semantic_results)
 
@@ -295,13 +294,13 @@ class ContextProcessor:
     def _get_semantic_similar_interactions_db(
         self, query_embedding, session, max_results: int
     ) -> List[Interaction]:
-        """Get semantically similar interactions using embeddings from database."""
+        """Get semantically similar interactions using text embeddings from database."""
         query_embedding_np = np.array(query_embedding)
 
-        # Get all interactions with embeddings
+        # Get all interactions with text embeddings (not voice embeddings)
         interactions_with_embeddings = (
             session.query(Interaction)
-            .filter(Interaction.voice_embedding.isnot(None))
+            .filter(Interaction.text_embedding.isnot(None))
             .order_by(Interaction.timestamp.desc())
             .limit(100)  # Limit to recent interactions for performance
             .all()
@@ -310,7 +309,7 @@ class ContextProcessor:
         similarities = []
         for interaction in interactions_with_embeddings:
             try:
-                interaction_embedding = np.array(interaction.voice_embedding)
+                interaction_embedding = np.array(interaction.text_embedding)
                 similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
                 if similarity >= ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
                     similarities.append((interaction, similarity))
@@ -587,8 +586,8 @@ class ContextProcessor:
             if self.detect_conversation_boundary(interaction):
                 self._start_new_conversation(interaction, session)
 
-            # Add to database with database integration
-            self.add_interaction(interaction, voice_embedding)
+            # Process NLP features for the interaction
+            self._process_nlp_features(interaction)
 
             # Build context using database
             enhanced_prompt = self.build_context_prompt(interaction)

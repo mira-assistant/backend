@@ -454,7 +454,7 @@ class CommandProcessor:
         logger.info("CommandProcessor initialized")
 
     def process_command(
-        self, interaction_text: str, client_id: str, context: Optional[str] = None
+        self, interaction_text: str, client_id: str
     ) -> CommandProcessingResult:
         """
         Process a command through the AI model and execute callbacks
@@ -462,7 +462,6 @@ class CommandProcessor:
         Args:
             interaction_text: The transcribed user interaction
             client_id: ID of the client that triggered the command
-            context: Optional context information
 
         Returns:
             CommandProcessingResult: Result of command processing
@@ -471,7 +470,7 @@ class CommandProcessor:
         logger.info(f"Processing command from client {client_id}: {interaction_text}")
 
         # Get AI response for callback determination
-        ai_response = self._get_ai_callback_response(interaction_text, context)
+        ai_response = self._get_ai_callback_response(interaction_text)
 
         if not ai_response:
             return CommandProcessingResult(
@@ -517,14 +516,13 @@ class CommandProcessor:
             )
 
     def _get_ai_callback_response(
-        self, interaction_text: str, context: Optional[str] = None
+        self, interaction_text: str
     ) -> Optional[Dict]:
         """
         Get AI model response for callback determination
 
         Args:
             interaction_text: User interaction text
-            context: Optional context
 
         Returns:
             Dict: AI response with callback information
@@ -542,9 +540,6 @@ class CommandProcessor:
         enhanced_prompt = f"""System: {system_prompt}
 
 User Input: {interaction_text}"""
-
-        if context:
-            enhanced_prompt += f"\n\nContext: {context}"
 
         # Use existing inference processor to communicate with AI model
         ai_response = inference_processor.send_prompt(enhanced_prompt)
@@ -609,7 +604,7 @@ def get_command_processor() -> CommandProcessor:
 
 
 def process_wake_word_command(
-    interaction_text: str, client_id: str, context: Optional[str] = None
+    interaction_text: str, client_id: str
 ) -> CommandProcessingResult:
     """
     Convenience function to process wake word triggered commands
@@ -617,10 +612,9 @@ def process_wake_word_command(
     Args:
         interaction_text: The transcribed user interaction
         client_id: ID of the client that triggered the command
-        context: Optional context information
 
     Returns:
         CommandProcessingResult: Result of command processing
     """
     processor = get_command_processor()
-    return processor.process_command(interaction_text, client_id, context)
+    return processor.process_command(interaction_text, client_id)

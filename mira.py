@@ -212,22 +212,6 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             audio_length=audio_length,
         )
 
-        if wake_word_detection:
-            logger.info(
-                f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
-            )
-
-            if wake_word_detection.wake_word == "mira cancel":
-                disable_service()
-                return {"message": "Wake word 'mira cancel' detected, interaction cancelled."}
-
-            else:
-                command_processor.process_command(
-                    interaction_text=transcription_result["text"],
-                    client_id=client_id,
-                    context=None
-                )
-
         # Initialize command result for response
         command_result = None
 
@@ -239,22 +223,8 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             # Process the command through the AI workflow
             command_result = command_processor.process_command(
                 interaction_text=transcription_result["text"],
-                client_id=client_id,
-                context=None  # Could enhance with conversation context later
+                client_id=client_id
             )
-
-            # Store the result in status for monitoring
-            status["last_command_result"] = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "client_id": client_id,
-                "wake_word": wake_word_detection.wake_word,
-                "callback_executed": command_result.callback_executed,
-                "callback_name": command_result.callback_name,
-                "user_response": command_result.user_response,
-                "error": command_result.error
-            }
-
-            logger.info(f"Command processing result: callback_executed={command_result.callback_executed}, callback_name={command_result.callback_name}")
 
         db = get_db_session()
 
