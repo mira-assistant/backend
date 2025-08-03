@@ -351,5 +351,35 @@ class TestStreamScoringAPI:
         assert isinstance(status_data["connected_clients"], dict)
 
 
+class TestCommandWorkflowAPI:
+    """Test suite for command workflow API endpoints"""
+    
+    def test_get_last_command_result_empty(self):
+        """Test getting last command result when none exists"""
+        response = client.get("/commands/last-result")
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_command_result" in data
+
+    def test_get_available_callbacks(self):
+        """Test getting available callback functions"""
+        response = client.get("/commands/callbacks")
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "available_functions" in data
+        assert "function_descriptions" in data
+        
+        # Check for default callbacks
+        functions = data["available_functions"]
+        assert "getWeather" in functions
+        assert "getTime" in functions
+        assert "disableMira" in functions
+        
+        descriptions = data["function_descriptions"]
+        assert isinstance(descriptions, dict)
+        assert len(descriptions) >= 3
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
