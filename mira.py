@@ -280,17 +280,21 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                     "user_response": command_result.user_response,
                     "error": command_result.error
                 }
-                
-                # Return the user response if callback was executed, otherwise return None
-                if command_result.callback_executed and command_result.callback_name:
-                    return command_result.user_response
-                else:
-                    return None
 
             audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
             audio_scorer.update_stream_quality(client_id, audio_float)
 
-            return response
+            # Determine return value based on wake word detection and callback execution
+            if command_result:
+                # If wake word was detected and callback was executed, return user response
+                if command_result.callback_executed and command_result.callback_name:
+                    return command_result.user_response
+                else:
+                    # If wake word detected but no callback executed, return None
+                    return None
+            else:
+                # No wake word detected, return normal response
+                return response
 
         except Exception as db_error:
             logger.error(f"Database error: {db_error}", exc_info=True)
