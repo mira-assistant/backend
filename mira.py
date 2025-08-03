@@ -17,6 +17,7 @@ import sentence_processor
 import context_processor
 from multi_stream_processor import AudioStreamScorer
 from command_processor import WakeWordDetector
+import command_workflow
 
 
 # Setup logging
@@ -36,6 +37,7 @@ status: dict = {
     "best_client": None,
     "enabled": False,
     "recent_interactions": deque(maxlen=10),
+    "last_command_result": None,  # Store last command processing result
 }
 
 
@@ -213,15 +215,42 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             audio_length=audio_length,
         )
 
+        # Initialize command result for response
+        command_result = None
+
         if wake_word_detection:
             logger.info(
                 f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
             )
-            # Wake word detected - could trigger specific actions here
-            # For now, we just log it, but this could be extended to:
-            # - Start/stop recording
-            # - Send notifications
-            # - Trigger specific workflows
+            
+            # Process the command through the AI workflow
+            try:
+                command_result = command_workflow.process_wake_word_command(
+                    interaction_text=transcription_result["text"],
+                    client_id=client_id,
+                    context=None  # Could enhance with conversation context later
+                )
+                
+                # Store the result in status for monitoring
+                status["last_command_result"] = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "client_id": client_id,
+                    "wake_word": wake_word_detection.wake_word,
+                    "callback_executed": command_result.callback_executed,
+                    "callback_name": command_result.callback_name,
+                    "user_response": command_result.user_response,
+                    "error": command_result.error
+                }
+                
+                logger.info(f"Command processing result: callback_executed={command_result.callback_executed}, callback_name={command_result.callback_name}")
+                
+            except Exception as e:
+                logger.error(f"Error in command processing: {e}")
+                command_result = command_workflow.CommandProcessingResult(
+                    callback_executed=False,
+                    user_response="Sorry, I encountered an error processing that command.",
+                    error=str(e)
+                )
 
         db = get_db_session()
 
@@ -252,6 +281,15 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 "timestamp": interaction.timestamp.isoformat(),
                 "speaker_id": str(interaction.speaker_id),
             }
+
+            # Add command processing results if wake word was detected
+            if command_result:
+                response["command_result"] = {
+                    "callback_executed": command_result.callback_executed,
+                    "callback_name": command_result.callback_name,
+                    "user_response": command_result.user_response,
+                    "error": command_result.error
+                }
 
             audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
             audio_scorer.update_stream_quality(client_id, audio_float)
@@ -571,3 +609,19 @@ def update_phone_rssi(request: dict = Body(...)):
     except Exception as e:
         logger.error(f"Error updating phone RSSI: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update phone RSSI: {str(e)}")
+
+
+@app.get("/commands/last-result")
+def get_last_command_result():
+    """Get the last command processing result."""
+    return {"last_command_result": status.get("last_command_result")}
+
+
+@app.get("/commands/callbacks")
+def get_available_callbacks():
+    """Get list of available callback functions."""
+    processor = command_workflow.get_command_processor()
+    return {
+        "available_functions": processor.callback_registry.get_function_list(),
+        "function_descriptions": processor.callback_registry.get_function_descriptions()
+    }
