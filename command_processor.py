@@ -16,7 +16,6 @@ Features:
 
 import logging
 import threading
-import json
 import inspect
 from typing import Dict, List, Optional, Callable, Any, Tuple
 from dataclasses import dataclass, field
@@ -41,8 +40,7 @@ class WakeWordConfig:
     """Configuration for a wake word"""
 
     word: str
-    sensitivity: float = 0.7  # Detection threshold (0.0-1.0)
-    enabled: bool = True
+    sensitivity: float = 0.7
     min_confidence: float = 0.5
 
 
@@ -135,29 +133,6 @@ class WakeWordDetector:
             logger.warning(f"Wake word '{word_normalized}' not found")
             return False
 
-    def set_wake_word_enabled(self, word: str, enabled: bool) -> bool:
-        """
-        Enable or disable a specific wake word.
-
-        Args:
-            word: The wake word to modify
-            enabled: Whether the wake word should be enabled
-
-        Returns:
-            bool: True if operation was successful
-        """
-        with self._lock:
-            word_normalized = word.lower().strip()
-
-            if word_normalized in self.wake_words:
-                self.wake_words[word_normalized].enabled = enabled
-                status = "enabled" if enabled else "disabled"
-                logger.info(f"Wake word '{word_normalized}' {status}")
-                return True
-
-            logger.warning(f"Wake word '{word_normalized}' not found")
-            return False
-
     def get_wake_words(self) -> Dict[str, WakeWordConfig]:
         """
         Get all configured wake words.
@@ -190,7 +165,7 @@ class WakeWordDetector:
             self.detection_callbacks.remove(callback)
             logger.info("Removed wake word detection callback")
 
-    def process_audio_text(
+    def detect_wake_words_text(
         self, client_id: str, transcribed_text: str, audio_length: float = 0.0
     ) -> Optional[WakeWordDetection]:
         """
@@ -214,10 +189,7 @@ class WakeWordDetector:
 
         with self._lock:
             for wake_word, config in self.wake_words.items():
-                if not config.enabled:
-                    continue
 
-                # Simple text matching (can be enhanced with fuzzy matching)
                 confidence = self._calculate_text_confidence(wake_word, text_normalized)
 
                 # Incorporate sensitivity: require higher confidence for lower sensitivity
@@ -233,43 +205,10 @@ class WakeWordDetector:
                         audio_snippet_length=audio_length,
                     )
 
-                    logger.info(
-                        f"Wake word detected: '{wake_word}' from client {client_id} with confidence {confidence:.2f}"
-                    )
-
-                    # Trigger callbacks
                     self._trigger_callbacks(detection)
 
                     return detection
 
-        return None
-
-    def process_audio_raw(
-        self, client_id: str, audio_data, audio_length: float = 0.0
-    ) -> Optional[WakeWordDetection]:
-        """
-        Process raw audio data for wake word detection.
-
-        This is a placeholder for advanced audio-based wake word detection.
-        Currently returns None but can be extended with ML-based detection.
-
-        Args:
-            client_id: ID of the client that provided the audio
-            audio_data: Raw audio data (numpy array if available)
-            audio_length: Length of the audio snippet in seconds
-
-        Returns:
-            WakeWordDetection: Detection result if wake word found, None otherwise
-        """
-
-        # Placeholder for future ML-based wake word detection
-        # This could include:
-        # - Audio preprocessing (noise reduction, normalization)
-        # - Feature extraction (MFCC, spectrograms)
-        # - ML model inference for wake word detection
-        # - Confidence scoring and thresholding
-
-        logger.debug(f"Raw audio wake word detection not yet implemented for client {client_id}")
         return None
 
     def _calculate_text_confidence(self, wake_word: str, text: str) -> float:
@@ -334,6 +273,7 @@ class WakeWordDetector:
 @dataclass
 class CallbackFunction:
     """Represents a registered callback function"""
+
     name: str
     function: Callable
     description: str
@@ -344,6 +284,7 @@ class CallbackFunction:
 @dataclass
 class CommandProcessingResult:
     """Result of command processing workflow"""
+
     callback_executed: bool
     callback_name: Optional[str] = None
     callback_result: Any = None
@@ -354,69 +295,74 @@ class CommandProcessingResult:
 
 class CallbackRegistry:
     """Registry for managing available callback functions"""
-    
+
     def __init__(self):
         self.callbacks: Dict[str, CallbackFunction] = {}
         self._setup_default_callbacks()
         logger.info("CallbackRegistry initialized")
-    
+
     def _setup_default_callbacks(self):
         """Setup default callback functions"""
         # Register core callback functions
-        self.register("getWeather", self._get_weather, 
-                     "Get current weather information for a location")
-        self.register("getTime", self._get_time, 
-                     "Get current time")
-        self.register("disableMira", self._disable_mira, 
-                     "Disable the Mira assistant service")
-    
-    def register(self, name: str, function: Callable, description: str, 
-                 parameters: Optional[Dict[str, Any]] = None) -> bool:
+        self.register(
+            "getWeather", self._get_weather, "Get current weather information for a location"
+        )
+        self.register("getTime", self._get_time, "Get current time")
+        self.register("disableMira", self._disable_mira, "Disable the Mira assistant service")
+
+    def register(
+        self,
+        name: str,
+        function: Callable,
+        description: str,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         Register a new callback function
-        
+
         Args:
             name: Function name to register
             function: The callable function
             description: Description of what the function does
             parameters: Optional parameter schema
-            
+
         Returns:
             bool: True if registration successful
         """
         if not callable(function):
             logger.error(f"Cannot register non-callable object as callback: {name}")
             return False
-        
+
         # Auto-extract parameters from function signature
         if parameters is None:
             sig = inspect.signature(function)
             parameters = {}
             for param_name, param in sig.parameters.items():
                 param_info = {
-                    "type": param.annotation.__name__ if param.annotation != inspect.Parameter.empty else "str",
-                    "required": param.default == inspect.Parameter.empty
+                    "type": (
+                        param.annotation.__name__
+                        if param.annotation != inspect.Parameter.empty
+                        else "str"
+                    ),
+                    "required": param.default == inspect.Parameter.empty,
                 }
                 parameters[param_name] = param_info
-        
+
         callback = CallbackFunction(
-            name=name,
-            function=function,
-            description=description,
-            parameters=parameters
+            name=name, function=function, description=description, parameters=parameters
         )
-        
+
         self.callbacks[name] = callback
         logger.info(f"Registered callback function: {name}")
         return True
-    
+
     def unregister(self, name: str) -> bool:
         """
         Unregister a callback function
-        
+
         Args:
             name: Function name to unregister
-            
+
         Returns:
             bool: True if unregistration successful
         """
@@ -424,46 +370,46 @@ class CallbackRegistry:
             del self.callbacks[name]
             logger.info(f"Unregistered callback function: {name}")
             return True
-        
+
         logger.warning(f"Callback function not found: {name}")
         return False
-    
+
     def execute(self, name: str, **kwargs) -> Tuple[bool, Any]:
         """
         Execute a registered callback function
-        
+
         Args:
             name: Function name to execute
             **kwargs: Arguments to pass to the function
-            
+
         Returns:
             Tuple[bool, Any]: (success, result)
         """
         if name not in self.callbacks:
             logger.error(f"Callback function not found: {name}")
             return False, f"Function '{name}' not found"
-        
+
         callback = self.callbacks[name]
         if not callback.enabled:
             logger.warning(f"Callback function disabled: {name}")
             return False, f"Function '{name}' is disabled"
-        
+
         result = callback.function(**kwargs)
         logger.info(f"Successfully executed callback: {name}")
         return True, result
-    
+
     def get_function_list(self) -> List[str]:
         """Get list of available function names"""
         return [name for name, callback in self.callbacks.items() if callback.enabled]
-    
+
     def get_function_descriptions(self) -> Dict[str, str]:
         """Get mapping of function names to descriptions"""
         return {
-            name: callback.description 
-            for name, callback in self.callbacks.items() 
+            name: callback.description
+            for name, callback in self.callbacks.items()
             if callback.enabled
         }
-    
+
     def set_enabled(self, name: str, enabled: bool) -> bool:
         """Enable or disable a callback function"""
         if name in self.callbacks:
@@ -472,154 +418,159 @@ class CallbackRegistry:
             logger.info(f"Callback function {name} {status}")
             return True
         return False
-    
+
     # Default callback implementations
     def _get_weather(self, location: str = "current location") -> str:
         """Get weather information (placeholder implementation)"""
         # This is a placeholder implementation
         # In a real system, this would integrate with a weather API
         return f"The weather in {location} is partly cloudy with a temperature of 72°F"
-    
+
     def _get_time(self) -> str:
         """Get current time"""
         current_time = datetime.now().strftime("%I:%M %p")
         return f"The current time is {current_time}"
-    
+
     def _disable_mira(self) -> str:
         """Disable the Mira assistant service"""
         # Import here to avoid circular imports
         from mira import status
+
         status["enabled"] = False
         return "Mira assistant has been disabled. Say 'Hey Mira' to re-enable."
 
 
 class CommandProcessor:
     """Main command processing workflow orchestrator"""
-    
+
     def __init__(self, callback_registry: Optional[CallbackRegistry] = None):
         """
         Initialize command processor
-        
+
         Args:
             callback_registry: Optional callback registry, creates default if None
         """
         self.callback_registry = callback_registry or CallbackRegistry()
         logger.info("CommandProcessor initialized")
-    
-    def process_command(self, interaction_text: str, client_id: str, 
-                       context: Optional[str] = None) -> CommandProcessingResult:
+
+    def process_command(
+        self, interaction_text: str, client_id: str, context: Optional[str] = None
+    ) -> CommandProcessingResult:
         """
         Process a command through the AI model and execute callbacks
-        
+
         Args:
             interaction_text: The transcribed user interaction
             client_id: ID of the client that triggered the command
             context: Optional context information
-            
+
         Returns:
             CommandProcessingResult: Result of command processing
         """
+
         logger.info(f"Processing command from client {client_id}: {interaction_text}")
-        
+
         # Get AI response for callback determination
         ai_response = self._get_ai_callback_response(interaction_text, context)
-        
+
         if not ai_response:
             return CommandProcessingResult(
                 callback_executed=False,
                 user_response="I didn't understand that command. Could you please try again?",
-                error="No AI response received"
+                error="No AI response received",
             )
-        
+
         # Extract callback information from AI response
         callback_name = ai_response.get("callback_function")
         callback_args = ai_response.get("callback_arguments", {})
         user_response = ai_response.get("user_response", "")
-        
+
         # Execute callback if specified
         if callback_name:
             success, result = self.callback_registry.execute(callback_name, **callback_args)
-            
+
             if success:
                 # Enhance user response with callback result if needed
                 if result and isinstance(result, str):
                     user_response = result if not user_response else f"{user_response} {result}"
-                
+
                 return CommandProcessingResult(
                     callback_executed=True,
                     callback_name=callback_name,
                     callback_result=result,
                     user_response=user_response,
-                    ai_response=ai_response
+                    ai_response=ai_response,
                 )
             else:
                 return CommandProcessingResult(
                     callback_executed=False,
                     user_response=f"Sorry, I couldn't execute that command: {result}",
                     error=str(result),
-                    ai_response=ai_response
+                    ai_response=ai_response,
                 )
         else:
             # No callback needed, just return AI response
             return CommandProcessingResult(
                 callback_executed=False,
                 user_response=user_response or "I understand, but no action is needed right now.",
-                ai_response=ai_response
+                ai_response=ai_response,
             )
-    
-    def _get_ai_callback_response(self, interaction_text: str, 
-                                context: Optional[str] = None) -> Optional[Dict]:
+
+    def _get_ai_callback_response(
+        self, interaction_text: str, context: Optional[str] = None
+    ) -> Optional[Dict]:
         """
         Get AI model response for callback determination
-        
+
         Args:
             interaction_text: User interaction text
             context: Optional context
-            
+
         Returns:
             Dict: AI response with callback information
         """
         # Import inference processor here to avoid circular imports
         import inference_processor
-        
+
         # Create enhanced prompt with available functions
         function_list = self.callback_registry.get_function_list()
         function_descriptions = self.callback_registry.get_function_descriptions()
-        
+
         system_prompt = self._build_system_prompt(function_list, function_descriptions)
-        
+
         # Build the complete prompt
         enhanced_prompt = f"""System: {system_prompt}
 
 User Input: {interaction_text}"""
-        
+
         if context:
             enhanced_prompt += f"\n\nContext: {context}"
-        
+
         # Use existing inference processor to communicate with AI model
         ai_response = inference_processor.send_prompt(enhanced_prompt)
         return ai_response
-    
-    def _build_system_prompt(self, function_list: List[str], 
-                           function_descriptions: Dict[str, str]) -> str:
+
+    def _build_system_prompt(
+        self, function_list: List[str], function_descriptions: Dict[str, str]
+    ) -> str:
         """
         Build system prompt with available functions
-        
+
         Args:
             function_list: List of available function names
             function_descriptions: Function name to description mapping
-            
+
         Returns:
             str: Complete system prompt
         """
         prompt = """You are Mira, an AI assistant that processes voice commands and determines which callback function (if any) should be invoked.
 
 Available Functions:"""
-        
+
         for func_name in function_list:
             description = function_descriptions.get(func_name, "No description available")
             prompt += f"\n- {func_name}: {description}"
-        
+
         prompt += """
 
 Your task:
@@ -641,7 +592,7 @@ Examples:
 - "Hello there" -> {"callback_function": null, "callback_arguments": {}, "user_response": "Hello! How can I help you?"}
 
 Only invoke callbacks for clear, actionable requests. Respond naturally and conversationally."""
-        
+
         return prompt
 
 
@@ -657,16 +608,17 @@ def get_command_processor() -> CommandProcessor:
     return _command_processor
 
 
-def process_wake_word_command(interaction_text: str, client_id: str, 
-                            context: Optional[str] = None) -> CommandProcessingResult:
+def process_wake_word_command(
+    interaction_text: str, client_id: str, context: Optional[str] = None
+) -> CommandProcessingResult:
     """
     Convenience function to process wake word triggered commands
-    
+
     Args:
         interaction_text: The transcribed user interaction
         client_id: ID of the client that triggered the command
         context: Optional context information
-        
+
     Returns:
         CommandProcessingResult: Result of command processing
     """

@@ -74,17 +74,11 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_ids = Column(UUID(as_uuid=True), nullable=False)  # Keep for backward compatibility
-    speaker_id = Column(
-        UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True
-    )  # Primary speaker
-    start_of_conversation = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    end_of_conversation = Column(DateTime, nullable=True)
+    user_ids = Column(JSON, nullable=False)  # List of UUIDs for backward compatibility
 
     # Enhanced conversation features
     topic_summary = Column(Text, nullable=True)  # AI-generated topic summary
     context_summary = Column(Text, nullable=True)  # Condensed long-term context
-    participants = Column(JSON, nullable=True)  # List of person IDs in conversation
 
     # Relationships
     speaker = relationship("Person", back_populates="conversations")

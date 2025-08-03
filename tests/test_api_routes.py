@@ -157,10 +157,7 @@ class TestStreamScoringAPI:
         """Test setting location for non-existent client"""
         location_data = {
             "client_id": "nonexistent_client",
-            "location": {
-                "latitude": 37.7749,
-                "longitude": -122.4194
-            }
+            "location": {"latitude": 37.7749, "longitude": -122.4194},
         }
         response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 404
@@ -173,11 +170,7 @@ class TestStreamScoringAPI:
         # Set location
         location_data = {
             "client_id": "test_client_distance",
-            "location": {
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "accuracy": 3.5
-            }
+            "location": {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 3.5},
         }
         response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 200
@@ -215,11 +208,7 @@ class TestStreamScoringAPI:
         # 2. Set phone location
         location_data = {
             "client_id": client_id,
-            "location": {
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "accuracy": 2.5
-            }
+            "location": {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 2.5},
         }
         location_response = client.post("/streams/phone/location", json=location_data)
         assert location_response.status_code == 200
@@ -228,7 +217,7 @@ class TestStreamScoringAPI:
         rssi_data = {
             "phone_client_id": "phone_device",
             "target_client_id": client_id,
-            "rssi": -45.0
+            "rssi": -45.0,
         }
         rssi_response = client.post("/streams/phone/rssi", json=rssi_data)
         assert rssi_response.status_code == 200
@@ -280,15 +269,11 @@ class TestStreamScoringAPI:
         # First register a client
         register_response = client.post("/service/client/register/location_test_client")
         assert register_response.status_code == 200
-        
+
         # Test setting location
         location_data = {
             "client_id": "location_test_client",
-            "location": {
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "accuracy": 5.0
-            }
+            "location": {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0},
         }
         response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 200
@@ -302,12 +287,12 @@ class TestStreamScoringAPI:
         # First register a client
         register_response = client.post("/service/client/register/rssi_test_client")
         assert register_response.status_code == 200
-        
+
         # Test setting RSSI
         rssi_data = {
             "phone_client_id": "phone_device",
             "target_client_id": "rssi_test_client",
-            "rssi": -45.5
+            "rssi": -45.5,
         }
         response = client.post("/streams/phone/rssi", json=rssi_data)
         assert response.status_code == 200
@@ -318,12 +303,7 @@ class TestStreamScoringAPI:
 
     def test_location_endpoint_missing_client_id(self):
         """Test location endpoint with missing client_id"""
-        location_data = {
-            "location": {
-                "latitude": 37.7749,
-                "longitude": -122.4194
-            }
-        }
+        location_data = {"location": {"latitude": 37.7749, "longitude": -122.4194}}
         response = client.post("/streams/phone/location", json=location_data)
         assert response.status_code == 400
 
@@ -332,7 +312,7 @@ class TestStreamScoringAPI:
         rssi_data = {
             "phone_client_id": "phone_device",
             "target_client_id": "nonexistent_client",
-            "rssi": -50.0
+            "rssi": -50.0,
         }
         response = client.post("/streams/phone/rssi", json=rssi_data)
         assert response.status_code == 404
@@ -342,43 +322,13 @@ class TestStreamScoringAPI:
         # Register a client
         response = client.post("/service/client/register/dict_test_client")
         assert response.status_code == 200
-        
+
         # Check root status
         status_response = client.get("/")
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert "connected_clients" in status_data
         assert isinstance(status_data["connected_clients"], dict)
-
-
-class TestCommandWorkflowAPI:
-    """Test suite for command workflow API endpoints"""
-    
-    def test_get_last_command_result_empty(self):
-        """Test getting last command result when none exists"""
-        response = client.get("/commands/last-result")
-        assert response.status_code == 200
-        data = response.json()
-        assert "last_command_result" in data
-
-    def test_get_available_callbacks(self):
-        """Test getting available callback functions"""
-        response = client.get("/commands/callbacks")
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "available_functions" in data
-        assert "function_descriptions" in data
-        
-        # Check for default callbacks
-        functions = data["available_functions"]
-        assert "getWeather" in functions
-        assert "getTime" in functions
-        assert "disableMira" in functions
-        
-        descriptions = data["function_descriptions"]
-        assert isinstance(descriptions, dict)
-        assert len(descriptions) >= 3
 
 
 if __name__ == "__main__":

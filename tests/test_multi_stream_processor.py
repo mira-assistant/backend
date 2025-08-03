@@ -11,7 +11,7 @@ import pytest
 from datetime import datetime, timezone
 import numpy as np
 
-from multi_stream_processor import AudioStreamScorer, StreamQualityMetrics, ClientStreamInfo
+from multi_stream_processor import MultiStreamProcessor, StreamQualityMetrics, ClientStreamInfo
 
 
 class TestAudioStreamScorer:
@@ -19,7 +19,7 @@ class TestAudioStreamScorer:
 
     def setup_method(self):
         """Set up test fixtures"""
-        self.scorer = AudioStreamScorer(sample_rate=16000)
+        self.scorer = MultiStreamProcessor(sample_rate=16000)
 
     def test_initialization(self):
         """Test scorer initialization"""
@@ -71,11 +71,11 @@ class TestAudioStreamScorer:
 
         # Register client
         self.scorer.register_client(client_id)
-        
+
         # Simulate some audio data to make it the best stream
         audio_data = np.random.normal(0, 0.1, 1000) + 0.5 * np.sin(2 * np.pi * 440 * np.arange(1000) / 16000)
         self.scorer.update_stream_quality(client_id, audio_data)
-        
+
         # Verify it's the best stream before deregistration
         best_stream = self.scorer.get_best_stream()
         if best_stream and best_stream.get("client_id"):
@@ -84,7 +84,7 @@ class TestAudioStreamScorer:
         # Deregister
         success = self.scorer.deregister_client(client_id)
         assert success is True
-        
+
         # After deregistration, no best client should exist
         best_stream_after = self.scorer.get_best_stream()
         assert best_stream_after["client_id"] is None
@@ -392,7 +392,7 @@ class TestClientStreamInfo:
 
     def test_set_phone_location(self):
         """Test setting phone location for a client"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
         scorer.register_client("test_client")
 
         location = {"latitude": 37.7749, "longitude": -122.4194, "accuracy": 5.0}
@@ -406,14 +406,14 @@ class TestClientStreamInfo:
 
     def test_set_phone_location_nonexistent_client(self):
         """Test setting phone location for non-existent client"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
         location = {"latitude": 37.7749, "longitude": -122.4194}
         result = scorer.set_phone_location("nonexistent_client", location)
         assert result is False
 
     def test_set_phone_rssi(self):
         """Test setting phone RSSI for a client"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
         scorer.register_client("test_client")
 
         rssi = -50.0
@@ -427,14 +427,14 @@ class TestClientStreamInfo:
 
     def test_set_phone_rssi_nonexistent_client(self):
         """Test setting phone RSSI for non-existent client"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
         rssi = -60.0
         result = scorer.set_phone_rssi("nonexistent_client", rssi)
         assert result is False
 
     def test_calculate_overall_score_with_location_and_rssi(self):
         """Test overall score calculation with location and RSSI"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
 
         # Test with good location and RSSI
         metrics = StreamQualityMetrics(
@@ -460,7 +460,7 @@ class TestClientStreamInfo:
 
     def test_metrics_with_new_fields(self):
         """Test that new fields are preserved during metric updates"""
-        scorer = AudioStreamScorer()
+        scorer = MultiStreamProcessor()
         scorer.register_client("test_client")
 
         # Set initial location and RSSI

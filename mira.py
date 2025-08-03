@@ -12,23 +12,21 @@ from db import get_db_session
 from models import Interaction, Person, Conversation
 
 
-import inference_processor
-import sentence_processor
-import context_processor
-from multi_stream_processor import AudioStreamScorer
-from command_processor import WakeWordDetector, process_wake_word_command, get_command_processor, CommandProcessingResult
+import inference_processor as InferenceProcessor
+import sentence_processor as SentenceProcessor
+from context_processor import ContextProcessor
+from multi_stream_processor import MultiStreamProcessor
+from command_processor import CommandProcessor, WakeWordDetector
 
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-processor = context_processor.create_context_processor()
 
-# Initialize audio stream scorer
-audio_scorer = AudioStreamScorer()
-
-# Initialize wake word detector
+context_processor = ContextProcessor()
+audio_scorer = MultiStreamProcessor()
 wake_word_detector = WakeWordDetector()
+command_processor = CommandProcessor()
 
 status: dict = {
     "version": "4.3.0",
@@ -198,7 +196,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = sentence_processor.transcribe_interaction(sentence_buf, use_advanced_speaker_id=True)
+        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, use_advanced_speaker_id=True)
 
         if not transcription_result or not transcription_result.get("text"):
             raise HTTPException(
@@ -208,11 +206,27 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
         # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
         audio_length = len(sentence_buf_raw) / (16000 * 2)
 
-        wake_word_detection = wake_word_detector.process_audio_text(
-            client_id=client_id or "unknown",
+        wake_word_detection = wake_word_detector.detect_wake_words_text(
+            client_id=client_id,
             transcribed_text=transcription_result["text"],
             audio_length=audio_length,
         )
+
+        if wake_word_detection:
+            logger.info(
+                f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
+            )
+
+            if wake_word_detection.wake_word == "mira cancel":
+                disable_service()
+                return {"message": "Wake word 'mira cancel' detected, interaction cancelled."}
+
+            else:
+                command_processor.process_command(
+                    interaction_text=transcription_result["text"],
+                    client_id=client_id,
+                    context=None
+                )
 
         # Initialize command result for response
         command_result = None
@@ -221,14 +235,14 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             logger.info(
                 f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
             )
-            
+
             # Process the command through the AI workflow
-            command_result = process_wake_word_command(
+            command_result = command_processor.process_command(
                 interaction_text=transcription_result["text"],
                 client_id=client_id,
                 context=None  # Could enhance with conversation context later
             )
-            
+
             # Store the result in status for monitoring
             status["last_command_result"] = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -239,7 +253,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 "user_response": command_result.user_response,
                 "error": command_result.error
             }
-            
+
             logger.info(f"Command processing result: callback_executed={command_result.callback_executed}, callback_name={command_result.callback_name}")
 
         db = get_db_session()
@@ -255,7 +269,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             # Speaker ID is already assigned by transcribe_interaction, but we might update it
             # using the context processor if needed for additional features
             if interaction.speaker_id is None and transcription_result.get("voice_embedding"):
-                speaker_id = sentence_processor.assign_speaker(
+                speaker_id = SentenceProcessor.assign_speaker(
                     transcription_result["voice_embedding"],
                 )
                 interaction.speaker_id = speaker_id
@@ -281,7 +295,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                     "error": command_result.error
                 }
 
-            audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
+            audio_float = SentenceProcessor.pcm_bytes_to_float32(sentence_buf_raw)
             audio_scorer.update_stream_quality(client_id, audio_float)
 
             # Determine return value based on wake word detection and callback execution
@@ -337,7 +351,7 @@ def inference_endpoint(interaction_id: str):
             raise HTTPException(status_code=404, detail="Interaction not found")
 
         # Use database-backed context processing
-        context, has_intent = context_processor.process_interaction(processor, interaction)
+        context, has_intent = context_processor.build_context(interaction)
 
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
@@ -609,19 +623,3 @@ def update_phone_rssi(request: dict = Body(...)):
     except Exception as e:
         logger.error(f"Error updating phone RSSI: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update phone RSSI: {str(e)}")
-
-
-@app.get("/commands/last-result")
-def get_last_command_result():
-    """Get the last command processing result."""
-    return {"last_command_result": status.get("last_command_result")}
-
-
-@app.get("/commands/callbacks")
-def get_available_callbacks():
-    """Get list of available callback functions."""
-    processor = get_command_processor()
-    return {
-        "available_functions": processor.callback_registry.get_function_list(),
-        "function_descriptions": processor.callback_registry.get_function_descriptions()
-    }
