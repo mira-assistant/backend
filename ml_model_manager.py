@@ -35,8 +35,6 @@ class MLModelManager:
     Individual ML Model configuration with system prompt, endpoint, and inference capability
     """
 
-    tools: list[chat.ChatCompletionToolParam] = list()
-
     def __init__(
         self,
         model_name: str,
@@ -65,16 +63,19 @@ class MLModelManager:
 
         self.model = model_name
         self.system_prompt = system_prompt
+        self.tools: list[chat.ChatCompletionToolParam] = []
 
         if response_format is not None:
             self.response_format: chat.completion_create_params.ResponseFormat = (
                 shared_params.ResponseFormatJSONSchema(
                     json_schema=shared_params.response_format_json_schema.JSONSchema(
-                        name="Response Model", schema={"json_schema": response_format}
+                        name="Response Model", schema=response_format
                     ),
                     type="json_schema",
                 )
             )
+        else:
+            self.response_format = None
 
         self.config = {
             **config_options,
@@ -126,14 +127,20 @@ class MLModelManager:
             )
         )
 
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            response_format=self.response_format,
-            tools=self.tools,
-            tool_choice="auto",
+        # Prepare the API call parameters
+        api_params = {
+            "model": self.model,
+            "messages": messages,
+            "tools": self.tools,
+            "tool_choice": "auto",
             **self.config,
-        )
+        }
+        
+        # Only include response_format if it's not None
+        if self.response_format is not None:
+            api_params["response_format"] = self.response_format
+
+        response = client.chat.completions.create(**api_params)
 
         if response.choices[0].message.content is None:
             raise RuntimeError(f"Model {self.model} generated no content")
