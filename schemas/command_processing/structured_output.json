@@ -1,0 +1,201 @@
+{
+  "type": "object",
+  "properties": {
+    "call_to_action": {
+      "type": "boolean",
+      "description": "True only if, given the context of the conversation, one of the 'action_type' options is relevant or important to Person 1."
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "remind",
+        "schedule",
+        "contact"
+      ],
+      "description": "The type of action requested by Person 1."
+    },
+    "remind": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string",
+          "description": "ISO 8601 time."
+        },
+        "description": {
+          "type": "string",
+          "description": "Reminder description."
+        }
+      },
+      "required": [
+        "time",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "schedule": {
+      "type": "object",
+      "properties": {
+        "start_time": {
+          "type": "string",
+          "description": "ISO 8601 start."
+        },
+        "end_time": {
+          "type": "string",
+          "description": "ISO 8601 end."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the event. Use context to fill in the details."
+        },
+        "location": {
+          "type": "string",
+          "description": "Location of the event. Use context to fill in the details."
+        }
+      },
+      "required": [
+        "start_time",
+        "end_time",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "contact": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "email",
+            "message"
+          ]
+        },
+        "details": {
+          "type": "string",
+          "description": "Content of the message or email. What I want to say. Use context to fill in the details."
+        }
+      },
+      "required": [
+        "name",
+        "method",
+        "details"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "call_to_action"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "call_to_action": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "action_type"
+              ]
+            },
+            {
+              "required": [
+                "remind"
+              ]
+            },
+            {
+              "required": [
+                "schedule"
+              ]
+            },
+            {
+              "required": [
+                "contact"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "action_type": false,
+          "remind": false,
+          "schedule": false,
+          "contact": false
+        }
+      },
+      "else": {
+        "required": [
+          "action_type"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "action_type": {
+                  "const": "remind"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "remind"
+              ],
+              "not": {
+                "required": [
+                  "schedule",
+                  "contact"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action_type": {
+                  "const": "schedule"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "schedule"
+              ],
+              "not": {
+                "required": [
+                  "remind",
+                  "contact"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action_type": {
+                  "const": "contact"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "contact"
+              ],
+              "not": {
+                "required": [
+                  "remind",
+                  "schedule"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

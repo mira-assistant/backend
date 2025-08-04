@@ -1,57 +1,41 @@
-import requests
 import json
+import logging
+from ml_model_manager import MLModelManager
+from models import Action, Interaction
 
-API_URL = "http://localhost:1234/v1/chat/completions"
+class InferenceProcessor:
 
+    def __init__(self):
+        """
+        Initialize the inference processor.
+        This class is responsible for managing the ML model and processing prompts.
+        """
 
-def send_prompt(prompt: str, context=None) -> dict[str, str]:
-    """
-    Sends a prompt to the LM Studio API and returns the generated response.
-    prompt: str - The input prompt to send to the model.
-    context: str - The context to include with the prompt.
-    Returns: dict - The generated response from the model.
-    """
+        system_prompt = open("schemas/action_processing/system_prompt.txt", "r").read().strip()
+        structured_response = json.load(open("schemas/action_processing/structured_output.json", "r"))
+        self.model_manager = MLModelManager("nous-hermes-2-mistral-7b-dpo", system_prompt, structured_response)
 
-    if context:
-        prompt = f"Current Prompt:\n{prompt}\n\nContext:\n{context}"
-
-    message = {"role": "user", "content": prompt}
-
-    payload = {
-        "model": "nous-hermes-2-mistral-7b-dpo",
-        "messages": [message],
-        "max_tokens": -1,
-        "stream": False,
-        "temperature": 0.3,
-        "top_p": 0.8,
-        "top_k": 40,
-        "repeat_penalty": 1.2,
-        "min_p": 0.2,
-    }
-
-    response = requests.post(API_URL, json=payload)
-    response.raise_for_status()
-    data = response.json()
-
-    generated_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-    try:
-        result = json.loads(generated_text)
-    except json.JSONDecodeError:
-        result = {"error": "Invalid JSON", "raw": generated_text}
-    return result
+        logging.info("InferenceProcessor initialized")
 
 
-def main():
-    print("LM Studio Interactive Client. Type 'exit' to quit.")
-    while True:
-        user_input = input("You: ").strip()
-        if user_input.lower() == "exit":
-            break
-        response = send_prompt(user_input)
-        print(f"LM Studio: {response}\n")
-        print(response.get("call_to_action", "No call to action provided."))
+    def extract_action(self, interaction: Interaction, context=None) -> Action:
+        """
+        Sends a prompt to the LM Studio API for action data extraction.
+        This function is maintained for backward compatibility but now uses
+        the ML model manager for structured action extraction.
 
+        Args:
+            interaction: User interaction object
+            context: Optional context information
 
-if __name__ == "__main__":
-    main()
+        Returns:
+            Action: Extracted action model
+        """
+
+        response = self.model_manager.run_inference(interaction, context)
+
+        result = Action(
+            **response
+        )
+
+        return result

@@ -51,7 +51,7 @@ class ClientStreamInfo:
     quality_metrics: StreamQualityMetrics = field(default_factory=StreamQualityMetrics)
 
 
-class AudioStreamScorer:
+class MultiStreamProcessor:
     """
     Audio Stream Scoring System for evaluating and selecting the best stream.
 
@@ -313,7 +313,7 @@ class AudioStreamScorer:
             # Calculate current score for this client
             current_score = self.calculate_overall_score(client_info.quality_metrics)
             client_info.quality_metrics.score = current_score
-            
+
             if current_score > best_stream["score"]:
                 best_stream = {"client_id": client_id, "score": current_score}
 
