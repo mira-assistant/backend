@@ -10,6 +10,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm import object_session
+
+# Avoid circular import for Conversation
+import typing
+if typing.TYPE_CHECKING:
+    from .models import Conversation
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import DeclarativeBase
@@ -40,7 +46,22 @@ class Person(Base):
 
     # Relationships
     interactions = relationship("Interaction", back_populates="person")
-    conversations = relationship("Conversation", back_populates="speaker")
+
+    @property
+    def conversations(self):
+        session = object_session(self)
+        if session is None:
+            return []
+        # Ensure Conversation is imported
+        Conversation = self.__class__.__module__
+        Conversation = globals().get('Conversation')
+        if Conversation is None:
+            from .models import Conversation
+        # user_ids may be None, so handle that
+        return session.query(Conversation).filter(
+            Conversation.user_ids.isnot(None),
+            Conversation.user_ids.contains([str(self.id)])
+        ).all()
 
 
 class Interaction(Base):
@@ -75,14 +96,13 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_ids = Column(JSON, nullable=False)  # List of UUIDs for backward compatibility
+    user_ids = Column(JSON, nullable=True, default=list)  # List of UUIDs for backward compatibility
 
     # Enhanced conversation features
     topic_summary = Column(Text, nullable=True)  # AI-generated topic summary
     context_summary = Column(Text, nullable=True)  # Condensed long-term context
 
     # Relationships
-    speaker = relationship("Person", back_populates="conversations")
     interactions = relationship("Interaction", back_populates="conversation")
 
 

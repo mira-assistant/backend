@@ -35,7 +35,6 @@ from db import get_db_session
 from models import Person
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
-from typing import Optional
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -60,6 +59,7 @@ _speaker_centroids: list[np.ndarray] = []
 
 # ---------- Advanced Speaker Identification State Variables ----------
 
+
 class SpeakerIdentificationState:
     """State variables for advanced speaker identification moved from context_processor."""
 
@@ -67,7 +67,6 @@ class SpeakerIdentificationState:
         # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: list[np.ndarray] = []
         self._speaker_ids: list[uuid.UUID] = []
-        self._speaker_interaction_ids: list[uuid.UUID] = []
         self._cluster_labels: list[int] = []
         self._clusters_dirty: bool = True
 
@@ -81,6 +80,7 @@ class SpeakerIdentificationState:
             min_samples=self.DBSCAN_MIN_SAMPLES,
             metric="cosine",
         )
+
 
 # Global speaker identification state
 _speaker_state = SpeakerIdentificationState()
@@ -164,7 +164,7 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
                 stationary=True,  # Stationary noise reduction for short clips
             )
 
-        return denoised_audio
+        return denoised_audio.astype(np.float32)
 
     except Exception as e:
         # If denoising fails, return the original audio with just high-pass filtering
@@ -178,39 +178,6 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
 def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     """Cosine similarity between two vectors."""
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
-
-def assign_speaker(new_embedding: np.ndarray):
-    """Assign embedding to a speaker index; update centroids online."""
-
-    db = get_db_session()
-    try:
-        users = db.query(Person).all()
-
-        for user in users:
-            voice_embedding = np.array(user.voice_embedding, dtype=np.float32)
-
-            similarity_score = cosine_sim(voice_embedding, new_embedding)
-
-            if similarity_score >= SIM_THRESHOLD:
-                # Weighted update: new_embedding = alpha * new_embedding + (1 - alpha) * old_embedding
-                # alpha decreases as number of interactions increases (e.g., alpha = 1 / (n + 1))
-                num_interactions = len(user.interactions)
-                alpha = 1.0 / (num_interactions + 1)
-                updated_embedding = alpha * new_embedding + (1 - alpha) * voice_embedding
-                user.voice_embedding = updated_embedding.tolist()
-                db.commit()
-
-                return user.id
-
-        # If no existing speaker matches, create a new one
-        new_user = Person(voice_embedding=new_embedding.tolist(), speaker_index=len(users))
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        return new_user.id
-    finally:
-        db.close()
 
 
 def _refresh_speaker_cache():
@@ -227,8 +194,7 @@ def _refresh_speaker_cache():
         _speaker_state._speaker_embeddings = [
             np.array(i.voice_embedding, dtype=np.float32) for i in interactions
         ]
-        _speaker_state._speaker_ids = [i.speaker_id for i in interactions]
-        _speaker_state._speaker_interaction_ids = [i.id for i in interactions]
+        _speaker_state._speaker_ids = [i.speaker_id for i in interactions]  # type: ignore
         _speaker_state._clusters_dirty = True
     finally:
         session.close()
@@ -237,7 +203,8 @@ def _refresh_speaker_cache():
 def _recompute_clusters():
     """Run DBSCAN clustering on all cached embeddings and update labels."""
     if not _speaker_state._speaker_embeddings or (
-        isinstance(_speaker_state._speaker_embeddings, np.ndarray) and _speaker_state._speaker_embeddings.size == 0
+        isinstance(_speaker_state._speaker_embeddings, np.ndarray)
+        and _speaker_state._speaker_embeddings.size == 0
     ):
         _speaker_state._cluster_labels = []
         return
@@ -246,10 +213,8 @@ def _recompute_clusters():
     _speaker_state._clusters_dirty = False
 
 
-def assign_speaker_advanced(
+def assign_speaker(
     embedding: np.ndarray,
-    session: Optional[Session] = None,
-    interaction_id=None,
 ):
     """
     Assign a speaker using DBSCAN clustering over all embeddings (moved from context_processor).
@@ -258,118 +223,110 @@ def assign_speaker_advanced(
 
     Args:
         embedding: The new voice embedding (np.ndarray)
-        session: Optional SQLAlchemy session to reuse
         interaction_id: The interaction UUID to use for the new embedding, if available
     """
 
     embedding = np.array(embedding, dtype=np.float32)
 
-    own_session = session is None
-    session = session or get_db_session()
-    try:
-        if (
-            not _speaker_state._speaker_embeddings
-            or (
-                isinstance(_speaker_state._speaker_embeddings, np.ndarray)
-                and _speaker_state._speaker_embeddings.size == 0
-            )
-            or _speaker_state._clusters_dirty
-        ):
-            _refresh_speaker_cache()
-            _recompute_clusters()
+    session = get_db_session()
 
-        # Add the new embedding to the cached ones for clustering
-        all_embeddings = _speaker_state._speaker_embeddings + [embedding]
-        X = np.stack(all_embeddings)
-        dbscan = DBSCAN(
-            eps=_speaker_state.DBSCAN_EPS,
-            min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,
-            metric="cosine",
+    if (
+        not _speaker_state._speaker_embeddings
+        or (
+            isinstance(_speaker_state._speaker_embeddings, np.ndarray)
+            and _speaker_state._speaker_embeddings.size == 0
         )
+        or _speaker_state._clusters_dirty
+    ):
+        _refresh_speaker_cache()
+        _recompute_clusters()
 
-        labels = dbscan.fit_predict(X)
-        new_label = labels[-1]
+    # Add the new embedding to the cached ones for clustering
+    all_embeddings = _speaker_state._speaker_embeddings + [embedding]
+    X = np.stack(all_embeddings)
+    dbscan = DBSCAN(
+        eps=_speaker_state.DBSCAN_EPS,
+        min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,
+        metric="cosine",
+    )
 
-        # Helper to append to cache with correct types
-        def _append_cache(embedding, person_id, interaction_id):
-            _speaker_state._speaker_embeddings.append(embedding)
-            _speaker_state._speaker_ids.append(person_id)
-            _speaker_state._speaker_interaction_ids.append(interaction_id)
-            _speaker_state._clusters_dirty = True
+    labels = dbscan.fit_predict(X)
+    new_label = labels[-1]
 
-        if new_label == -1:
-            new_index = (
-                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-            )[0] + 1
-            new_person = Person(
-                voice_embedding=(
-                    embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
-                ),
-                index=new_index,
-            )
-            session.add(new_person)
-            session.commit()
-            session.refresh(new_person)
-            _append_cache(embedding, new_person.id, interaction_id)
-            _update_db_clusters(session, labels[:-1] + [-1])
-            return new_person.id
+    # Helper to append to cache with correct types
+    def _append_cache(embedding, person_id):
+        _speaker_state._speaker_embeddings.append(embedding)
+        _speaker_state._speaker_ids.append(person_id)
+        _speaker_state._clusters_dirty = True
 
-        cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
-        if not cluster_indices:
-            new_index = (
-                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-            )[0] + 1
-            new_person = Person(
-                voice_embedding=embedding.tolist(),
-                index=new_index,
-            )
-            session.add(new_person)
-            session.commit()
-            session.refresh(new_person)
-            _append_cache(embedding, new_person.id, interaction_id)
-            _update_db_clusters(session, labels[:-1] + [-1])
-            return new_person.id
+    if new_label == -1:
+        new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
+            0
+        ] + 1
+        new_person = Person(
+            voice_embedding=(
+                embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
+            ),
+            index=new_index,
+        )
+        session.add(new_person)
+        session.commit()
+        session.refresh(new_person)
+        _append_cache(embedding, new_person.id)
+        _update_db_clusters(session, labels[:-1] + [-1])
+        return new_person.id
 
-        similarities = []
-        for idx in cluster_indices:
-            emb = all_embeddings[idx]
-            sim = float(
-                np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb))
-            )
-            similarities.append((idx, sim))
-        best_idx, best_sim = max(similarities, key=lambda x: x[1])
+    cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
+    if not cluster_indices:
+        new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
+            0
+        ] + 1
+        new_person = Person(
+            voice_embedding=embedding.tolist(),
+            index=new_index,
+        )
+        session.add(new_person)
+        session.commit()
+        session.refresh(new_person)
+        _append_cache(embedding, new_person.id)
+        _update_db_clusters(session, labels[:-1] + [-1])
+        return new_person.id
 
-        logger.info(f"Best speaker similarity: {best_sim}")
+    similarities = []
+    for idx in cluster_indices:
+        emb = all_embeddings[idx]
+        sim = float(np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb)))
+        similarities.append((idx, sim))
+    best_idx, best_sim = max(similarities, key=lambda x: x[1])
 
-        if best_sim < _speaker_state.SPEAKER_SIMILARITY_THRESHOLD:
-            new_index = (
-                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
-            )[0] + 1
-            new_person = Person(
-                voice_embedding=embedding.tolist(),
-                index=new_index,
-            )
-            session.add(new_person)
-            session.commit()
-            session.refresh(new_person)
-            _append_cache(embedding, new_person.id, interaction_id)
-            _update_db_clusters(session, labels[:-1] + [-1])
-            return new_person.id
+    logger.info(f"Best speaker similarity: {best_sim}")
 
-        # Assign to the Person of the best match in the cluster
-        matched_person_id = _speaker_state._speaker_ids[best_idx]
-        matched_person = session.query(Person).filter_by(id=matched_person_id).first()
-        if matched_person and matched_person.voice_embedding is not None:
-            old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
-            updated_emb = 0.8 * old_emb + 0.2 * embedding
-            matched_person.voice_embedding = updated_emb.tolist()
-            session.commit()
-        _append_cache(embedding, matched_person_id, interaction_id)
-        _update_db_clusters(session, labels)
-        return matched_person_id
-    finally:
-        if own_session:
-            session.close()
+    if best_sim < _speaker_state.SPEAKER_SIMILARITY_THRESHOLD:
+        new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
+            0
+        ] + 1
+        new_person = Person(
+            voice_embedding=embedding.tolist(),
+            index=new_index,
+        )
+        session.add(new_person)
+        session.commit()
+        session.refresh(new_person)
+        _append_cache(embedding, new_person.id)
+        _update_db_clusters(session, labels[:-1] + [-1])
+        return new_person.id
+
+    # Assign to the Person of the best match in the cluster
+    matched_person_id = _speaker_state._speaker_ids[best_idx]
+    matched_person = session.query(Person).filter_by(id=matched_person_id).first()
+    if matched_person and matched_person.voice_embedding is not None:
+        old_emb = np.array(matched_person.voice_embedding, dtype=np.float32)
+        updated_emb = 0.8 * old_emb + 0.2 * embedding
+        matched_person.voice_embedding = updated_emb.tolist()
+        session.commit()
+    _append_cache(embedding, matched_person_id)
+    _update_db_clusters(session, labels)
+    return matched_person_id
 
 
 def _update_db_clusters(session: Session, cluster_labels):
@@ -392,7 +349,7 @@ def _update_db_clusters(session: Session, cluster_labels):
     session.commit()
 
 
-def transcribe_interaction(sentence_buf: bytearray, use_advanced_speaker_id: bool = True) -> dict | None:
+def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
 
@@ -406,23 +363,22 @@ def transcribe_interaction(sentence_buf: bytearray, use_advanced_speaker_id: boo
 
     if asr_model is None or spk_encoder is None:
         logger.error("Failed to load ML models")
-        return None
-
-    interaction = dict()
+        raise RuntimeError("ML models not initialized")
 
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
+
+    # Not enough float32 samples (1 second worth)
     if len(audio_f32) < SAMPLE_RATE * 1:
-        # Not enough float32 samples (1 second worth)
         return None
 
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
-    denoised_audio = denoised_audio.astype(np.float32)
 
     if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
         raise ValueError("Audio contains NaN or Inf values")
 
     result = asr_model.transcribe(denoised_audio)
+
     text = str(
         " ".join(result["text"]).strip()
         if isinstance(result["text"], list)
@@ -434,20 +390,12 @@ def transcribe_interaction(sentence_buf: bytearray, use_advanced_speaker_id: boo
 
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+    speaker_id = assign_speaker(embedding)
+
+    interaction = dict()
 
     interaction["text"] = text
     interaction["voice_embedding"] = embedding.tolist()
-
-    # Use advanced speaker identification if requested
-    if use_advanced_speaker_id:
-        try:
-            speaker_id = assign_speaker_advanced(embedding)
-            interaction["speaker_id"] = speaker_id
-            logger.info(f"Advanced speaker identification assigned speaker: {speaker_id}")
-        except Exception as e:
-            logger.warning(f"Advanced speaker identification failed, falling back to simple: {e}")
-            # Fall back to simple speaker assignment
-            speaker_id = assign_speaker(embedding)
-            interaction["speaker_id"] = speaker_id
+    interaction["speaker_id"] = speaker_id
 
     return interaction

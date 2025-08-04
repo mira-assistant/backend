@@ -90,7 +90,7 @@ def root():
             connection_start = client_info["connection_start_time"]
             if isinstance(connection_start, str):
                 # Handle backward compatibility if stored as string
-                connection_start = datetime.fromisoformat(connection_start.replace('Z', '+00:00'))
+                connection_start = datetime.fromisoformat(connection_start.replace("Z", "+00:00"))
 
             runtime_seconds = (current_time - connection_start).total_seconds()
             client_info["connection_runtime"] = round(runtime_seconds, 2)
@@ -158,22 +158,28 @@ def disable_service():
 async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
 
-    sentence_buf_raw = await audio.read()
-
     if not client_id:
         raise HTTPException(
             status_code=400, detail="client_id is required for interaction registration"
         )
 
+    sentence_buf_raw = await audio.read()
+
+    db = get_db_session()
+
     try:
         if len(sentence_buf_raw) == 0:
-            raise ValueError("No audio data received")
+            raise HTTPException(
+                status_code=400, detail="Received empty audio data. Please provide valid audio."
+            )
 
         logger.info(
             f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
         )
 
         best_stream_info = audio_scorer.get_best_stream()
+        audio_float = SentenceProcessor.pcm_bytes_to_float32(sentence_buf_raw)
+        audio_scorer.update_stream_quality(client_id, audio_float)
 
         if not best_stream_info:
             raise HTTPException(
@@ -186,65 +192,54 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             logger.info(
                 f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
             )
+
             return {
                 "message": "Interaction was not registered due to better audio streams",
-                "best_stream_client": best_stream_info["client_id"],
-                "current_client_score": round(
-                    audio_scorer.get_all_stream_scores().get(client_id, 0), 2
-                ),
-                "best_stream_score": round(best_stream_info["score"], 2),
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, use_advanced_speaker_id=True)
+        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf)
 
-        if not transcription_result or not transcription_result.get("text"):
+        if not transcription_result or not transcription_result["text"]:
             raise HTTPException(
                 status_code=400, detail="Transcription failed. Please check the audio quality."
             )
 
-        # Calculate audio length from bytes (assuming 16kHz, 16-bit, mono PCM)
-        audio_length = len(sentence_buf_raw) / (16000 * 2)
+        speaker = db.query(Person).filter_by(id=transcription_result["speaker_id"]).first()
 
-        wake_word_detection = wake_word_detector.detect_wake_words_text(
-            client_id=client_id,
-            transcribed_text=transcription_result["text"],
-            audio_length=audio_length,
-        )
+        if not speaker:
+            raise HTTPException(status_code=404, detail="Speaker not found")
 
-        # Initialize command result for response
-        command_result = None
-
-        if wake_word_detection:
-            logger.info(
-                f"Wake word '{wake_word_detection.wake_word}' detected from client {client_id}"
+        if speaker.index == 1:  # type: ignore
+            wake_word_detection = wake_word_detector.detect_wake_words_text(
+                client_id=client_id,
+                transcribed_text=transcription_result["text"],
+                audio_length=len(sentence_buf_raw) / (16000 * 2),
             )
 
-            # Process the command through the AI workflow
-            command_result = command_processor.process_command(
-                interaction_text=transcription_result["text"],
-                client_id=client_id
-            )
+            if wake_word_detection:
+                logger.info(
+                    f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
+                )
 
-        db = get_db_session()
+                command = command_processor.process_command(
+                    interaction_text=transcription_result["text"],
+                    client_id=client_id,
+                )
+
+                if command.user_response:
+                    return {"message": command.user_response}
+                else:
+                    return None
 
         try:
             interaction = Interaction(
                 **transcription_result,
             )
+
             db.add(interaction)
             db.commit()
             db.refresh(interaction)
-
-            # Speaker ID is already assigned by transcribe_interaction, but we might update it
-            # using the context processor if needed for additional features
-            if interaction.speaker_id is None and transcription_result.get("voice_embedding"):
-                speaker_id = SentenceProcessor.assign_speaker(
-                    transcription_result["voice_embedding"],
-                )
-                interaction.speaker_id = speaker_id
-                db.commit()
-                db.refresh(interaction)
 
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
             status["recent_interactions"].append(interaction.id)
@@ -256,40 +251,15 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 "speaker_id": str(interaction.speaker_id),
             }
 
-            # Add command processing results if wake word was detected
-            if command_result:
-                response["command_result"] = {
-                    "callback_executed": command_result.callback_executed,
-                    "callback_name": command_result.callback_name,
-                    "user_response": command_result.user_response,
-                    "error": command_result.error
-                }
-
-            audio_float = SentenceProcessor.pcm_bytes_to_float32(sentence_buf_raw)
-            audio_scorer.update_stream_quality(client_id, audio_float)
-
-            # Determine return value based on wake word detection and callback execution
-            if command_result:
-                # If wake word was detected and callback was executed, return user response
-                if command_result.callback_executed and command_result.callback_name:
-                    return command_result.user_response
-                else:
-                    # If wake word detected but no callback executed, return None
-                    return None
-            else:
-                # No wake word detected, return normal response
-                return response
+            return response
 
         except Exception as db_error:
             logger.error(f"Database error: {db_error}", exc_info=True)
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
-        finally:
-            db.close()
 
-    except Exception as e:
-        logger.error(f"Error processing interaction: {e}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+    finally:
+        db.close()
 
 
 @app.get("/interactions/{interaction_id}")
@@ -310,11 +280,12 @@ def get_interaction(interaction_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to fetch interaction: {str(e)}")
 
 
-@app.post("/interactions/process/{interaction_id}")
-def inference_endpoint(interaction_id: str):
+@app.post("/interactions/{interaction_id}/inference")
+def interaction_inference(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
+    db = get_db_session()
+
     try:
-        db = get_db_session()
         interaction = db.query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
 
         if not interaction:
@@ -326,11 +297,7 @@ def inference_endpoint(interaction_id: str):
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
 
-        # Send prompt with context
-        enhanced_prompt = (
-            f"{str(interaction.text)}\n\nContext:\n{context}" if context else str(interaction.text)
-        )
-        response = inference_processor.send_prompt(prompt=enhanced_prompt, context=context)
+        response = InferenceProcessor.send_prompt(prompt=interaction.text, context=context)  # type: ignore
 
         # Add context information to response with database queries
         response["context_used"] = str(bool(context))
@@ -346,13 +313,14 @@ def inference_endpoint(interaction_id: str):
         }
         response["enhanced_features"] = json.dumps(enhanced_features)
 
-        db.close()
-
         return response
 
     except Exception as e:
         logger.error(f"Error in inference: {e}")
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+
+    finally:
+        db.close()
 
 
 @app.get("/interactions", deprecated=True)
@@ -407,7 +375,7 @@ def get_recent_conversations(limit: int = 10):
         try:
             conversations = (
                 db.query(Conversation)
-                .order_by(Conversation.start_of_conversation.desc())
+                .order_by(Conversation.interactions[0].timestamp.desc())
                 .limit(limit)
                 .all()
             )
@@ -416,13 +384,7 @@ def get_recent_conversations(limit: int = 10):
             for conv in conversations:
                 conv_data = {
                     "id": str(conv.id),
-                    "start_time": conv.start_of_conversation.isoformat(),
-                    "end_time": (
-                        conv.end_of_conversation.isoformat()
-                        if conv.end_of_conversation is not None
-                        else None
-                    ),
-                    "participants": conv.participants,
+                    "user_id": str(conv.user_ids),
                     "interaction_count": len(conv.interactions),
                     "topic_summary": conv.topic_summary,
                 }
@@ -492,7 +454,9 @@ def get_client_stream_info(client_id: str):
     """Get detailed stream information about a specific client."""
 
     if client_id not in audio_scorer.clients:
-        raise HTTPException(status_code=404, detail=f"Client {client_id} not found in stream scoring")
+        raise HTTPException(
+            status_code=404, detail=f"Client {client_id} not found in stream scoring"
+        )
 
     client_info = audio_scorer.clients[client_id]
     current_score = audio_scorer.get_all_stream_scores().get(client_id, 0.0)

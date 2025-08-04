@@ -101,7 +101,7 @@ class ContextProcessor:
 
         try:
             # Named Entity Recognition
-            doc = self.spacy_model(interaction.text)
+            doc = self.spacy_model(interaction.text)  # type: ignore
             entities_list = [
                 {
                     "text": ent.text,
@@ -112,20 +112,20 @@ class ContextProcessor:
                 for ent in doc.ents
             ]
 
-            interaction.entities = json.dumps(entities_list)
+            interaction.entities = json.dumps(entities_list)  # type: ignore
 
             # Sentiment Analysis
-            sentiment_result = self.sentiment_pipeline(interaction.text)
+            sentiment_result = self.sentiment_pipeline(interaction.text)  # type: ignore
             if sentiment_result and len(sentiment_result[0]) > 0:
                 # Get the positive sentiment score
                 positive_score = next(
                     (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),
                     0.5,
                 )
-                interaction.sentiment = positive_score
+                interaction.sentiment = positive_score  # type: ignore
 
             # Text Embedding for semantic similarity (NOT voice embedding)
-            embedding = self.sentence_transformer.encode(interaction.text)
+            embedding = self.sentence_transformer.encode(interaction.text)  # type: ignore
             # Store text embedding in the correct field
             interaction.text_embedding = embedding.tolist()
 
@@ -136,11 +136,13 @@ class ContextProcessor:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-
     def detect_conversation_boundary(self, current_interaction: Interaction) -> bool:
         """Conversation boundary detection using database queries."""
 
-        if self.current_conversation.interactions is None or len(self.current_conversation.interactions) == 0:
+        if (
+            self.current_conversation.interactions is None
+            or len(self.current_conversation.interactions) == 0
+        ):
             return True
 
         last_interaction = self.current_conversation.interactions[-1]
@@ -167,12 +169,9 @@ class ContextProcessor:
         ):
             return True
 
-        # Topic shift detection using embeddings if available
-
         # Topic shift detection using NLP topic similarity
-        nlp = self.nlp_components["spacy"]
-        current_doc = nlp(current_interaction.text)
-        last_doc = nlp(last_interaction.text)
+        current_doc = self.spacy_model(current_interaction.text)  # type: ignore
+        last_doc = self.spacy_model(last_interaction.text)
 
         # Use spaCy's built-in similarity (requires vectors)
         try:
@@ -288,8 +287,6 @@ class ContextProcessor:
         )
 
         return interactions
-
-    
 
     def _get_semantic_similar_interactions_db(
         self, query_embedding, session, max_results: int
