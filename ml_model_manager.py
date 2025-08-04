@@ -40,6 +40,9 @@ class MLModelManager:
         model_name: str,
         system_prompt: str,
         response_format: Optional[dict] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        top_k: Optional[int] = None,
         **config_options,
     ):
         """
@@ -48,6 +51,10 @@ class MLModelManager:
         Args:
             model_name: Name of the model to use for inference
             system_prompt: Custom system prompt or uses default
+            response_format: Optional JSON schema for structured output
+            temperature: Sampling temperature (0.0-2.0)
+            max_tokens: Maximum number of tokens to generate
+            top_k: Top-k sampling parameter
             **config_options: Additional configuration options
         """
 
@@ -78,8 +85,15 @@ class MLModelManager:
             self.response_format = None
 
         self.config = {
+            "temperature": temperature,
             **config_options,
         }
+        
+        # Add optional parameters if provided
+        if max_tokens is not None:
+            self.config["max_tokens"] = max_tokens
+        if top_k is not None:
+            self.config["top_k"] = top_k
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
@@ -119,6 +133,16 @@ class MLModelManager:
                 role="system",
             )
         )
+
+        # Add context as a separate assistant role if provided for better separation
+        if context and context.strip():
+            messages.append(
+                chat.ChatCompletionAssistantMessageParam(
+                    content=f"Context: {context.strip()}",
+                    role="assistant",
+                    name="context_provider"
+                )
+            )
 
         messages.append(
             chat.ChatCompletionUserMessageParam(

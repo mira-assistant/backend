@@ -232,7 +232,7 @@ class CommandProcessor:
         system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
         structured_response = json.load(open("schemas/command_processing/structured_output.json", "r"))
         self.model_manager = MLModelManager(
-            model_name="find-a-model",
+            model_name="llama-2-7b-chat",
             system_prompt=system_prompt,
             # structured_response=structured_response,
         )

@@ -1,0 +1,66 @@
+{
+  "model_info": {
+    "name": "falcon-40b-instruct", 
+    "description": "Falcon 40B Instruct model optimized for data extraction and structured output tasks",
+    "task": "data_extraction",
+    "architecture": "Falcon",
+    "parameters": "40B", 
+    "context_length": 2048
+  },
+  "fine_tuning": {
+    "framework": "transformers",
+    "method": "LoRA",
+    "dataset_format": "jsonl",
+    "training_config": {
+      "learning_rate": 1e-4,
+      "batch_size": 2,
+      "gradient_accumulation_steps": 8,
+      "num_train_epochs": 2,
+      "warmup_steps": 50,
+      "logging_steps": 5,
+      "save_steps": 250,
+      "evaluation_strategy": "steps",
+      "eval_steps": 250,
+      "max_grad_norm": 0.5,
+      "weight_decay": 0.01,
+      "adam_epsilon": 1e-8,
+      "seed": 42
+    },
+    "lora_config": {
+      "r": 8,
+      "lora_alpha": 16,
+      "target_modules": ["query_key_value", "dense"],
+      "lora_dropout": 0.05,
+      "bias": "none",
+      "task_type": "CAUSAL_LM"
+    }
+  },
+  "inference_config": {
+    "temperature": 0.3,
+    "max_tokens": 1024,
+    "top_k": 50,
+    "top_p": 0.95,
+    "repetition_penalty": 1.05,
+    "do_sample": true,
+    "pad_token_id": 11,
+    "eos_token_id": 11
+  },
+  "prompt_templates": {
+    "data_extraction": "You are Mira, an AI assistant that listens to Person 1's speech and extracts only clearly stated action requests.\n\n{context}\n\nUser: {input}\nExtracted Data:",
+    "structured_output": "Extract structured information from the following text and return valid JSON:\n\nText: {input}\nJSON:",
+    "instruct_format": "Instruction: {instruction}\nInput: {input}\nOutput:"
+  },
+  "dataset_requirements": {
+    "extraction_tasks": [
+      "contact_requests",
+      "reminder_extraction",
+      "calendar_events",
+      "action_classification",
+      "entity_recognition",
+      "structured_parsing"
+    ],
+    "format": "instruction_jsonl",
+    "min_samples": 2000,
+    "max_length": 1024
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "server_config": {
+    "base_url": "http://localhost:1234/v1",
+    "api_key": "lm-studio",
+    "timeout": 60,
+    "max_retries": 3
+  },
+  "model_configs": {
+    "llama-2-7b-chat": {
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "top_k": 40,
+      "top_p": 0.9,
+      "repetition_penalty": 1.1,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "stop_sequences": ["<|endoftext|>", "</s>"],
+      "stream": false
+    },
+    "falcon-40b-instruct": {
+      "temperature": 0.3,
+      "max_tokens": 1024,
+      "top_k": 50,
+      "top_p": 0.95,
+      "repetition_penalty": 1.05,
+      "frequency_penalty": 0.1,
+      "presence_penalty": 0.1,
+      "stop_sequences": ["<|endoftext|>", "\n\n"],
+      "stream": false
+    }
+  },
+  "task_specific_configs": {
+    "command_processing": {
+      "model": "llama-2-7b-chat",
+      "temperature": 0.7,
+      "max_tokens": 512,
+      "top_k": 40,
+      "use_tools": true,
+      "response_format": "text"
+    },
+    "data_extraction": {
+      "model": "falcon-40b-instruct",
+      "temperature": 0.3,
+      "max_tokens": 1024,
+      "top_k": 50,
+      "use_tools": false,
+      "response_format": "json_schema"
+    }
+  }
+}

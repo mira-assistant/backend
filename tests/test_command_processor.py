@@ -135,7 +135,7 @@ class TestCommandProcessor:
         """Test CommandProcessor initialization"""
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
-        mock_get_models.return_value = [{"id": "find-a-model", "state": "loaded"}]
+        mock_get_models.return_value = [{"id": "llama-2-7b-chat", "state": "loaded"}]
         
         processor = CommandProcessor()
         
@@ -148,7 +148,7 @@ class TestCommandProcessor:
         """Test that model tools are loaded"""
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
-        mock_get_models.return_value = [{"id": "find-a-model", "state": "loaded"}]
+        mock_get_models.return_value = [{"id": "llama-2-7b-chat", "state": "loaded"}]
         
         processor = CommandProcessor()
         
@@ -165,7 +165,7 @@ class TestCommandProcessor:
         """Test command processing"""
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
-        mock_get_models.return_value = [{"id": "find-a-model", "state": "loaded"}]
+        mock_get_models.return_value = [{"id": "llama-2-7b-chat", "state": "loaded"}]
         
         # Mock the OpenAI response with JSON content
         mock_response = Mock()

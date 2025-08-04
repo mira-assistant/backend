@@ -13,7 +13,7 @@ class InferenceProcessor:
 
         system_prompt = open("schemas/action_processing/system_prompt.txt", "r").read().strip()
         structured_response = json.load(open("schemas/action_processing/structured_output.json", "r"))
-        self.model_manager = MLModelManager("nous-hermes-2-mistral-7b-dpo", system_prompt, structured_response)
+        self.model_manager = MLModelManager("falcon-40b-instruct", system_prompt, structured_response)
 
         logging.info("InferenceProcessor initialized")
 
@@ -39,3 +39,33 @@ class InferenceProcessor:
         )
 
         return result
+
+    @staticmethod
+    def send_prompt(prompt: str, context: str = None) -> dict:
+        """
+        Static method for backward compatibility with existing code.
+        
+        Args:
+            prompt: User prompt text
+            context: Optional context information
+            
+        Returns:
+            dict: Response from the model
+        """
+        # Create a temporary interaction object for the static method
+        from models import Interaction
+        import uuid
+        from datetime import datetime, timezone
+        
+        temp_interaction = Interaction(
+            id=uuid.uuid4(),
+            text=prompt,
+            timestamp=datetime.now(timezone.utc),
+            speaker_id=uuid.uuid4()  # Temporary speaker ID
+        )
+        
+        # Create temporary processor instance
+        processor = InferenceProcessor()
+        response = processor.model_manager.run_inference(temp_interaction, context)
+        
+        return response
