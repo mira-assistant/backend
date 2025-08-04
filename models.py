@@ -14,6 +14,7 @@ from sqlalchemy.orm import object_session
 
 # Avoid circular import for Conversation
 import typing
+
 if typing.TYPE_CHECKING:
     from .models import Conversation
 import uuid
@@ -54,14 +55,17 @@ class Person(Base):
             return []
         # Ensure Conversation is imported
         Conversation = self.__class__.__module__
-        Conversation = globals().get('Conversation')
+        Conversation = globals().get("Conversation")
         if Conversation is None:
             from .models import Conversation
         # user_ids may be None, so handle that
-        return session.query(Conversation).filter(
-            Conversation.user_ids.isnot(None),
-            Conversation.user_ids.contains([str(self.id)])
-        ).all()
+        return (
+            session.query(Conversation)
+            .filter(
+                Conversation.user_ids.isnot(None), Conversation.user_ids.contains([str(self.id)])
+            )
+            .all()
+        )
 
 
 class Interaction(Base):

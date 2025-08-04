@@ -12,8 +12,8 @@ from db import get_db_session
 from models import Interaction, Person, Conversation
 
 
-import inference_processor as InferenceProcessor
 import sentence_processor as SentenceProcessor
+from inference_processor import InferenceProcessor
 from context_processor import ContextProcessor
 from multi_stream_processor import MultiStreamProcessor
 from command_processor import CommandProcessor, WakeWordDetector
@@ -23,10 +23,12 @@ from command_processor import CommandProcessor, WakeWordDetector
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+print("\n\n\n\n\n\nInitializing Mira backend service...")
 context_processor = ContextProcessor()
 audio_scorer = MultiStreamProcessor()
 wake_word_detector = WakeWordDetector()
 command_processor = CommandProcessor()
+inference_processor = InferenceProcessor()
 
 status: dict = {
     "version": "4.3.0",
@@ -37,6 +39,11 @@ status: dict = {
     "last_command_result": None,  # Store last command processing result
 }
 
+hosting_urls = {
+    "localhost": "http://localhost:8000",
+    "ankurs-macbook-air": "http://100.75.140.79:8000",
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,13 +51,14 @@ async def lifespan(app: FastAPI):
         get_db_session().query(Interaction).order_by(Interaction.timestamp.desc()).limit(10).all()
     ):
         status["recent_interactions"].append(interaction.id)
+
+    # Initialize wake words
+    wake_word_detector.add_wake_word("mira cancel", sensitivity=0.7, callback=disable_service)
+    wake_word_detector.add_wake_word("mira exit", sensitivity=0.7, callback=disable_service)
+    wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
+    wake_word_detector.add_wake_word("mira stop", sensitivity=0.7, callback=disable_service)
     yield
 
-
-hosting_urls = {
-    "localhost": "http://localhost:8000",
-    "ankurs-macbook-air": "http://100.75.140.79:8000",
-}
 
 # Initialize FastAPI app first
 app = FastAPI(lifespan=lifespan)
@@ -205,33 +213,6 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 status_code=400, detail="Transcription failed. Please check the audio quality."
             )
 
-        speaker = db.query(Person).filter_by(id=transcription_result["speaker_id"]).first()
-
-        if not speaker:
-            raise HTTPException(status_code=404, detail="Speaker not found")
-
-        if speaker.index == 1:  # type: ignore
-            wake_word_detection = wake_word_detector.detect_wake_words_text(
-                client_id=client_id,
-                transcribed_text=transcription_result["text"],
-                audio_length=len(sentence_buf_raw) / (16000 * 2),
-            )
-
-            if wake_word_detection:
-                logger.info(
-                    f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
-                )
-
-                command = command_processor.process_command(
-                    interaction_text=transcription_result["text"],
-                    client_id=client_id,
-                )
-
-                if command.user_response:
-                    return {"message": command.user_response}
-                else:
-                    return None
-
         try:
             interaction = Interaction(
                 **transcription_result,
@@ -244,14 +225,34 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             logger.info(f"Interaction saved to database with ID: {interaction.id}")
             status["recent_interactions"].append(interaction.id)
 
-            response = {
-                "id": str(interaction.id),
-                "text": interaction.text,
-                "timestamp": interaction.timestamp.isoformat(),
-                "speaker_id": str(interaction.speaker_id),
-            }
+            speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
 
-            return response
+            if not speaker:
+                raise HTTPException(status_code=404, detail="Speaker not found")
+
+            if speaker.index == 1:  # type: ignore
+                wake_word_detection = wake_word_detector.detect_wake_words_text(
+                    client_id=client_id,
+                    transcribed_text=transcription_result["text"],
+                    audio_length=len(sentence_buf_raw) / (16000 * 2),
+                )
+
+                if wake_word_detection:
+                    logger.info(
+                        f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
+                    )
+
+                    if wake_word_detection.callback:
+                        return None
+
+                    response = command_processor.process_command(
+                        interaction=interaction,
+                    )
+
+                    if response:
+                        return {"message": response}
+
+            return interaction
 
         except Exception as db_error:
             logger.error(f"Database error: {db_error}", exc_info=True)
@@ -384,7 +385,7 @@ def get_recent_conversations(limit: int = 10):
             for conv in conversations:
                 conv_data = {
                     "id": str(conv.id),
-                    "user_id": str(conv.user_ids),
+                    "user_ids": [str(user_id) for user_id in conv.user_ids],
                     "interaction_count": len(conv.interactions),
                     "topic_summary": conv.topic_summary,
                 }

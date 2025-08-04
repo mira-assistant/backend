@@ -14,12 +14,15 @@ Features:
 - Thread-safe operation for concurrent audio processing
 """
 
+import json
 import logging
 import threading
-import inspect
-from typing import Dict, List, Optional, Callable, Any, Tuple
+from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import tzlocal
+from ml_model_manager import MLModelManager
+from models import Interaction
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +34,9 @@ class WakeWordDetection:
     wake_word: str
     confidence: float
     client_id: str
+    callback: bool
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    audio_snippet_length: float = 0.0  # Length of audio snippet in seconds
+    audio_snippet_length: float = 0.0
 
 
 @dataclass
@@ -42,6 +46,7 @@ class WakeWordConfig:
     word: str
     sensitivity: float = 0.7
     min_confidence: float = 0.5
+    callback: Optional[Callable] = None
 
 
 class WakeWordDetector:
@@ -65,23 +70,14 @@ class WakeWordDetector:
         self.detection_callbacks: List[Callable[[WakeWordDetection], None]] = []
         self._lock = threading.Lock()
 
-        # Default wake words
-        self._setup_default_wake_words()
-
         logger.info("WakeWordDetector initialized")
-
-    def _setup_default_wake_words(self):
-        """Setup default wake words for the system"""
-        default_words = ["hey mira", "okay mira", "mira", "listen mira", "start recording"]
-
-        for word in default_words:
-            self.add_wake_word(word, sensitivity=0.7)
 
     def add_wake_word(
         self,
         word: str,
         sensitivity: float = 0.7,
         min_confidence: float = 0.5,
+        callback: Optional[Callable] = None,
     ) -> bool:
         """
         Add a new wake word to the detection system.
@@ -106,64 +102,12 @@ class WakeWordDetector:
                 word=word_normalized,
                 sensitivity=max(0.0, min(1.0, sensitivity)),
                 min_confidence=max(0.0, min(1.0, min_confidence)),
+                callback=callback,
             )
 
             self.wake_words[word_normalized] = config
             logger.info(f"Added wake word: '{word_normalized}' with sensitivity {sensitivity}")
             return True
-
-    def remove_wake_word(self, word: str) -> bool:
-        """
-        Remove a wake word from the detection system.
-
-        Args:
-            word: The wake word to remove
-
-        Returns:
-            bool: True if wake word was removed successfully
-        """
-        with self._lock:
-            word_normalized = word.lower().strip()
-
-            if word_normalized in self.wake_words:
-                del self.wake_words[word_normalized]
-                logger.info(f"Removed wake word: '{word_normalized}'")
-                return True
-
-            logger.warning(f"Wake word '{word_normalized}' not found")
-            return False
-
-    def get_wake_words(self) -> Dict[str, WakeWordConfig]:
-        """
-        Get all configured wake words.
-
-        Returns:
-            Dict[str, WakeWordConfig]: Dictionary of wake word configurations
-        """
-        with self._lock:
-            return self.wake_words.copy()
-
-    def add_detection_callback(self, callback: Callable[[WakeWordDetection], None]):
-        """
-        Add a callback function to be called when a wake word is detected.
-
-        Args:
-            callback: Function to call with WakeWordDetection when detected
-        """
-        if callback not in self.detection_callbacks:
-            self.detection_callbacks.append(callback)
-            logger.info("Added wake word detection callback")
-
-    def remove_detection_callback(self, callback: Callable[[WakeWordDetection], None]):
-        """
-        Remove a detection callback.
-
-        Args:
-            callback: Callback function to remove
-        """
-        if callback in self.detection_callbacks:
-            self.detection_callbacks.remove(callback)
-            logger.info("Removed wake word detection callback")
 
     def detect_wake_words_text(
         self, client_id: str, transcribed_text: str, audio_length: float = 0.0
@@ -185,7 +129,9 @@ class WakeWordDetector:
         if not transcribed_text:
             return None
 
-        text_normalized = transcribed_text.lower().strip()
+        text_normalized = ''.join(
+            c for c in transcribed_text.lower().strip() if c.isalnum() or c.isspace()
+        )
 
         with self._lock:
             for wake_word, config in self.wake_words.items():
@@ -203,9 +149,11 @@ class WakeWordDetector:
                         confidence=confidence,
                         client_id=client_id,
                         audio_snippet_length=audio_length,
+                        callback=True if config.callback is not None else False,
                     )
 
-                    self._trigger_callbacks(detection)
+                    if config.callback is not None:
+                        config.callback()
 
                     return detection
 
@@ -270,343 +218,74 @@ class WakeWordDetector:
                 logger.error(f"Error in wake word detection callback: {e}")
 
 
-@dataclass
-class CallbackFunction:
-    """Represents a registered callback function"""
-
-    name: str
-    function: Callable
-    description: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    enabled: bool = True
-
-
-@dataclass
-class CommandProcessingResult:
-    """Result of command processing workflow"""
-
-    callback_executed: bool
-    callback_name: Optional[str] = None
-    callback_result: Any = None
-    user_response: str = ""
-    error: Optional[str] = None
-    ai_response: Optional[Dict] = None
-
-
-class CallbackRegistry:
-    """Registry for managing available callback functions"""
-
-    def __init__(self):
-        self.callbacks: Dict[str, CallbackFunction] = {}
-        self._setup_default_callbacks()
-        logger.info("CallbackRegistry initialized")
-
-    def _setup_default_callbacks(self):
-        """Setup default callback functions"""
-        # Register core callback functions
-        self.register(
-            "getWeather", self._get_weather, "Get current weather information for a location"
-        )
-        self.register("getTime", self._get_time, "Get current time")
-        self.register("disableMira", self._disable_mira, "Disable the Mira assistant service")
-
-    def register(
-        self,
-        name: str,
-        function: Callable,
-        description: str,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> bool:
-        """
-        Register a new callback function
-
-        Args:
-            name: Function name to register
-            function: The callable function
-            description: Description of what the function does
-            parameters: Optional parameter schema
-
-        Returns:
-            bool: True if registration successful
-        """
-        if not callable(function):
-            logger.error(f"Cannot register non-callable object as callback: {name}")
-            return False
-
-        # Auto-extract parameters from function signature
-        if parameters is None:
-            sig = inspect.signature(function)
-            parameters = {}
-            for param_name, param in sig.parameters.items():
-                param_info = {
-                    "type": (
-                        param.annotation.__name__
-                        if param.annotation != inspect.Parameter.empty
-                        else "str"
-                    ),
-                    "required": param.default == inspect.Parameter.empty,
-                }
-                parameters[param_name] = param_info
-
-        callback = CallbackFunction(
-            name=name, function=function, description=description, parameters=parameters
-        )
-
-        self.callbacks[name] = callback
-        logger.info(f"Registered callback function: {name}")
-        return True
-
-    def unregister(self, name: str) -> bool:
-        """
-        Unregister a callback function
-
-        Args:
-            name: Function name to unregister
-
-        Returns:
-            bool: True if unregistration successful
-        """
-        if name in self.callbacks:
-            del self.callbacks[name]
-            logger.info(f"Unregistered callback function: {name}")
-            return True
-
-        logger.warning(f"Callback function not found: {name}")
-        return False
-
-    def execute(self, name: str, **kwargs) -> Tuple[bool, Any]:
-        """
-        Execute a registered callback function
-
-        Args:
-            name: Function name to execute
-            **kwargs: Arguments to pass to the function
-
-        Returns:
-            Tuple[bool, Any]: (success, result)
-        """
-        if name not in self.callbacks:
-            logger.error(f"Callback function not found: {name}")
-            return False, f"Function '{name}' not found"
-
-        callback = self.callbacks[name]
-        if not callback.enabled:
-            logger.warning(f"Callback function disabled: {name}")
-            return False, f"Function '{name}' is disabled"
-
-        result = callback.function(**kwargs)
-        logger.info(f"Successfully executed callback: {name}")
-        return True, result
-
-    def get_function_list(self) -> List[str]:
-        """Get list of available function names"""
-        return [name for name, callback in self.callbacks.items() if callback.enabled]
-
-    def get_function_descriptions(self) -> Dict[str, str]:
-        """Get mapping of function names to descriptions"""
-        return {
-            name: callback.description
-            for name, callback in self.callbacks.items()
-            if callback.enabled
-        }
-
-    def set_enabled(self, name: str, enabled: bool) -> bool:
-        """Enable or disable a callback function"""
-        if name in self.callbacks:
-            self.callbacks[name].enabled = enabled
-            status = "enabled" if enabled else "disabled"
-            logger.info(f"Callback function {name} {status}")
-            return True
-        return False
-
-    # Default callback implementations
-    def _get_weather(self, location: str = "current location") -> str:
-        """Get weather information (placeholder implementation)"""
-        # This is a placeholder implementation
-        # In a real system, this would integrate with a weather API
-        return f"The weather in {location} is partly cloudy with a temperature of 72°F"
-
-    def _get_time(self) -> str:
-        """Get current time"""
-        current_time = datetime.now().strftime("%I:%M %p")
-        return f"The current time is {current_time}"
-
-    def _disable_mira(self) -> str:
-        """Disable the Mira assistant service"""
-        # Import here to avoid circular imports
-        from mira import status
-
-        status["enabled"] = False
-        return "Mira assistant has been disabled. Say 'Hey Mira' to re-enable."
-
-
 class CommandProcessor:
     """Main command processing workflow orchestrator"""
 
-    def __init__(self, callback_registry: Optional[CallbackRegistry] = None):
+    def __init__(self):
         """
         Initialize command processor
 
         Args:
             callback_registry: Optional callback registry, creates default if None
         """
-        self.callback_registry = callback_registry or CallbackRegistry()
-        # Initialize ML model manager for command inference
-        from ml_model_manager import MLModelManager
-        # Use a lightweight NLP model suitable for command processing
-        # Note: Model validation will happen when MLModelManager is instantiated
-        self.ml_model_manager = MLModelManager(model_name="microsoft/DialoGPT-small")
+
+        system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
+        structured_response = json.load(open("schemas/command_processing/structured_output.json", "r"))
+        self.model_manager = MLModelManager(
+            model_name="find-a-model",
+            system_prompt=system_prompt,
+            # structured_response=structured_response,
+        )
+
+        self.load_model_tools()
+
         logger.info("CommandProcessor initialized")
 
-    def process_command(
-        self, interaction_text: str, client_id: str
-    ) -> CommandProcessingResult:
+    def load_model_tools(self):
+        """
+        Load model tools for the AI model manager.
+        This method can be extended to load additional tools as needed.
+        """
+
+        def get_weather(self, location: str = "current location") -> str:
+            """Get weather information (placeholder implementation)"""
+            # This is a placeholder implementation
+            # In a real system, this would integrate with a weather API
+            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
+
+        def get_time(self) -> str:
+            """Get current time in user's timezone (auto-detected)"""
+            local_tz = tzlocal.get_localzone()
+            current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
+            return f"The current time is {current_time}"
+
+        def disable_mira(self) -> str:
+            """Disable the Mira assistant service"""
+            # Import here to avoid circular imports
+            from mira import status
+
+            status["enabled"] = False
+            return "Mira assistant has been disabled. Say 'Hey Mira' to re-enable."
+
+        self.model_manager.register_tool(get_weather, "Fetch Weather Information")
+        self.model_manager.register_tool(get_time, "Fetch Current Time")
+        self.model_manager.register_tool(disable_mira, "Disable Mira Assistant")
+
+    def process_command(self, interaction: Interaction):
         """
         Process a command through the AI model and execute callbacks
 
         Args:
-            interaction_text: The transcribed user interaction
+            interaction: The user interaction object
             client_id: ID of the client that triggered the command
 
         Returns:
-            CommandProcessingResult: Result of command processing
+            Result of command processing
         """
 
-        logger.info(f"Processing command from client {client_id}: {interaction_text}")
-
-        # Get AI response for callback determination
-        ai_response = self._get_ai_callback_response(interaction_text)
-
-        if not ai_response:
-            return CommandProcessingResult(
-                callback_executed=False,
-                user_response="I didn't understand that command. Could you please try again?",
-                error="No AI response received",
-            )
-
-        # Extract callback information from AI response
-        callback_name = ai_response.get("callback_function")
-        callback_args = ai_response.get("callback_arguments", {})
-        user_response = ai_response.get("user_response", "")
-
-        # Execute callback if specified
-        if callback_name:
-            success, result = self.callback_registry.execute(callback_name, **callback_args)
-
-            if success:
-                # Enhance user response with callback result if needed
-                if result and isinstance(result, str):
-                    user_response = result if not user_response else f"{user_response} {result}"
-
-                return CommandProcessingResult(
-                    callback_executed=True,
-                    callback_name=callback_name,
-                    callback_result=result,
-                    user_response=user_response,
-                    ai_response=ai_response,
-                )
-            else:
-                return CommandProcessingResult(
-                    callback_executed=False,
-                    user_response=f"Sorry, I couldn't execute that command: {result}",
-                    error=str(result),
-                    ai_response=ai_response,
-                )
-        else:
-            # No callback needed, just return AI response
-            return CommandProcessingResult(
-                callback_executed=False,
-                user_response=user_response or "I understand, but no action is needed right now.",
-                ai_response=ai_response,
-            )
-
-    def process_command_with_recursion(
-        self, interaction_text: str, client_id: str, max_recursion: int = 3
-    ) -> CommandProcessingResult:
-        """
-        Process a command with recursive callback execution support
-
-        Args:
-            interaction_text: The transcribed user interaction
-            client_id: ID of the client that triggered the command
-            max_recursion: Maximum recursion depth for callback chains
-
-        Returns:
-            CommandProcessingResult: Result of command processing with recursive execution
-        """
-        logger.info(f"Processing recursive command from client {client_id}: {interaction_text}")
-
-        # Get available functions from callback registry
-        function_list = self.callback_registry.get_function_list()
-        function_descriptions = self.callback_registry.get_function_descriptions()
-
-        # Define callback executor function
-        def callback_executor(name: str, args: Dict[str, Any]) -> Any:
-            success, result = self.callback_registry.execute(name, **args)
-            if not success:
-                raise Exception(f"Callback execution failed: {result}")
-            return result
-
-        # Use ML model manager for recursive command processing
-        response = self.ml_model_manager.process_recursive_command(
-            interaction_text,
-            function_list,
-            function_descriptions,
-            callback_executor,
-            max_recursion
+        logger.info(f"Processing command: {interaction.text}")
+        response = self.model_manager.run_inference(
+            interaction,
         )
 
-        if not response.success:
-            return CommandProcessingResult(
-                callback_executed=False,
-                user_response=response.user_response,
-                error=response.error,
-            )
-
-        # Convert ModelResponse to CommandProcessingResult
-        return CommandProcessingResult(
-            callback_executed=response.callback_function is not None,
-            callback_name=response.callback_function,
-            callback_result=None,  # Result is embedded in the recursive processing
-            user_response=response.user_response,
-            ai_response={
-                "callback_function": response.callback_function,
-                "callback_arguments": response.callback_arguments,
-                "user_response": response.user_response
-            },
-        )
-
-    def _get_ai_callback_response(
-        self, interaction_text: str
-    ) -> Optional[Dict]:
-        """
-        Get AI model response for callback determination
-
-        Args:
-            interaction_text: User interaction text
-
-        Returns:
-            Dict: AI response with callback information
-        """
-        # Get available functions from callback registry
-        function_list = self.callback_registry.get_function_list()
-        function_descriptions = self.callback_registry.get_function_descriptions()
-
-        # Use ML model manager for command inference - let exceptions propagate
-        response = self.ml_model_manager.process_command_inference(
-            interaction_text,
-            function_list,
-            function_descriptions
-        )
-
-        # Convert ModelResponse to expected dict format
-        return {
-            "callback_function": response.callback_function,
-            "callback_arguments": response.callback_arguments,
-            "user_response": response.user_response
-        }
-
-
-
-
-
+        return response

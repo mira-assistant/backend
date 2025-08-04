@@ -11,7 +11,6 @@ import spacy
 from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
 
-from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from models import (
@@ -78,13 +77,14 @@ class ContextProcessor:
         """Initialize the context processor."""
         self.current_conversation = Conversation()
 
-        self.current_conversation_id = None
         self.current_participants = set()
 
         logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
         self.logger = logging.getLogger(__name__)
 
         self._init_nlp_components()
+
+        logging.info("ContextProcessor initialized")
 
     def _init_nlp_components(self):
         """Initialize NLP models as individual state variables."""
@@ -119,7 +119,7 @@ class ContextProcessor:
             if sentiment_result and len(sentiment_result[0]) > 0:
                 # Get the positive sentiment score
                 positive_score = next(
-                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),
+                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"), # type: ignore
                     0.5,
                 )
                 interaction.sentiment = positive_score  # type: ignore
@@ -194,7 +194,7 @@ class ContextProcessor:
                 # Get interactions from current conversation
                 interactions = (
                     session.query(Interaction)
-                    .filter_by(conversation_id=self.current_conversation_id)
+                    .filter_by(conversation_id=self.current_conversation.id)
                     .order_by(Interaction.timestamp.desc())
                     .limit(
                         ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
@@ -615,9 +615,7 @@ class ContextProcessor:
             session.refresh(conversation)
 
             self.current_conversation.id = conversation.id
-            self.current_participants = (
-                {interaction.speaker_id} if interaction.speaker_id is not None else set()
-            )
+            self.current_conversation.user_ids.append(interaction.speaker_id)
 
             # Assign this conversation to the interaction
             interaction.conversation_id = conversation.id

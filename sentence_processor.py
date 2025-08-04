@@ -345,7 +345,7 @@ def _update_db_clusters(session: Session, cluster_labels):
             continue
         person = session.query(Person).filter_by(id=person_id).first()
         if person:
-            person.cluster_id = int(label) if label != -1 else None
+            person.cluster_id = int(label) if label != -1 else None  # type: ignore
     session.commit()
 
 
