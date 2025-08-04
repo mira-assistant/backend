@@ -4,7 +4,16 @@ import json
 from ml_model_manager import MLModelManager
 
 # Initialize ML model manager instance for action data extraction
-ml_model_manager = MLModelManager()
+# This will be initialized when first needed
+ml_model_manager = None
+
+def get_ml_model_manager():
+    """Get or create the ML model manager instance"""
+    global ml_model_manager
+    if ml_model_manager is None:
+        # Note: Model validation will happen when MLModelManager is instantiated
+        ml_model_manager = MLModelManager(model_name="microsoft/DialoGPT-small")
+    return ml_model_manager
 
 API_URL = "http://localhost:1234/v1/chat/completions"
 
@@ -20,7 +29,8 @@ def send_prompt(prompt: str, context=None) -> dict[str, str]:
     Returns: dict - The generated response from the model.
     """
     # Use ML model manager for action extraction - let exceptions propagate
-    response = ml_model_manager.process_action_extraction(prompt, context)
+    manager = get_ml_model_manager()
+    response = manager.process_action_extraction(prompt, context)
     
     # Convert to expected format for backward compatibility
     result = {

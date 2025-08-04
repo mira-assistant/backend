@@ -58,9 +58,9 @@ Transcription  Wake Word Found    Function Determination   Backend Action   Fron
 Functions can be dynamically registered:
 
 ```python
-from command_workflow import get_command_processor
+from command_processor import CommandProcessor
 
-processor = get_command_processor()
+processor = CommandProcessor()
 processor.callback_registry.register(
     name="customFunction",
     function=my_function,

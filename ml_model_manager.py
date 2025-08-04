@@ -41,6 +41,108 @@ class ModelResponse:
             self.callback_arguments = {}
 
 
+class MLModel:
+    """
+    Individual ML Model configuration with system prompt, endpoint, and inference capability
+    """
+    
+    # Static configuration
+    LM_STUDIO_URL = "http://localhost:1234/v1"
+    CHAT_ENDPOINT = f"{LM_STUDIO_URL}/chat/completions"
+    MODELS_ENDPOINT = f"{LM_STUDIO_URL}/models"
+    
+    def __init__(self, 
+                 model_name: str,
+                 system_prompt: Optional[str] = None,
+                 **config_options):
+        """
+        Initialize ML Model
+        
+        Args:
+            model_name: Name of the model to use for inference
+            system_prompt: Custom system prompt or uses default
+            **config_options: Additional configuration options
+        """
+        # Validate model exists in available models
+        available_models = self.get_available_models()
+        model_names = [model.get('id', '') for model in available_models]
+        
+        if model_name not in model_names:
+            raise ValueError(f"Model '{model_name}' not found in available models: {model_names}")
+        
+        self.model = model_name
+        self.system_prompt = system_prompt or "You are Mira assistant"
+        
+        # Default config with any overrides
+        self.config = {
+            "max_tokens": -1,
+            "stream": False,
+            "temperature": 0.3,
+            "top_p": 0.8,
+            "top_k": 40,
+            "repeat_penalty": 1.2,
+            "min_p": 0.2,
+            **config_options
+        }
+        
+        logger.info(f"MLModel initialized with model: {model_name}")
+    
+    @staticmethod
+    def get_available_models() -> List[Dict[str, Any]]:
+        """
+        Get list of available models from LM Studio server
+        
+        Returns:
+            List[Dict]: List of available model information
+        """
+        try:
+            response = requests.get(MLModel.MODELS_ENDPOINT)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("data", [])
+        except Exception as e:
+            logger.error(f"Failed to get available models: {e}")
+            raise
+    
+    def run_inference(self, 
+                     interaction: str, 
+                     context: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Run inference on the model
+        
+        Args:
+            interaction: User interaction text
+            context: Optional context information
+            
+        Returns:
+            Dict: Response from the model
+        """
+        user_prompt = interaction
+        if context:
+            user_prompt += f"\n\nContext:\n{context}"
+        
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            **self.config
+        }
+        
+        response = requests.post(self.CHAT_ENDPOINT, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+        generated_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        
+        # Parse JSON response
+        result = json.loads(generated_text)
+        return result
+
+
 class MLModelManager:
     """
     Manages all interactions with LM Studio server for AI model communication.
@@ -49,32 +151,33 @@ class MLModelManager:
     extraction, with support for structured prompts and callback function management.
     """
     
-    # Static configuration
-    LM_STUDIO_URL = "http://localhost:1234/v1"
-    CHAT_ENDPOINT = f"{LM_STUDIO_URL}/chat/completions"
-    MODELS_ENDPOINT = f"{LM_STUDIO_URL}/models"
-    
-    def __init__(self, model_name: str = "microsoft/DialoGPT-small"):
+    def __init__(self, 
+                 model_name: str,
+                 command_system_prompt: Optional[str] = None,
+                 action_system_prompt: Optional[str] = None,
+                 **config_options):
         """
         Initialize ML Model Manager
         
         Args:
             model_name: Name of the model to use for inference
+            command_system_prompt: Custom command system prompt
+            action_system_prompt: Custom action system prompt
+            **config_options: Additional configuration options
         """
-        self.model = model_name
-        self.payload_config = {
-            "max_tokens": -1,
-            "stream": False,
-            "temperature": 0.3,
-            "top_p": 0.8,
-            "top_k": 40,
-            "repeat_penalty": 1.2,
-            "min_p": 0.2,
-        }
+        # Create command inference model
+        self.command_model = MLModel(
+            model_name=model_name,
+            system_prompt=command_system_prompt or self._build_command_system_prompt(),
+            **config_options
+        )
         
-        # System prompts as state variables
-        self.command_system_prompt = self._build_command_system_prompt()
-        self.action_system_prompt = self._build_action_system_prompt()
+        # Create action extraction model  
+        self.action_model = MLModel(
+            model_name=model_name,
+            system_prompt=action_system_prompt or self._build_action_system_prompt(),
+            **config_options
+        )
         
         logger.info(f"MLModelManager initialized with model: {model_name}")
     
@@ -145,40 +248,7 @@ Focus on extracting accurate time information and relevant details."""
         Returns:
             List[Dict]: List of available model information
         """
-        try:
-            response = requests.get(MLModelManager.MODELS_ENDPOINT)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("data", [])
-        except Exception as e:
-            logger.error(f"Failed to get available models: {e}")
-            raise
-    
-    def _send_request(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """
-        Send request to LM Studio server
-        
-        Args:
-            messages: List of message objects for the conversation
-            
-        Returns:
-            Dict: Response from the model
-        """
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            **self.payload_config
-        }
-        
-        response = requests.post(self.CHAT_ENDPOINT, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        
-        generated_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        
-        # Parse JSON response
-        result = json.loads(generated_text)
-        return result
+        return MLModel.get_available_models()
     
     def process_command_inference(
         self,
@@ -213,13 +283,8 @@ User Input: {interaction_text}"""
         if context:
             user_prompt += f"\n\nPrevious Context:\n{context}"
         
-        messages = [
-            {"role": "system", "content": self.command_system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
         # Let exceptions propagate - server should crash when ML model is offline
-        result = self._send_request(messages)
+        result = self.command_model.run_inference(user_prompt, context)
         
         return ModelResponse(
             callback_function=result.get("callback_function"),
@@ -243,18 +308,8 @@ User Input: {interaction_text}"""
         Returns:
             ModelResponse: Structured response with action data
         """
-        user_prompt = f"User Input: {interaction_text}"
-        
-        if context:
-            user_prompt += f"\n\nContext:\n{context}"
-        
-        messages = [
-            {"role": "system", "content": self.action_system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
         # Let exceptions propagate - server should crash when ML model is offline
-        result = self._send_request(messages)
+        result = self.action_model.run_inference(interaction_text, context)
         
         return ModelResponse(
             action_type=result.get("action_type"),
@@ -335,23 +390,3 @@ User Input: {interaction_text}"""
                 )
         
         return final_response
-    
-    def set_model(self, model_name: str):
-        """
-        Change the active model
-        
-        Args:
-            model_name: Name of the new model to use
-        """
-        self.model = model_name
-        logger.info(f"Changed model to: {model_name}")
-    
-    def update_payload_config(self, **kwargs):
-        """
-        Update payload configuration parameters
-        
-        Args:
-            **kwargs: Key-value pairs to update in payload config
-        """
-        self.payload_config.update(kwargs)
-        logger.info(f"Updated payload config: {kwargs}")

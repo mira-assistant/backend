@@ -453,7 +453,9 @@ class CommandProcessor:
         self.callback_registry = callback_registry or CallbackRegistry()
         # Initialize ML model manager for command inference
         from ml_model_manager import MLModelManager
-        self.ml_model_manager = MLModelManager()
+        # Use a lightweight NLP model suitable for command processing
+        # Note: Model validation will happen when MLModelManager is instantiated
+        self.ml_model_manager = MLModelManager(model_name="microsoft/DialoGPT-small")
         logger.info("CommandProcessor initialized")
 
     def process_command(
@@ -607,30 +609,4 @@ class CommandProcessor:
 
 
 
-# Global instance for easy access
-_command_processor: Optional[CommandProcessor] = None
 
-
-def get_command_processor() -> CommandProcessor:
-    """Get the global command processor instance"""
-    global _command_processor
-    if _command_processor is None:
-        _command_processor = CommandProcessor()
-    return _command_processor
-
-
-def process_wake_word_command(
-    interaction_text: str, client_id: str
-) -> CommandProcessingResult:
-    """
-    Convenience function to process wake word triggered commands
-
-    Args:
-        interaction_text: The transcribed user interaction
-        client_id: ID of the client that triggered the command
-
-    Returns:
-        CommandProcessingResult: Result of command processing
-    """
-    processor = get_command_processor()
-    return processor.process_command(interaction_text, client_id)
