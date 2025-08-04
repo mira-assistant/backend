@@ -77,6 +77,8 @@ with patch.dict(
         "context_processor": Mock(create_context_processor=mock_create_context_processor),
         "inference_processor": Mock(),
         "sentence_processor": Mock(),
+        "command_processor": Mock(CommandProcessor=Mock),
+        "ml_model_manager": Mock(),
     },
 ):
     from mira import app
