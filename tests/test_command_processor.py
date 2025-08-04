@@ -16,8 +16,6 @@ from command_processor import (
     CommandProcessor,
     CallbackFunction,
     CommandProcessingResult,
-    get_command_processor,
-    process_wake_word_command,
 )
 
 
@@ -281,31 +279,36 @@ class TestCommandProcessor:
 
 
 class TestGlobalFunctions:
-    def test_get_command_processor(self):
-        """Test global command processor getter"""
-        processor1 = get_command_processor()
-        processor2 = get_command_processor()
-
-        assert processor1 is processor2  # Should return same instance
-        assert isinstance(processor1, CommandProcessor)
-
-    @patch("command_processor.get_command_processor")
-    def test_process_wake_word_command(self, mock_get_processor):
-        """Test convenience function for wake word command processing"""
-        mock_processor = Mock()
-        mock_result = CommandProcessingResult(
-            callback_executed=True, callback_name="getTime", user_response="The time is 2:00 PM"
-        )
-        mock_processor.process_command.return_value = mock_result
-        mock_get_processor.return_value = mock_processor
-
-        result = process_wake_word_command("What time is it?", "test_client")
-
-        assert result.callback_executed is True
-        assert result.callback_name == "getTime"
-        mock_processor.process_command.assert_called_once_with(
-            "What time is it?", "test_client"
-        )
+    # These tests are commented out because the global functions have been removed
+    # as part of the architecture restructure
+    
+    # def test_get_command_processor(self):
+    #     """Test global command processor getter"""
+    #     processor1 = get_command_processor()
+    #     processor2 = get_command_processor()
+    #
+    #     assert processor1 is processor2  # Should return same instance
+    #     assert isinstance(processor1, CommandProcessor)
+    #
+    # @patch("command_processor.get_command_processor")
+    # def test_process_wake_word_command(self, mock_get_processor):
+    #     """Test convenience function for wake word command processing"""
+    #     mock_processor = Mock()
+    #     mock_result = CommandProcessingResult(
+    #         callback_executed=True, callback_name="getTime", user_response="The time is 2:00 PM"
+    #     )
+    #     mock_processor.process_command.return_value = mock_result
+    #     mock_get_processor.return_value = mock_processor
+    #
+    #     result = process_wake_word_command("What time is it?", "test_client")
+    #
+    #     assert result.callback_executed is True
+    #     assert result.callback_name == "getTime"
+    #     mock_processor.process_command.assert_called_once_with(
+    #         "What time is it?", "test_client"
+    #     )
+    
+    pass  # Placeholder since all tests are commented out
 
 
 class TestCallbackFunction:
