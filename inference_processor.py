@@ -1,41 +1,34 @@
 import requests
 import json
 
+from ml_model_manager import MLModelManager
+
+# Initialize ML model manager instance for action data extraction
+ml_model_manager = MLModelManager()
+
 API_URL = "http://localhost:1234/v1/chat/completions"
 
 
 def send_prompt(prompt: str, context=None) -> dict[str, str]:
     """
-    Sends a prompt to the LM Studio API and returns the generated response.
+    Sends a prompt to the LM Studio API for action data extraction.
+    This function is maintained for backward compatibility but now uses
+    the ML model manager for structured action extraction.
+    
     prompt: str - The input prompt to send to the model.
     context: str - The context to include with the prompt.
     Returns: dict - The generated response from the model.
     """
-
-    if context:
-        prompt = f"Current Prompt:\n{prompt}\n\nContext:\n{context}"
-
-    message = {"role": "user", "content": prompt}
-
-    payload = {
-        "model": "microsoft/DialoGPT-small",  # Lightweight model good for NLP
-        "messages": [message],
-        "max_tokens": -1,
-        "stream": False,
-        "temperature": 0.3,
-        "top_p": 0.8,
-        "top_k": 40,
-        "repeat_penalty": 1.2,
-        "min_p": 0.2,
+    # Use ML model manager for action extraction - let exceptions propagate
+    response = ml_model_manager.process_action_extraction(prompt, context)
+    
+    # Convert to expected format for backward compatibility
+    result = {
+        "action_type": response.action_type,
+        "action_data": response.action_data,
+        "user_response": response.user_response
     }
-
-    response = requests.post(API_URL, json=payload)
-    response.raise_for_status()
-    data = response.json()
-
-    generated_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-    result = json.loads(generated_text)
+    
     return result
 
 

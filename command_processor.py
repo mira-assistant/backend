@@ -451,6 +451,9 @@ class CommandProcessor:
             callback_registry: Optional callback registry, creates default if None
         """
         self.callback_registry = callback_registry or CallbackRegistry()
+        # Initialize ML model manager for command inference
+        from ml_model_manager import MLModelManager
+        self.ml_model_manager = MLModelManager()
         logger.info("CommandProcessor initialized")
 
     def process_command(
@@ -515,6 +518,62 @@ class CommandProcessor:
                 ai_response=ai_response,
             )
 
+    def process_command_with_recursion(
+        self, interaction_text: str, client_id: str, max_recursion: int = 3
+    ) -> CommandProcessingResult:
+        """
+        Process a command with recursive callback execution support
+
+        Args:
+            interaction_text: The transcribed user interaction
+            client_id: ID of the client that triggered the command
+            max_recursion: Maximum recursion depth for callback chains
+
+        Returns:
+            CommandProcessingResult: Result of command processing with recursive execution
+        """
+        logger.info(f"Processing recursive command from client {client_id}: {interaction_text}")
+
+        # Get available functions from callback registry
+        function_list = self.callback_registry.get_function_list()
+        function_descriptions = self.callback_registry.get_function_descriptions()
+
+        # Define callback executor function
+        def callback_executor(name: str, args: Dict[str, Any]) -> Any:
+            success, result = self.callback_registry.execute(name, **args)
+            if not success:
+                raise Exception(f"Callback execution failed: {result}")
+            return result
+
+        # Use ML model manager for recursive command processing
+        response = self.ml_model_manager.process_recursive_command(
+            interaction_text,
+            function_list,
+            function_descriptions,
+            callback_executor,
+            max_recursion
+        )
+
+        if not response.success:
+            return CommandProcessingResult(
+                callback_executed=False,
+                user_response=response.user_response,
+                error=response.error,
+            )
+
+        # Convert ModelResponse to CommandProcessingResult
+        return CommandProcessingResult(
+            callback_executed=response.callback_function is not None,
+            callback_name=response.callback_function,
+            callback_result=None,  # Result is embedded in the recursive processing
+            user_response=response.user_response,
+            ai_response={
+                "callback_function": response.callback_function,
+                "callback_arguments": response.callback_arguments,
+                "user_response": response.user_response
+            },
+        )
+
     def _get_ai_callback_response(
         self, interaction_text: str
     ) -> Optional[Dict]:
@@ -527,68 +586,25 @@ class CommandProcessor:
         Returns:
             Dict: AI response with callback information
         """
-        # Import inference processor here to avoid circular imports
-        import inference_processor
-
-        # Create enhanced prompt with available functions
+        # Get available functions from callback registry
         function_list = self.callback_registry.get_function_list()
         function_descriptions = self.callback_registry.get_function_descriptions()
 
-        system_prompt = self._build_system_prompt(function_list, function_descriptions)
+        # Use ML model manager for command inference - let exceptions propagate
+        response = self.ml_model_manager.process_command_inference(
+            interaction_text,
+            function_list,
+            function_descriptions
+        )
 
-        # Build the complete prompt
-        enhanced_prompt = f"""System: {system_prompt}
+        # Convert ModelResponse to expected dict format
+        return {
+            "callback_function": response.callback_function,
+            "callback_arguments": response.callback_arguments,
+            "user_response": response.user_response
+        }
 
-User Input: {interaction_text}"""
 
-        # Use existing inference processor to communicate with AI model
-        ai_response = inference_processor.send_prompt(enhanced_prompt)
-        return ai_response
-
-    def _build_system_prompt(
-        self, function_list: List[str], function_descriptions: Dict[str, str]
-    ) -> str:
-        """
-        Build system prompt with available functions
-
-        Args:
-            function_list: List of available function names
-            function_descriptions: Function name to description mapping
-
-        Returns:
-            str: Complete system prompt
-        """
-        prompt = """You are Mira, an AI assistant that processes voice commands and determines which callback function (if any) should be invoked.
-
-Available Functions:"""
-
-        for func_name in function_list:
-            description = function_descriptions.get(func_name, "No description available")
-            prompt += f"\n- {func_name}: {description}"
-
-        prompt += """
-
-Your task:
-1. Analyze the user input to determine if a callback function should be invoked
-2. If a callback is needed, identify which function and any required arguments
-3. Provide a user-facing response sentence
-
-Respond with JSON in this format:
-{
-    "callback_function": "function_name" or null,
-    "callback_arguments": {"arg1": "value1", "arg2": "value2"} or {},
-    "user_response": "What to say back to the user"
-}
-
-Examples:
-- "What time is it?" -> {"callback_function": "getTime", "callback_arguments": {}, "user_response": ""}
-- "What's the weather like?" -> {"callback_function": "getWeather", "callback_arguments": {"location": "current location"}, "user_response": ""}
-- "Stop listening" -> {"callback_function": "disableMira", "callback_arguments": {}, "user_response": ""}
-- "Hello there" -> {"callback_function": null, "callback_arguments": {}, "user_response": "Hello! How can I help you?"}
-
-Only invoke callbacks for clear, actionable requests. Respond naturally and conversationally."""
-
-        return prompt
 
 
 # Global instance for easy access
