@@ -15,7 +15,6 @@ Features:
 """
 
 import inspect
-import requests
 import json
 import logging
 from typing import Dict, List, Optional, Any
@@ -60,8 +59,6 @@ class MLModelManager:
         """
 
         available_models = get_available_models()
-
-        # print(f"Available models: {available_models}")
 
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
@@ -178,10 +175,10 @@ def get_available_models() -> List[Dict[str, Any]]:
         List[Dict]: List of available model information
     """
     try:
-        response = requests.get(f"{LM_STUDIO_URL}/models")
-        response.raise_for_status()
-        data = response.json()
-        return data.get("data", [])
+        response = client.models.list()
+        data = response.model_dump()["data"]
+
+        return data
     except Exception as e:
         logger.error(f"Failed to get available models: {e}")
         raise RuntimeError(f"Could not fetch available models: {e}")
