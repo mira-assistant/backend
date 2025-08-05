@@ -82,7 +82,7 @@ def test_model_configurations():
         print("✓ LM Studio server config is valid")
 
         # Test model-specific configs
-        models = ["llama-2-7b-chat", "falcon-40b-instruct"]
+        models = ["llama-2-7b-chat-hf-function-calling-v3", "tiiuae-falcon-40b-instruct"]
         for model in models:
             config_path = Path(f"{model}/model_config.json")
             if not config_path.exists():

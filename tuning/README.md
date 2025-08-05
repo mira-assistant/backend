@@ -8,10 +8,10 @@ This directory contains the fine-tuning framework and configuration files for th
 tuning/
 ├── configs/
 │   └── lm_studio_server_config.json     # LM Studio server configuration
-├── llama-2-7b-chat/
-│   └── model_config.json                # Configuration for LLaMA-2-7B-Chat model
-├── falcon-40b-instruct/
-│   └── model_config.json                # Configuration for Falcon-40B-Instruct model
+├── llama-2-7b-chat-hf-function-calling-v3/
+│   └── model_config.json                # Configuration for LLaMA-2-7B-Chat function calling model
+├── tiiuae-falcon-40b-instruct/
+│   └── model_config.json                # Configuration for TII UAE Falcon-40B-Instruct model
 ├── datasets/                            # Generated training datasets
 ├── fine_tune_models.py                  # Fine-tuning framework script
 ├── acquire_datasets.py                  # Dataset acquisition script
@@ -20,16 +20,16 @@ tuning/
 
 ## Models and Tasks
 
-### LLaMA-2-7B-Chat
+### LLaMA-2-7B-Chat HF Function Calling V3
 - **Task**: Command Processing
 - **Use Case**: Processing user commands, wake word responses, tool function calls
-- **Configuration**: `llama-2-7b-chat/model_config.json`
+- **Configuration**: `llama-2-7b-chat-hf-function-calling-v3/model_config.json`
 - **Optimized for**: Conversational interactions, function calling, real-time responses
 
-### Falcon-40B-Instruct  
+### TII UAE Falcon-40B-Instruct  
 - **Task**: Data Extraction
 - **Use Case**: Extracting structured data from user speech (contacts, reminders, calendar events)
-- **Configuration**: `falcon-40b-instruct/model_config.json`
+- **Configuration**: `tiiuae-falcon-40b-instruct/model_config.json`
 - **Optimized for**: Structured output generation, entity extraction, JSON formatting
 
 ## LM Studio Server Configuration
@@ -86,30 +86,30 @@ This script will:
 Fine-tune models using LoRA (Low-Rank Adaptation):
 
 ```bash
-# Fine-tune LLaMA-2-7B-Chat for command processing
+# Fine-tune LLaMA-2-7B-Chat HF Function Calling V3 for command processing
 python fine_tune_models.py \
-  --model llama-2-7b-chat \
+  --model llama-2-7b-chat-hf-function-calling-v3 \
   --dataset datasets/command_processing.jsonl \
-  --output-dir llama-2-7b-chat/fine_tuned
+  --output-dir llama-2-7b-chat-hf-function-calling-v3/fine_tuned
 
-# Fine-tune Falcon-40B-Instruct for data extraction  
+# Fine-tune TII UAE Falcon-40B-Instruct for data extraction  
 python fine_tune_models.py \
-  --model falcon-40b-instruct \
+  --model tiiuae-falcon-40b-instruct \
   --dataset datasets/data_extraction.jsonl \
-  --output-dir falcon-40b-instruct/fine_tuned
+  --output-dir tiiuae-falcon-40b-instruct/fine_tuned
 ```
 
 ### LoRA Configuration
 
 Both models use LoRA for efficient fine-tuning:
 
-**LLaMA-2-7B-Chat LoRA Settings**:
+**LLaMA-2-7B-Chat HF Function Calling V3 LoRA Settings**:
 - Rank (r): 16
 - Alpha: 32
 - Target modules: q_proj, v_proj, k_proj, o_proj
 - Dropout: 0.1
 
-**Falcon-40B-Instruct LoRA Settings**:
+**TII UAE Falcon-40B-Instruct LoRA Settings**:
 - Rank (r): 8
 - Alpha: 16  
 - Target modules: query_key_value, dense

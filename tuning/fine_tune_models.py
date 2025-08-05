@@ -6,8 +6,8 @@ This script provides a framework for fine-tuning LLaMA-2-7B-Chat and Falcon-40B-
 models using Hugging Face transformers and LoRA (Low-Rank Adaptation) techniques.
 
 Usage:
-    python fine_tune_models.py --model llama-2-7b-chat --dataset datasets/command_processing.jsonl
-    python fine_tune_models.py --model falcon-40b-instruct --dataset datasets/data_extraction.jsonl
+    python fine_tune_models.py --model llama-2-7b-chat-hf-function-calling-v3 --dataset datasets/command_processing.jsonl
+    python fine_tune_models.py --model tiiuae-falcon-40b-instruct --dataset datasets/data_extraction.jsonl
 """
 
 import argparse
@@ -105,7 +105,7 @@ class ModelFineTuner:
         # Tokenize dataset
         def tokenize_function(examples):
             # Format input based on model type
-            if self.model_name == "llama-2-7b-chat":
+            if self.model_name == "llama-2-7b-chat-hf-function-calling-v3":
                 formatted_texts = []
                 for i in range(len(examples['input'])):
                     if 'context' in examples and examples['context'][i]:
@@ -120,7 +120,7 @@ class ModelFineTuner:
                     if 'output' in examples:
                         text += examples['output'][i]
                     formatted_texts.append(text)
-            else:  # falcon-40b-instruct
+            else:  # tiiuae-falcon-40b-instruct
                 formatted_texts = []
                 for i in range(len(examples['input'])):
                     text = self.config["prompt_templates"]["data_extraction"].format(
@@ -190,7 +190,7 @@ class ModelFineTuner:
 def main():
     """Main function to run fine-tuning."""
     parser = argparse.ArgumentParser(description="Fine-tune Mira assistant models")
-    parser.add_argument("--model", required=True, choices=["llama-2-7b-chat", "falcon-40b-instruct"],
+    parser.add_argument("--model", required=True, choices=["llama-2-7b-chat-hf-function-calling-v3", "tiiuae-falcon-40b-instruct"],
                         help="Model to fine-tune")
     parser.add_argument("--dataset", required=True, help="Path to training dataset (JSONL format)")
     parser.add_argument("--base-model", help="Path or name of base model (if different from model name)")

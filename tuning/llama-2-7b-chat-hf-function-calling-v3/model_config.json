@@ -1,7 +1,7 @@
 {
   "model_info": {
-    "name": "llama-2-7b-chat",
-    "description": "LLaMA-2 7B Chat model optimized for command processing and conversational tasks",
+    "name": "llama-2-7b-chat-hf-function-calling-v3",
+    "description": "LLaMA-2 7B Chat model with function calling optimized for command processing and conversational tasks",
     "task": "command_processing",
     "architecture": "LLaMA",
     "parameters": "7B",

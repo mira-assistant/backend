@@ -1,7 +1,7 @@
 {
   "model_info": {
-    "name": "falcon-40b-instruct", 
-    "description": "Falcon 40B Instruct model optimized for data extraction and structured output tasks",
+    "name": "tiiuae-falcon-40b-instruct", 
+    "description": "TII UAE Falcon 40B Instruct model optimized for data extraction and structured output tasks",
     "task": "data_extraction",
     "architecture": "Falcon",
     "parameters": "40B", 
