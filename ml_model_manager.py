@@ -17,7 +17,7 @@ Features:
 import inspect
 import json
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from openai import OpenAI
 from openai.types import chat, shared_params
 from models import Interaction
@@ -90,7 +90,7 @@ class MLModelManager:
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
-    def register_tool(self, function, description: str):
+    def register_tool(self, function: 'Callable', description: str):
         parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
 
         self.tools.append(

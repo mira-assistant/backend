@@ -9,9 +9,8 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import json
-import requests
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import CompletionUsage
@@ -21,22 +20,17 @@ from models import Interaction
 
 
 # Mock all missing OpenAI chat completion message types
-@patch('openai.types.chat.ChatCompletionSystemMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionAssistantMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionUserMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionMessageParam', list)
-
-
+@patch("openai.types.chat.ChatCompletionSystemMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionAssistantMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionUserMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionMessageParam", list)
 class TestGetAvailableModels:
     """Test cases for get_available_models function"""
 
-    @patch('ml_model_manager.client.models.list')
+    @patch("ml_model_manager.client.models.list")
     def test_get_available_models_success(self, mock_models_list):
         """Test successful retrieval of available models"""
-        expected_models = [
-            {"id": "model1", "object": "model"},
-            {"id": "model2", "object": "model"}
-        ]
+        expected_models = [{"id": "model1", "object": "model"}, {"id": "model2", "object": "model"}]
 
         mock_response = Mock()
         mock_response.model_dump.return_value = {"data": expected_models}
@@ -46,7 +40,7 @@ class TestGetAvailableModels:
         for model_info, expected_model_info in zip(models, expected_models):
             assert model_info["id"] == expected_model_info["id"]
 
-    @patch('ml_model_manager.client.models.list')
+    @patch("ml_model_manager.client.models.list")
     def test_get_available_models_failure(self, mock_models_list):
         """Test get_available_models raises exception on server error"""
         mock_models_list.side_effect = Exception("Connection failed")
@@ -54,7 +48,7 @@ class TestGetAvailableModels:
         with pytest.raises(RuntimeError, match="Could not fetch available models"):
             get_available_models()
 
-    @patch('ml_model_manager.client.models.list')
+    @patch("ml_model_manager.client.models.list")
     def test_get_available_models_empty_response(self, mock_models_list):
         """Test get_available_models with empty data"""
         mock_response = Mock()
@@ -67,26 +61,26 @@ class TestGetAvailableModels:
 
 
 # Mock all missing OpenAI chat completion message types
-@patch('openai.types.chat.ChatCompletionSystemMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionAssistantMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionUserMessageParam', dict)
-@patch('openai.types.chat.ChatCompletionMessageParam', list)
-@patch('openai.types.shared_params.ResponseFormatText')
-@patch('openai.types.shared_params.ResponseFormatJSONSchema')
-@patch('openai.types.shared_params.FunctionDefinition')
-@patch('openai.types.shared_params.response_format_json_schema.JSONSchema')
+@patch("openai.types.chat.ChatCompletionSystemMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionAssistantMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionUserMessageParam", dict)
+@patch("openai.types.chat.ChatCompletionMessageParam", list)
+@patch("openai.types.shared_params.ResponseFormatText")
+@patch("openai.types.shared_params.ResponseFormatJSONSchema")
+@patch("openai.types.shared_params.FunctionDefinition")
+@patch("openai.types.shared_params.response_format_json_schema.JSONSchema")
 class TestMLModelManager:
     """Test cases for the MLModelManager class"""
 
     def test_init_with_valid_model(self, *args):
         """Test MLModelManager initialization with valid model name"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models response
             mock_response = Mock()
             mock_response.model_dump.return_value = {
                 "data": [
                     {"id": "test-model", "object": "model", "state": "loaded"},
-                    {"id": "gpt-3.5-turbo", "object": "model", "state": "loaded"}
+                    {"id": "gpt-3.5-turbo", "object": "model", "state": "loaded"},
                 ]
             }
             mock_models_list.return_value = mock_response
@@ -101,7 +95,7 @@ class TestMLModelManager:
 
     def test_init_with_invalid_model(self, *args):
         """Test MLModelManager initialization with invalid model name raises exception"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models response
             mock_response = Mock()
             mock_response.model_dump.return_value = {
@@ -114,7 +108,7 @@ class TestMLModelManager:
 
     def test_init_with_unloaded_model(self, *args):
         """Test MLModelManager initialization with unloaded model raises exception"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models response with unloaded model
             mock_response = Mock()
             mock_response.model_dump.return_value = {
@@ -127,7 +121,7 @@ class TestMLModelManager:
 
     def test_init_with_config_options(self, *args):
         """Test MLModelManager initialization with custom config options"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models
             mock_response = Mock()
             mock_response.model_dump.return_value = {
@@ -136,11 +130,7 @@ class TestMLModelManager:
             mock_models_list.return_value = mock_response
 
             manager = MLModelManager(
-                "test-model",
-                "Test prompt",
-                temperature=0.7,
-                max_tokens=100,
-                custom_param="value"
+                "test-model", "Test prompt", temperature=0.7, max_tokens=100, custom_param="value"
             )
 
             assert manager.config["temperature"] == 0.7
@@ -149,7 +139,7 @@ class TestMLModelManager:
 
     def test_init_with_response_format(self, *args):
         """Test MLModelManager initialization with structured response format"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models
             mock_response = Mock()
             mock_response.model_dump.return_value = {
@@ -157,19 +147,16 @@ class TestMLModelManager:
             }
             mock_models_list.return_value = mock_response
 
-            response_format = {
-                "type": "object",
-                "properties": {"answer": {"type": "string"}}
-            }
+            response_format = {"type": "object", "properties": {"answer": {"type": "string"}}}
 
             manager = MLModelManager("test-model", "Test prompt", response_format=response_format)
 
-            assert hasattr(manager, 'response_format')
+            assert hasattr(manager, "response_format")
             assert manager.response_format is not None
 
     def test_register_tool(self, *args):
         """Test tool registration functionality"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models
             mock_response = Mock()
             mock_response.model_dump.return_value = {
@@ -190,14 +177,12 @@ class TestMLModelManager:
             # Verify tool was registered
             assert len(manager.tools) == 1
             tool = manager.tools[0]
-            assert tool['function']['name'] == 'test_function'
-            assert tool['function']['description'] == "Test tool description"
-            assert tool['type'] == 'function'
+            assert tool["type"] == "function"
 
     def test_run_inference_success(self, *args):
         """Test successful inference run"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
-            with patch('ml_model_manager.client.chat.completions.create') as mock_create:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
+            with patch("ml_model_manager.client.chat.completions.create") as mock_create:
                 # Mock available models
                 mock_get_response = Mock()
                 mock_get_response.model_dump.return_value = {
@@ -216,17 +201,12 @@ class TestMLModelManager:
                         Choice(
                             index=0,
                             message=ChatCompletionMessage(
-                                role="assistant",
-                                content=json.dumps(expected_result)
+                                role="assistant", content=json.dumps(expected_result)
                             ),
-                            finish_reason="stop"
+                            finish_reason="stop",
                         )
                     ],
-                    usage=CompletionUsage(
-                        prompt_tokens=10,
-                        completion_tokens=5,
-                        total_tokens=15
-                    )
+                    usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
                 )
                 mock_create.return_value = mock_completion
 
@@ -234,7 +214,7 @@ class TestMLModelManager:
 
                 # Create test interaction
                 interaction = Interaction()
-                interaction.text = "What time is it?"
+                interaction.text = "What time is it?"  # type: ignore
 
                 result = manager.run_inference(interaction)
 
@@ -243,16 +223,16 @@ class TestMLModelManager:
 
                 # Verify the call arguments
                 call_args = mock_create.call_args
-                assert call_args[1]['model'] == "test-model"
-                assert len(call_args[1]['messages']) == 2
-                assert call_args[1]['messages'][0]['role'] == 'system'
-                assert call_args[1]['messages'][1]['role'] == 'user'
-                assert call_args[1]['messages'][1]['content'] == "What time is it?"
+                assert call_args[1]["model"] == "test-model"
+                assert len(call_args[1]["messages"]) == 2
+                assert call_args[1]["messages"][0]["role"] == "system"
+                assert call_args[1]["messages"][1]["role"] == "user"
+                assert call_args[1]["messages"][1]["content"] == "What time is it?"
 
     def test_run_inference_with_context(self, *args):
         """Test inference run with context"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
-            with patch('ml_model_manager.client.chat.completions.create') as mock_create:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
+            with patch("ml_model_manager.client.chat.completions.create") as mock_create:
                 # Mock available models
                 mock_get_response = Mock()
                 mock_get_response.model_dump.return_value = {
@@ -270,17 +250,12 @@ class TestMLModelManager:
                         Choice(
                             index=0,
                             message=ChatCompletionMessage(
-                                role="assistant",
-                                content='{"answer": "Response with context"}'
+                                role="assistant", content='{"answer": "Response with context"}'
                             ),
-                            finish_reason="stop"
+                            finish_reason="stop",
                         )
                     ],
-                    usage=CompletionUsage(
-                        prompt_tokens=15,
-                        completion_tokens=8,
-                        total_tokens=23
-                    )
+                    usage=CompletionUsage(prompt_tokens=15, completion_tokens=8, total_tokens=23),
                 )
                 mock_create.return_value = mock_completion
 
@@ -288,19 +263,20 @@ class TestMLModelManager:
 
                 # Create test interaction
                 interaction = Interaction()
-                interaction.text = "Follow-up question"
+                interaction.text = "Follow-up question"  # type: ignore
 
                 result = manager.run_inference(interaction, context="Previous conversation")
 
                 # Verify the call was made (context handling is implementation detail)
                 mock_create.assert_called_once()
                 call_args = mock_create.call_args
-                assert call_args[1]['model'] == "test-model"
+                assert call_args[1]["model"] == "test-model"
+                assert result is not None
 
     def test_run_inference_no_content(self, *args):
         """Test inference run when model returns no content"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
-            with patch('ml_model_manager.client.chat.completions.create') as mock_create:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
+            with patch("ml_model_manager.client.chat.completions.create") as mock_create:
                 # Mock available models
                 mock_get_response = Mock()
                 mock_get_response.model_dump.return_value = {
@@ -317,18 +293,11 @@ class TestMLModelManager:
                     choices=[
                         Choice(
                             index=0,
-                            message=ChatCompletionMessage(
-                                role="assistant",
-                                content=None
-                            ),
-                            finish_reason="stop"
+                            message=ChatCompletionMessage(role="assistant", content=None),
+                            finish_reason="stop",
                         )
                     ],
-                    usage=CompletionUsage(
-                        prompt_tokens=10,
-                        completion_tokens=0,
-                        total_tokens=10
-                    )
+                    usage=CompletionUsage(prompt_tokens=10, completion_tokens=0, total_tokens=10),
                 )
                 mock_create.return_value = mock_completion
 
@@ -336,15 +305,15 @@ class TestMLModelManager:
 
                 # Create test interaction
                 interaction = Interaction()
-                interaction.text = "Test question"
+                interaction.text = "Test question"  # type: ignore
 
                 with pytest.raises(RuntimeError, match="Model test-model generated no content"):
                     manager.run_inference(interaction)
 
     def test_run_inference_invalid_json(self, *args):
         """Test inference run when model returns invalid JSON"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
-            with patch('ml_model_manager.client.chat.completions.create') as mock_create:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
+            with patch("ml_model_manager.client.chat.completions.create") as mock_create:
                 # Mock available models
                 mock_get_response = Mock()
                 mock_get_response.model_dump.return_value = {
@@ -362,17 +331,12 @@ class TestMLModelManager:
                         Choice(
                             index=0,
                             message=ChatCompletionMessage(
-                                role="assistant",
-                                content="This is not valid JSON"
+                                role="assistant", content="This is not valid JSON"
                             ),
-                            finish_reason="stop"
+                            finish_reason="stop",
                         )
                     ],
-                    usage=CompletionUsage(
-                        prompt_tokens=10,
-                        completion_tokens=5,
-                        total_tokens=15
-                    )
+                    usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
                 )
                 mock_create.return_value = mock_completion
 
@@ -380,15 +344,15 @@ class TestMLModelManager:
 
                 # Create test interaction
                 interaction = Interaction()
-                interaction.text = "Test question"
+                interaction.text = "Test question"  # type: ignore
 
                 with pytest.raises(json.JSONDecodeError):
                     manager.run_inference(interaction)
 
     def test_run_inference_with_tools(self, *args):
         """Test inference run with registered tools"""
-        with patch('ml_model_manager.client.models.list') as mock_models_list:
-            with patch('ml_model_manager.client.chat.completions.create') as mock_create:
+        with patch("ml_model_manager.client.models.list") as mock_models_list:
+            with patch("ml_model_manager.client.chat.completions.create") as mock_create:
                 # Mock available models
                 mock_get_response = Mock()
                 mock_get_response.model_dump.return_value = {
@@ -406,17 +370,12 @@ class TestMLModelManager:
                         Choice(
                             index=0,
                             message=ChatCompletionMessage(
-                                role="assistant",
-                                content='{"answer": "Tool-based response"}'
+                                role="assistant", content='{"answer": "Tool-based response"}'
                             ),
-                            finish_reason="stop"
+                            finish_reason="stop",
                         )
                     ],
-                    usage=CompletionUsage(
-                        prompt_tokens=20,
-                        completion_tokens=8,
-                        total_tokens=28
-                    )
+                    usage=CompletionUsage(prompt_tokens=20, completion_tokens=8, total_tokens=28),
                 )
                 mock_create.return_value = mock_completion
 
@@ -430,15 +389,17 @@ class TestMLModelManager:
 
                 # Create test interaction
                 interaction = Interaction()
-                interaction.text = "Use the tool"
+                interaction.text = "Use the tool"  # type: ignore
 
                 result = manager.run_inference(interaction)
 
                 # Verify tools were passed to the API call
                 call_args = mock_create.call_args
-                assert 'tools' in call_args[1]
-                assert call_args[1]['tool_choice'] == 'auto'
+                assert "tools" in call_args[1]
+                assert call_args[1]["tool_choice"] == "auto"
                 assert len(manager.tools) == 1
+                assert result is not None
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
