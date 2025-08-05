@@ -40,9 +40,6 @@ class MLModelManager:
         model_name: str,
         system_prompt: str,
         response_format: Optional[dict] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        top_k: Optional[int] = None,
         **config_options,
     ):
         """
@@ -52,10 +49,14 @@ class MLModelManager:
             model_name: Name of the model to use for inference
             system_prompt: Custom system prompt or uses default
             response_format: Optional JSON schema for structured output
-            temperature: Sampling temperature (0.0-2.0)
-            max_tokens: Maximum number of tokens to generate
-            top_k: Top-k sampling parameter
-            **config_options: Additional configuration options
+            **config_options: Additional configuration options including:
+                - temperature: Sampling temperature (0.0-2.0), default 0.7
+                - max_tokens: Maximum number of tokens to generate
+                - top_k: Top-k sampling parameter
+                - top_p: Top-p sampling parameter
+                - repetition_penalty: Repetition penalty
+                - frequency_penalty: Frequency penalty
+                - presence_penalty: Presence penalty
         """
 
         available_models = get_available_models()
@@ -87,15 +88,15 @@ class MLModelManager:
             )
 
         self.config = {
-            "temperature": temperature,
-            **config_options,
+            "temperature": config_options.get("temperature", 0.7),
+            **{k: v for k, v in config_options.items() if k != "temperature"},
         }
 
         # Add optional parameters if provided
-        if max_tokens is not None:
-            self.config["max_tokens"] = max_tokens
-        if top_k is not None:
-            self.config["top_k"] = top_k
+        if "max_tokens" in config_options:
+            self.config["max_tokens"] = config_options["max_tokens"]
+        if "top_k" in config_options:
+            self.config["top_k"] = config_options["top_k"]
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
