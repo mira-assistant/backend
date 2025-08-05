@@ -204,19 +204,6 @@ class WakeWordDetector:
 
         return 0.0
 
-    def _trigger_callbacks(self, detection: WakeWordDetection):
-        """
-        Trigger all registered detection callbacks.
-
-        Args:
-            detection: The wake word detection to pass to callbacks
-        """
-        for callback in self.detection_callbacks:
-            try:
-                callback(detection)
-            except Exception as e:
-                logger.error(f"Error in wake word detection callback: {e}")
-
 
 class CommandProcessor:
     """Main command processing workflow orchestrator"""
