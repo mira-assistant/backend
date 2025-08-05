@@ -269,7 +269,7 @@ class CommandProcessor:
 
         self.model_manager.register_tool(get_weather, "Fetch Weather Information")
         self.model_manager.register_tool(get_time, "Fetch Current Time")
-        self.model_manager.register_tool(disable_mira, "Disable Mira Assistant")
+        self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
 
     def process_command(self, interaction: Interaction):
         """

@@ -66,8 +66,8 @@ class MLModelManager:
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
 
-        # if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            # raise ValueError(f"Model '{model_name}' not available or loaded")
+        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
+            raise ValueError(f"Model '{model_name}' not available or loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
@@ -88,25 +88,20 @@ class MLModelManager:
             )
 
         self.config = {
-            "temperature": config_options.get("temperature", 0.7),
-            **{k: v for k, v in config_options.items() if k != "temperature"},
+            **config_options,
         }
-
-        # Add optional parameters if provided
-        if "max_tokens" in config_options:
-            self.config["max_tokens"] = config_options["max_tokens"]
-        if "top_k" in config_options:
-            self.config["top_k"] = config_options["top_k"]
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
     def register_tool(self, function, description: str):
+        parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
+
         self.tools.append(
             chat.ChatCompletionToolParam(
                 function=shared_params.FunctionDefinition(
                     name=function.__name__,
                     description=description,
-                    parameters=dict(inspect.signature(function).parameters),
+                    parameters=parameters,
                 ),
                 type="function",
             )

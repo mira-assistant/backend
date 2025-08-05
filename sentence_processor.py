@@ -340,9 +340,7 @@ def assign_speaker(
     return matched_person_id
 
 
-def update_voice_embedding(
-    person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str
-):
+def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str):
     """
     Update the embedding for a given person_id using new audio and expected text.
     Incorporates expected_text into the embedding update, similar to supervised phrase training.
@@ -359,14 +357,11 @@ def update_voice_embedding(
     session = get_db_session()
 
     audio_f32 = pcm_bytes_to_float32(bytes(audio_buffer))
-
-    # Denoise audio
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
 
     if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
         raise ValueError("Audio contains NaN or Inf values")
 
-    # Transcribe audio
     result = asr_model.transcribe(denoised_audio)
     transcribed_text = (
         " ".join(result["text"]).strip()
@@ -374,10 +369,10 @@ def update_voice_embedding(
         else result["text"].strip()
     )
 
-    # Only update if transcribed text matches expected text closely
-    # if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
-    #     logger.info(f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'")
-    #     return False
+    if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
+        logger.info(
+            f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'"
+        )
 
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
