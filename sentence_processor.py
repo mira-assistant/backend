@@ -25,7 +25,6 @@ import logging
 
 import numpy as np
 
-# Required heavy dependencies - hard imports
 import whisper
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
@@ -47,17 +46,13 @@ warnings.filterwarnings(
     message="pkg_resources is deprecated as an API",
 )
 
-# ---------- Constants ----------
 SAMPLE_RATE = 16_000
 SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
 
-# ---------- Global model instances (loaded once) ----------
-_asr_model = None
-_spk_encoder = None
-_speaker_centroids: list[np.ndarray] = []
 
-# ---------- Advanced Speaker Identification State Variables ----------
+asr_model = whisper.load_model("base")
+spk_encoder = VoiceEncoder()
 
 
 class SpeakerIdentificationState:
@@ -84,19 +79,6 @@ class SpeakerIdentificationState:
 
 # Global speaker identification state
 _speaker_state = SpeakerIdentificationState()
-
-
-def get_models():
-    """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
-    global _asr_model, _spk_encoder
-
-    if _asr_model is None:
-        _asr_model = whisper.load_model("base")
-
-    if _spk_encoder is None:
-        _spk_encoder = VoiceEncoder()
-
-    return _asr_model, _spk_encoder
 
 
 def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
@@ -353,7 +335,6 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
     Returns:
         True if update was successful, False otherwise
     """
-    asr_model, spk_encoder = get_models()
     session = get_db_session()
 
     audio_f32 = pcm_bytes_to_float32(bytes(audio_buffer))
@@ -429,9 +410,6 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
         sentence_buf: Audio buffer containing the sentence
         use_advanced_speaker_id: Whether to use advanced clustering-based speaker identification
     """
-
-    # Use cached models instead of loading them each time
-    asr_model, spk_encoder = get_models()
 
     if asr_model is None or spk_encoder is None:
         logger.error("Failed to load ML models")
