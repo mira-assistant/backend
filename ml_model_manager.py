@@ -82,13 +82,15 @@ class MLModelManager:
                 )
             )
         else:
-            self.response_format = None
+            self.response_format: chat.completion_create_params.ResponseFormat = (
+                shared_params.ResponseFormatText(type="text")
+            )
 
         self.config = {
             "temperature": temperature,
             **config_options,
         }
-        
+
         # Add optional parameters if provided
         if max_tokens is not None:
             self.config["max_tokens"] = max_tokens
@@ -138,9 +140,7 @@ class MLModelManager:
         if context and context.strip():
             messages.append(
                 chat.ChatCompletionAssistantMessageParam(
-                    content=f"Context: {context.strip()}",
-                    role="assistant",
-                    name="context_provider"
+                    content=f"Context: {context.strip()}", role="assistant", name="context_provider"
                 )
             )
 
