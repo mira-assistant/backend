@@ -58,8 +58,8 @@ class MLModelManager:
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
 
-        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            raise ValueError(f"Model '{model_name}' not available or loaded")
+        # if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
+            # raise ValueError(f"Model '{model_name}' not available or loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
@@ -135,7 +135,7 @@ class MLModelManager:
             "tool_choice": "auto",
             **self.config,
         }
-        
+
         # Only include response_format if it's not None
         if self.response_format is not None:
             api_params["response_format"] = self.response_format

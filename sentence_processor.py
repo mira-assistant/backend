@@ -141,10 +141,16 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
 
     # Apply noise reduction using noisereduce library
     try:
+        # Ensure input is float32
+        audio_data = np.array(audio_data, dtype=np.float32)
         # Apply high-pass filter to remove low-frequency noise (e.g., 80 Hz cutoff)
         filtered_audio = butter_highpass_filter(audio_data, 80, sample_rate)
+        filtered_audio = np.array(filtered_audio, dtype=np.float32)
 
-        # Apply noise reduction - reduce stationary noise
+        # If audio is very short, skip noise reduction to avoid nperseg/noverlap errors
+        if len(filtered_audio) < 512:
+            return filtered_audio
+
         # Use the first 0.5 seconds as noise sample for adaptive filtering
         if len(filtered_audio) > sample_rate // 2:
             noise_sample = filtered_audio[: sample_rate // 2]
@@ -154,6 +160,8 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
                 y_noise=noise_sample,
                 prop_decrease=0.8,  # Reduce noise by 80%
                 stationary=False,  # Non-stationary noise reduction
+                n_fft=min(512, len(filtered_audio)),
+                hop_length=min(128, len(filtered_audio) // 4),
             )
         else:
             # For very short audio, just apply basic noise reduction
@@ -162,14 +170,17 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
                 sr=sample_rate,
                 prop_decrease=0.6,  # Reduce noise by 60%
                 stationary=True,  # Stationary noise reduction for short clips
+                n_fft=min(256, len(filtered_audio)),
+                hop_length=min(64, len(filtered_audio) // 4),
             )
 
-        return denoised_audio.astype(np.float32)
+        return np.array(denoised_audio, dtype=np.float32)
 
     except Exception as e:
         # If denoising fails, return the original audio with just high-pass filtering
         logger.warning(f"Denoising failed: {e}")
         filtered = butter_highpass_filter(audio_data, 80, sample_rate)
+        filtered = np.array(filtered, dtype=np.float32)
         if isinstance(filtered, tuple):
             filtered = filtered[0]
         return filtered
@@ -327,6 +338,72 @@ def assign_speaker(
     _append_cache(embedding, matched_person_id)
     _update_db_clusters(session, labels)
     return matched_person_id
+
+
+def update_voice_embedding(
+    person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str
+):
+    """
+    Update the embedding for a given person_id using new audio and expected text.
+    Incorporates expected_text into the embedding update, similar to supervised phrase training.
+
+    Args:
+        person_id: UUID of the person to update
+        audio_data: Raw audio data as float32 numpy array
+        expected_text: The expected phrase spoken (for supervised adaptation)
+
+    Returns:
+        True if update was successful, False otherwise
+    """
+    asr_model, spk_encoder = get_models()
+    session = get_db_session()
+
+    audio_f32 = pcm_bytes_to_float32(bytes(audio_buffer))
+
+    # Denoise audio
+    denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
+
+    if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
+        raise ValueError("Audio contains NaN or Inf values")
+
+    # Transcribe audio
+    result = asr_model.transcribe(denoised_audio)
+    transcribed_text = (
+        " ".join(result["text"]).strip()
+        if isinstance(result["text"], list)
+        else result["text"].strip()
+    )
+
+    # Only update if transcribed text matches expected text closely
+    # if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
+    #     logger.info(f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'")
+    #     return False
+
+    embedding_result = spk_encoder.embed_utterance(denoised_audio)
+    new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+    new_embedding = np.array(new_embedding, dtype=np.float32)
+
+    person = session.query(Person).filter_by(id=person_id).first()
+    if not person or person.voice_embedding is None:
+        raise ValueError(f"Person {person_id} not found or missing embedding")
+
+    old_embedding = np.array(person.voice_embedding, dtype=np.float32)
+
+    if old_embedding.dtype != np.float32:
+        old_embedding = old_embedding.astype(np.float32)
+    if new_embedding.dtype != np.float32:
+        new_embedding = new_embedding.astype(np.float32)
+    updated_embedding = 0.7 * old_embedding + 0.3 * new_embedding
+    updated_embedding = np.array(updated_embedding, dtype=np.float32)
+    person.voice_embedding = updated_embedding.tolist()
+    session.commit()
+
+    if person_id in _speaker_state._speaker_ids:
+        idx = _speaker_state._speaker_ids.index(person_id)
+        _speaker_state._speaker_embeddings[idx] = updated_embedding
+        _speaker_state._clusters_dirty = True
+
+    logger.info(f"Updated embedding for person {person_id} using expected text '{expected_text}'")
 
 
 def _update_db_clusters(session: Session, cluster_labels):

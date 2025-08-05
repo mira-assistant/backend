@@ -144,6 +144,10 @@ def deregister_client(client_id: str):
     # Deregister from audio stream scorer
     success = audio_scorer.deregister_client(client_id)
 
+    if len(status["connected_clients"]) == 0:
+        disable_service()
+        logging.info("All clients deregistered, service disabled")
+
     if client_id not in status["connected_clients"] and not success:
         return {"message": f"{client_id} already deregistered or not found"}
 
@@ -165,6 +169,9 @@ def disable_service():
 @app.post("/interactions/register")
 async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
+
+    if not status["enabled"]:
+        raise HTTPException(status_code=503, detail="Service is currently disabled")
 
     if not client_id:
         raise HTTPException(
@@ -284,6 +291,10 @@ def get_interaction(interaction_id: str):
 @app.post("/interactions/{interaction_id}/inference")
 def interaction_inference(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
+
+    if not status["enabled"]:
+        raise HTTPException(status_code=503, detail="Service is currently disabled")
+
     db = get_db_session()
 
     try:
@@ -401,7 +412,21 @@ def get_recent_conversations(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
 
 
-@app.get("/person/{person_id}")
+@app.get("/persons/all")
+def get_all_persons():
+    """Get all persons in the database."""
+    try:
+        db = get_db_session()
+        persons = db.query(Person).all()
+        db.close()
+
+        return persons
+    except Exception as e:
+        logger.error(f"Error fetching persons: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch persons: {str(e)}")
+
+
+@app.get("/persons/{person_id}")
 def get_person(person_id: str):
     """Get a specific person by ID."""
     try:
@@ -417,6 +442,52 @@ def get_person(person_id: str):
     except Exception as e:
         logger.error(f"Error fetching person: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch person: {str(e)}")
+
+
+@app.post("/persons/{person_id}/update")
+async def update_person(
+    person_id: str,
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+    expected_text: str = Form(...),
+):
+    """Update a person's information, including training their embedding."""
+    db = get_db_session()
+    try:
+        person = db.query(Person).filter_by(id=uuid.UUID(person_id)).first()
+
+        if not person:
+            raise HTTPException(status_code=404, detail="Person not found")
+
+        if name:
+            person.name = name  # type: ignore
+
+        if audio and expected_text:
+            audio_data = await audio.read()
+            if len(audio_data) == 0:
+                raise HTTPException(
+                    status_code=400, detail="Received empty audio data. Please provide valid audio."
+                )
+
+            audio_data = bytearray(audio_data)
+
+            SentenceProcessor.update_voice_embedding(
+                person_id=person.id,  # type: ignore
+                audio_buffer=audio_data,
+                expected_text=expected_text,
+            )
+
+        db.commit()
+        db.refresh(person)
+
+        return {"message": "Person updated successfully", "person": person}
+
+    except Exception as e:
+        logger.error(f"Error updating person: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update person: {str(e)}")
+
+    finally:
+        db.close()
 
 
 @app.get("/streams/best")
