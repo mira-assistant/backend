@@ -129,7 +129,7 @@ class WakeWordDetector:
         if not transcribed_text:
             return None
 
-        text_normalized = ''.join(
+        text_normalized = "".join(
             c for c in transcribed_text.lower().strip() if c.isalnum() or c.isspace()
         )
 
@@ -217,9 +217,11 @@ class CommandProcessor:
         """
 
         system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
-        structured_response = json.load(open("schemas/command_processing/structured_output.json", "r"))
+        structured_response = json.load(
+            open("schemas/command_processing/structured_output.json", "r")
+        )
         self.model_manager = MLModelManager(
-            model_name="llama-2-7b-chat",
+            model_name="llama-2-7b-chat-hf-function-calling-v3",
             system_prompt=system_prompt,
             # structured_response=structured_response,
         )
