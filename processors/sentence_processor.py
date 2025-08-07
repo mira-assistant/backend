@@ -51,24 +51,16 @@ spk_encoder = None
 def get_asr_model():
     global asr_model
     if asr_model is None:
-        try:
-            import whisper
-            asr_model = whisper.load_model("base")
-        except ImportError as e:
-            logger.warning(f"Failed to load whisper model: {e}")
-            asr_model = None
+        import whisper
+        asr_model = whisper.load_model("base")
     return asr_model
 
 
 def get_spk_encoder():
     global spk_encoder
     if spk_encoder is None:
-        try:
-            from resemblyzer import VoiceEncoder
-            spk_encoder = VoiceEncoder()
-        except ImportError as e:
-            logger.warning(f"Failed to load voice encoder: {e}")
-            spk_encoder = None
+        from resemblyzer import VoiceEncoder
+        spk_encoder = VoiceEncoder()
     return spk_encoder
 
 
@@ -89,16 +81,12 @@ class SpeakerIdentificationState:
     @property
     def dbscan(self):
         if self._dbscan is None:
-            try:
-                from sklearn.cluster import DBSCAN
-                self._dbscan = DBSCAN(
-                    eps=self.DBSCAN_EPS,
-                    min_samples=self.DBSCAN_MIN_SAMPLES,
-                    metric="cosine",
-                )
-            except ImportError as e:
-                logger.warning(f"Failed to load DBSCAN: {e}")
-                self._dbscan = None
+            from sklearn.cluster import DBSCAN
+            self._dbscan = DBSCAN(
+                eps=self.DBSCAN_EPS,
+                min_samples=self.DBSCAN_MIN_SAMPLES,
+                metric="cosine",
+            )
         return self._dbscan
 
 
@@ -157,44 +145,32 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
 
         if len(filtered_audio) > sample_rate // 2:
             noise_sample = filtered_audio[: sample_rate // 2]
-            try:
-                import noisereduce as nr
-                denoised_audio = nr.reduce_noise(
-                    y=filtered_audio,
-                    sr=sample_rate,
-                    y_noise=noise_sample,
-                    prop_decrease=0.8,
-                    stationary=False,
-                    n_fft=min(512, len(filtered_audio)),
-                    hop_length=min(128, len(filtered_audio) // 4),
-                )
-            except ImportError as e:
-                logger.warning(f"noisereduce not available: {e}")
-                denoised_audio = filtered_audio
+            import noisereduce as nr
+            denoised_audio = nr.reduce_noise(
+                y=filtered_audio,
+                sr=sample_rate,
+                y_noise=noise_sample,
+                prop_decrease=0.8,
+                stationary=False,
+                n_fft=min(512, len(filtered_audio)),
+                hop_length=min(128, len(filtered_audio) // 4),
+            )
         else:
-            try:
-                import noisereduce as nr
-                denoised_audio = nr.reduce_noise(
-                    y=filtered_audio,
-                    sr=sample_rate,
-                    prop_decrease=0.6,
-                    stationary=True,
-                    n_fft=min(256, len(filtered_audio)),
-                    hop_length=min(64, len(filtered_audio) // 4),
-                )
-            except ImportError as e:
-                logger.warning(f"noisereduce not available: {e}")
-                denoised_audio = filtered_audio
+            import noisereduce as nr
+            denoised_audio = nr.reduce_noise(
+                y=filtered_audio,
+                sr=sample_rate,
+                prop_decrease=0.6,
+                stationary=True,
+                n_fft=min(256, len(filtered_audio)),
+                hop_length=min(64, len(filtered_audio) // 4),
+            )
 
         return np.array(denoised_audio, dtype=np.float32)
 
     except Exception as e:
-        logger.warning(f"Denoising failed: {e}")
-        filtered = butter_highpass_filter(audio_data, 80, sample_rate)
-        filtered = np.array(filtered, dtype=np.float32)
-        if isinstance(filtered, tuple):
-            filtered = filtered[0]
-        return filtered
+        logger.error(f"Denoising failed: {e}")
+        raise
 
 
 def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
@@ -231,11 +207,7 @@ def _recompute_clusters():
         _speaker_state._cluster_labels = []
         return
     X = np.stack(_speaker_state._speaker_embeddings)
-    if _speaker_state.dbscan is not None:
-        _speaker_state._cluster_labels = _speaker_state.dbscan.fit_predict(X).tolist()
-    else:
-        # Fallback: assign each embedding to a separate cluster
-        _speaker_state._cluster_labels = list(range(len(_speaker_state._speaker_embeddings)))
+    _speaker_state._cluster_labels = _speaker_state.dbscan.fit_predict(X).tolist()
     _speaker_state._clusters_dirty = False
 
 
@@ -269,19 +241,14 @@ def assign_speaker(
 
     all_embeddings = _speaker_state._speaker_embeddings + [embedding]
     X = np.stack(all_embeddings)
-    try:
-        from sklearn.cluster import DBSCAN
-        dbscan = DBSCAN(
-            eps=_speaker_state.DBSCAN_EPS,
-            min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,
-            metric="cosine",
-        )
-        labels = dbscan.fit_predict(X)
-        new_label = labels[-1]
-    except ImportError as e:
-        logger.warning(f"DBSCAN not available for speaker assignment: {e}")
-        # Fallback: create new speaker
-        new_label = -1
+    from sklearn.cluster import DBSCAN
+    dbscan = DBSCAN(
+        eps=_speaker_state.DBSCAN_EPS,
+        min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,
+        metric="cosine",
+    )
+    labels = dbscan.fit_predict(X)
+    new_label = labels[-1]
 
     def _append_cache(embedding, person_id):
         _speaker_state._speaker_embeddings.append(embedding)
@@ -382,9 +349,6 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
 
     denoised_audio = denoise_audio(pcm_bytes_to_float32(bytes(audio_buffer)), SAMPLE_RATE)
     spk_encoder = get_spk_encoder()
-    if spk_encoder is None:
-        logger.warning("Voice encoder not available, skipping embedding update")
-        return
     
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
@@ -450,15 +414,7 @@ def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bo
         raise ValueError("Audio contains NaN or Inf values")
 
     asr_model = get_asr_model()
-    if asr_model is None:
-        # Fallback when whisper is not available
-        logger.warning("ASR model not available, using fallback transcription")
-        result = {
-            "text": "Mock transcription - ASR model not available",
-            "language": "en"
-        }
-    else:
-        result = asr_model.transcribe(denoised_audio)
+    result = asr_model.transcribe(denoised_audio)
 
     text = str(
         " ".join(result["text"]).strip()
@@ -474,16 +430,10 @@ def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bo
 
     if assign_or_create_speaker:
         spk_encoder = get_spk_encoder()
-        if spk_encoder is None:
-            logger.warning("Voice encoder not available, skipping speaker assignment")
-            # Use a fallback speaker ID or create a default one
-            interaction["voice_embedding"] = None
-            interaction["speaker_id"] = None
-        else:
-            embedding_result = spk_encoder.embed_utterance(denoised_audio)
-            embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-            speaker_id = assign_speaker(embedding)
-            interaction["voice_embedding"] = embedding.tolist()
-            interaction["speaker_id"] = speaker_id
+        embedding_result = spk_encoder.embed_utterance(denoised_audio)
+        embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+        speaker_id = assign_speaker(embedding)
+        interaction["voice_embedding"] = embedding.tolist()
+        interaction["speaker_id"] = speaker_id
 
     return interaction

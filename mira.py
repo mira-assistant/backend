@@ -80,16 +80,16 @@ async def lifespan(app: FastAPI):
     wake_word_detector.add_wake_word("mira exit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira stop", sensitivity=0.5, callback=disable_service)
-
-    app.include_router(interaction_router)
-    app.include_router(person_router)
-    app.include_router(service_router)
-    app.include_router(stream_router)
-    app.include_router(conversation_router)
     yield
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(interaction_router)
+app.include_router(person_router)
+app.include_router(service_router)
+app.include_router(stream_router)
+app.include_router(conversation_router)
 
 app.add_middleware(
     CORSMiddleware,

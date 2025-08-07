@@ -31,17 +31,13 @@ def get_openai_client():
     """Get OpenAI client with timeout configuration"""
     global client
     if client is None:
-        try:
-            from openai import OpenAI
-            client = OpenAI(
-                base_url=LM_STUDIO_URL, 
-                api_key="lm-studio",
-                timeout=5.0,  # 5 second timeout
-                max_retries=0  # No retries to avoid hanging
-            )
-        except ImportError as e:
-            logger.warning(f"OpenAI client not available: {e}")
-            client = None
+        from openai import OpenAI
+        client = OpenAI(
+            base_url=LM_STUDIO_URL, 
+            api_key="lm-studio",
+            timeout=5.0,  # 5 second timeout
+            max_retries=0  # No retries to avoid hanging
+        )
     return client
 
 
@@ -79,20 +75,16 @@ class MLModelManager:
         self.system_prompt = system_prompt
         self.tools: list = []
 
-        # Initialize response format safely
+        # Initialize response format
         self.response_format = None
         if response_format is not None:
-            try:
-                from openai.types import chat, shared_params
-                self.response_format = shared_params.ResponseFormatJSONSchema(
-                    json_schema=shared_params.response_format_json_schema.JSONSchema(
-                        name="Response Model", schema=response_format
-                    ),
-                    type="json_schema",
-                )
-            except ImportError:
-                logger.warning("OpenAI types not available, using text response format")
-                self.response_format = None
+            from openai.types import chat, shared_params
+            self.response_format = shared_params.ResponseFormatJSONSchema(
+                json_schema=shared_params.response_format_json_schema.JSONSchema(
+                    name="Response Model", schema=response_format
+                ),
+                type="json_schema",
+            )
 
         self.config = {
             **config_options,
@@ -101,23 +93,17 @@ class MLModelManager:
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
     def register_tool(self, function: 'Callable', description: str):
-        try:
-            from openai.types import chat, shared_params
-            # Create a basic function definition without complex parameter introspection
-            self.tools.append(
-                chat.ChatCompletionToolParam(
-                    function=shared_params.FunctionDefinition(
-                        name=function.__name__,
-                        description=description,
-                        parameters={"type": "object", "properties": {}, "required": []},
-                    ),
-                    type="function",
-                )
-            )
-            logger.info(f"Registered tool: {function.__name__}")
-        except Exception as e:
-            logger.warning(f"Failed to register tool {function.__name__}: {e}")
-            # Continue without registering the tool
+        # Create a basic function definition without complex parameter introspection
+        tool_definition = {
+            "type": "function",
+            "function": {
+                "name": function.__name__,
+                "description": description,
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            }
+        }
+        self.tools.append(tool_definition)
+        logger.info(f"Registered tool: {function.__name__}")
 
     def run_inference(
         self, interaction: Interaction, context: Optional[str] = None
@@ -134,54 +120,45 @@ class MLModelManager:
         """
         
         client = get_openai_client()
-        if client is None:
-            logger.warning("OpenAI client not available, returning fallback response")
-            return {"error": "ML inference not available", "message": "Service temporarily unavailable"}
+        from openai.types import chat
+        
+        messages: list = []
 
-        try:
-            from openai.types import chat
-            
-            messages: list = []
+        messages.append({
+            "content": self.system_prompt,
+            "role": "system",
+        })
 
+        if context and context.strip():
             messages.append({
-                "content": self.system_prompt,
-                "role": "system",
+                "content": f"Context: {context.strip()}", 
+                "role": "assistant", 
+                "name": "context_provider"
             })
 
-            if context and context.strip():
-                messages.append({
-                    "content": f"Context: {context.strip()}", 
-                    "role": "assistant", 
-                    "name": "context_provider"
-                })
+        messages.append({
+            "content": interaction.text,
+            "role": "user",
+        })
 
-            messages.append({
-                "content": interaction.text,
-                "role": "user",
-            })
+        api_params = {
+            "model": self.model,
+            "messages": messages,
+            "tools": self.tools,
+            "tool_choice": "auto",
+            **self.config,
+        }
 
-            api_params = {
-                "model": self.model,
-                "messages": messages,
-                "tools": self.tools,
-                "tool_choice": "auto",
-                **self.config,
-            }
+        if self.response_format is not None:
+            api_params["response_format"] = self.response_format
 
-            if self.response_format is not None:
-                api_params["response_format"] = self.response_format
+        response = client.chat.completions.create(**api_params)
 
-            response = client.chat.completions.create(**api_params)
+        if response.choices[0].message.content is None:
+            raise RuntimeError(f"Model {self.model} generated no content")
 
-            if response.choices[0].message.content is None:
-                raise RuntimeError(f"Model {self.model} generated no content")
-
-            results = json.loads(response.choices[0].message.content)
-            return results
-
-        except Exception as e:
-            logger.warning(f"ML inference failed: {e}")
-            return {"error": "ML inference failed", "message": str(e)}
+        results = json.loads(response.choices[0].message.content)
+        return results
 
 
 def get_available_models() -> List[Dict[str, Any]]:
@@ -189,16 +166,9 @@ def get_available_models() -> List[Dict[str, Any]]:
     Get list of available models from LM Studio server
 
     Returns:
-        List[Dict]: List of available model information, empty list if service unavailable
+        List[Dict]: List of available model information
     """
-    try:
-        client = get_openai_client()
-        if client is None:
-            return []
-            
-        response = client.models.list()
-        data = response.model_dump()["data"]
-        return data
-    except Exception as e:
-        logger.warning(f"Failed to get available models: {e}")
-        return []
+    client = get_openai_client()
+    response = client.models.list()
+    data = response.model_dump()["data"]
+    return data

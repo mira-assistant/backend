@@ -160,18 +160,21 @@ class TestCommandProcessor:
     @patch('ml_model_manager.get_available_models')
     @patch('builtins.open')
     @patch('json.load')
-    @patch('ml_model_manager.client.chat.completions.create')
-    def test_process_command(self, mock_create, mock_json_load, mock_open, mock_get_models):
+    @patch('ml_model_manager.get_openai_client')
+    def test_process_command(self, mock_get_client, mock_json_load, mock_open, mock_get_models):
         """Test command processing"""
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
         mock_get_models.return_value = [{"id": "llama-2-7b-chat-hf-function-calling-v3", "state": "loaded"}]
         
-        # Mock the OpenAI response with JSON content
+        # Mock the OpenAI client and response
+        mock_client = Mock()
+        mock_get_client.return_value = mock_client
+        
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = '{"action": "response", "data": "AI response"}'
-        mock_create.return_value = mock_response
+        mock_client.chat.completions.create.return_value = mock_response
         
         processor = CommandProcessor()
         
