@@ -186,7 +186,7 @@ def test_inference_processor_integration():
     print("\nTesting inference processor integration...")
 
     try:
-        from inference_processor import InferenceProcessor
+        from processors.inference_processor import InferenceProcessor
 
         # Test that static method exists
         if not hasattr(InferenceProcessor, 'send_prompt'):

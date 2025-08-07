@@ -12,11 +12,11 @@ from db import get_db_session
 from models import Interaction, Person, Conversation
 
 
-import sentence_processor as SentenceProcessor
-from inference_processor import InferenceProcessor
-from context_processor import ContextProcessor
-from multi_stream_processor import MultiStreamProcessor
-from command_processor import CommandProcessor, WakeWordDetector
+import processors.sentence_processor as SentenceProcessor
+from processors.inference_processor import InferenceProcessor
+from processors.context_processor import ContextProcessor
+from processors.multi_stream_processor import MultiStreamProcessor
+from processors.command_processor import CommandProcessor, WakeWordDetector
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
