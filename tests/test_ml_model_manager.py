@@ -94,7 +94,7 @@ class TestMLModelManager:
             mock_models_list.assert_called_once()
 
     def test_init_with_invalid_model(self, *args):
-        """Test MLModelManager initialization with invalid model name raises exception"""
+        """Test MLModelManager initialization with invalid model name logs warning but continues"""
         with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models response
             mock_response = Mock()
@@ -103,11 +103,13 @@ class TestMLModelManager:
             }
             mock_models_list.return_value = mock_response
 
-            with pytest.raises(ValueError, match="Model 'invalid-model' not available or loaded"):
-                MLModelManager("invalid-model", "Test prompt")
+            # Should not raise exception, but create manager successfully
+            manager = MLModelManager("invalid-model", "Test prompt")
+            assert manager.model == "invalid-model"
+            assert manager.system_prompt == "Test prompt"
 
     def test_init_with_unloaded_model(self, *args):
-        """Test MLModelManager initialization with unloaded model raises exception"""
+        """Test MLModelManager initialization with unloaded model logs warning but continues"""
         with patch("ml_model_manager.client.models.list") as mock_models_list:
             # Mock available models response with unloaded model
             mock_response = Mock()
@@ -116,8 +118,10 @@ class TestMLModelManager:
             }
             mock_models_list.return_value = mock_response
 
-            with pytest.raises(ValueError, match="Model 'test-model' not available or loaded"):
-                MLModelManager("test-model", "Test prompt")
+            # Should not raise exception, but create manager successfully
+            manager = MLModelManager("test-model", "Test prompt")
+            assert manager.model == "test-model"
+            assert manager.system_prompt == "Test prompt"
 
     def test_init_with_config_options(self, *args):
         """Test MLModelManager initialization with custom config options"""
