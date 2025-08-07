@@ -32,7 +32,9 @@ from scipy.signal import butter, lfilter
 
 from db import get_db_session
 from models import Person
-from sklearn.cluster import DBSCAN
+def get_dbscan_class():
+    from sklearn.cluster import DBSCAN
+    return DBSCAN
 from sqlalchemy.orm import Session
 import uuid
 
@@ -50,8 +52,22 @@ SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
 
 
-asr_model = whisper.load_model("base")
-spk_encoder = VoiceEncoder()
+asr_model = None
+spk_encoder = None
+
+
+def get_asr_model():
+    global asr_model
+    if asr_model is None:
+        asr_model = whisper.load_model("base")
+    return asr_model
+
+
+def get_spk_encoder():
+    global spk_encoder
+    if spk_encoder is None:
+        spk_encoder = VoiceEncoder()
+    return spk_encoder
 
 
 class SpeakerIdentificationState:
@@ -67,11 +83,15 @@ class SpeakerIdentificationState:
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
 
-        self.dbscan = DBSCAN(
-            eps=self.DBSCAN_EPS,
-            min_samples=self.DBSCAN_MIN_SAMPLES,
-            metric="cosine",
-        )
+    def get_dbscan(self):
+        if self.dbscan is None:
+            DBSCAN = get_dbscan_class()
+            self.dbscan = DBSCAN(
+                eps=self.DBSCAN_EPS,
+                min_samples=self.DBSCAN_MIN_SAMPLES,
+                metric="cosine",
+            )
+        return self.dbscan
 
 
 _speaker_state = SpeakerIdentificationState()
@@ -225,6 +245,7 @@ def assign_speaker(
 
     all_embeddings = _speaker_state._speaker_embeddings + [embedding]
     X = np.stack(all_embeddings)
+    DBSCAN = get_dbscan_class()
     dbscan = DBSCAN(
         eps=_speaker_state.DBSCAN_EPS,
         min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,
@@ -332,7 +353,7 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
         )
 
     denoised_audio = denoise_audio(pcm_bytes_to_float32(bytes(audio_buffer)), SAMPLE_RATE)
-    embedding_result = spk_encoder.embed_utterance(denoised_audio)
+    embedding_result = get_spk_encoder().embed_utterance(denoised_audio)
     new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
     new_embedding = np.array(new_embedding, dtype=np.float32)
 
@@ -395,7 +416,7 @@ def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bo
     if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
         raise ValueError("Audio contains NaN or Inf values")
 
-    result = asr_model.transcribe(denoised_audio)
+    result = get_asr_model().transcribe(denoised_audio)
 
     text = str(
         " ".join(result["text"]).strip()
@@ -410,7 +431,7 @@ def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bo
     interaction["text"] = text
 
     if assign_or_create_speaker:
-        embedding_result = spk_encoder.embed_utterance(denoised_audio)
+        embedding_result = get_spk_encoder().embed_utterance(denoised_audio)
         embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
         speaker_id = assign_speaker(embedding)
         interaction["voice_embedding"] = embedding.tolist()

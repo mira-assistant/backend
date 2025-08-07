@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 import spacy
-from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
 
 from sqlalchemy import or_
@@ -82,22 +81,30 @@ class ContextProcessor:
         logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
         self.logger = logging.getLogger(__name__)
 
-        self._init_nlp_components()
+        self.spacy_model = None
+        self.sentence_transformer = None
+        self.sentiment_pipeline = None
 
         logging.info("ContextProcessor initialized")
 
     def _init_nlp_components(self):
         """Initialize NLP models as individual state variables."""
-        self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
-        self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
-        self.sentiment_pipeline = pipeline(
-            task="text-classification",
-            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-            top_k=None,
-        )
+        if self.spacy_model is None:
+            self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+        if self.sentence_transformer is None:
+            self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+        if self.sentiment_pipeline is None:
+            from transformers.pipelines import pipeline
+            self.sentiment_pipeline = pipeline(
+                task="text-classification",
+                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+                top_k=None,
+            )
 
     def _process_nlp_features(self, interaction: Interaction):
         """Process NLP features for a SQLAlchemy interaction."""
+
+        self._init_nlp_components()
 
         try:
             doc = self.spacy_model(interaction.text)
@@ -160,6 +167,8 @@ class ContextProcessor:
             > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD / 2
         ):
             return True
+
+        self._init_nlp_components()
 
         current_doc = self.spacy_model(current_interaction.text)
         last_doc = self.spacy_model(last_interaction.text)

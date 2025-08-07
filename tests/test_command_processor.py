@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 
-from command_processor import (
+from processors.command_processor import (
     WakeWordDetector,
     WakeWordDetection,
     WakeWordConfig,
