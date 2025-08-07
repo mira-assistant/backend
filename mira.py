@@ -19,8 +19,30 @@ from multi_stream_processor import MultiStreamProcessor
 from command_processor import CommandProcessor, WakeWordDetector
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
-logging.basicConfig(level=logging.INFO)
+
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        "INFO": "\033[92m",  # Green
+        "ERROR": "\033[91m",  # Red
+        "WARNING": "\033[93m",  # Yellow
+        "DEBUG": "\033[94m",  # Blue
+        "CRITICAL": "\033[95m",  # Magenta
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelname, "")
+        record.levelname = f"{color}{record.levelname}{self.RESET}"
+        return super().format(record)
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(
+    ColorFormatter(fmt="%(levelname)s:\t  %(name)s:%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+)
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 context_processor = ContextProcessor()
