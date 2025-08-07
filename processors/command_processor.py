@@ -203,35 +203,25 @@ class CommandProcessor:
 
     def __init__(self):
         """
-        Initialize command processor
+        Initialize command processor with all dependencies loaded at startup
         """
-        self._model_manager = None
-        self._initialized = False
-        logger.info("CommandProcessor initialized (lazy loading)")
+        logger.info("CommandProcessor initializing with eager loading")
+        
+        # Load system prompt and configuration immediately
+        system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
+        structured_response = json.load(
+            open("schemas/command_processing/structured_output.json", "r")
+        )
 
-    @property
-    def model_manager(self):
-        """Lazy-loaded model manager property"""
-        if not self._initialized:
-            self._ensure_initialized()
-        return self._model_manager
+        # Initialize model manager immediately - no lazy loading
+        self.model_manager = MLModelManager(
+            model_name="llama-2-7b-chat-hf-function-calling-v3",
+            system_prompt=system_prompt,
+        )
 
-    def _ensure_initialized(self):
-        """Ensure the model manager is initialized (lazy loading)"""
-        if not self._initialized:
-            system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
-            structured_response = json.load(
-                open("schemas/command_processing/structured_output.json", "r")
-            )
-
-            self._model_manager = MLModelManager(
-                model_name="llama-2-7b-chat-hf-function-calling-v3",
-                system_prompt=system_prompt,
-            )
-
-            self.load_model_tools()
-            self._initialized = True
-            logger.info("CommandProcessor model manager initialized")
+        # Load model tools immediately
+        self.load_model_tools()
+        logger.info("CommandProcessor fully initialized with all dependencies loaded")
 
     def load_model_tools(self):
         """
@@ -256,10 +246,9 @@ class CommandProcessor:
             status["enabled"] = False
             return "Mira assistant has been disabled. Say 'Hey Mira' to re-enable."
 
-        if self._model_manager is not None:
-            self._model_manager.register_tool(get_weather, "Fetch Weather Information")
-            self._model_manager.register_tool(get_time, "Fetch Current Time")
-            self._model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
+        self.model_manager.register_tool(get_weather, "Fetch Weather Information")
+        self.model_manager.register_tool(get_time, "Fetch Current Time")
+        self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
 
     def process_command(self, interaction: Interaction):
         """

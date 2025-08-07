@@ -18,26 +18,25 @@ import inspect
 import json
 import logging
 from typing import Dict, List, Optional, Any, Callable
+from openai import OpenAI
+from openai.types import chat, shared_params
 from models import Interaction
-
 
 logger = logging.getLogger(__name__)
 
 LM_STUDIO_URL = "http://localhost:1234/v1"
-client = None
+
+# Initialize OpenAI client immediately with timeout configuration - no lazy loading
+client = OpenAI(
+    base_url=LM_STUDIO_URL, 
+    api_key="lm-studio",
+    timeout=5.0,  # 5 second timeout
+    max_retries=0  # No retries to avoid hanging
+)
 
 
 def get_openai_client():
-    """Get OpenAI client with timeout configuration"""
-    global client
-    if client is None:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url=LM_STUDIO_URL, 
-            api_key="lm-studio",
-            timeout=5.0,  # 5 second timeout
-            max_retries=0  # No retries to avoid hanging
-        )
+    """Get the pre-initialized OpenAI client"""
     return client
 
 
@@ -78,7 +77,6 @@ class MLModelManager:
         # Initialize response format
         self.response_format = None
         if response_format is not None:
-            from openai.types import chat, shared_params
             self.response_format = shared_params.ResponseFormatJSONSchema(
                 json_schema=shared_params.response_format_json_schema.JSONSchema(
                     name="Response Model", schema=response_format
@@ -120,7 +118,6 @@ class MLModelManager:
         """
         
         client = get_openai_client()
-        from openai.types import chat
         
         messages: list = []
 
