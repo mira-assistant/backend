@@ -1,5 +1,4 @@
-import uuid
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from collections import deque
@@ -9,7 +8,7 @@ import warnings
 
 
 from db import get_db_session
-from models import Interaction, Person, Conversation
+from models import Interaction
 
 from processors import sentence_processor as SentenceProcessor
 from processors.inference_processor import InferenceProcessor
@@ -81,6 +80,12 @@ async def lifespan(app: FastAPI):
     wake_word_detector.add_wake_word("mira exit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira stop", sensitivity=0.5, callback=disable_service)
+
+    app.include_router(interaction_router)
+    app.include_router(person_router)
+    app.include_router(service_router)
+    app.include_router(stream_router)
+    app.include_router(conversation_router)
     yield
 
 
@@ -94,11 +99,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(interaction_router)
-app.include_router(person_router)
-app.include_router(service_router)
-app.include_router(stream_router)
-app.include_router(conversation_router)
 
 
 def log_once(message, flag_name=None):

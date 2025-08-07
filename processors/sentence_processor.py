@@ -25,6 +25,7 @@ import logging
 
 import numpy as np
 
+from sklearn.cluster import DBSCAN
 import whisper
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
@@ -32,9 +33,6 @@ from scipy.signal import butter, lfilter
 
 from db import get_db_session
 from models import Person
-def get_dbscan_class():
-    from sklearn.cluster import DBSCAN
-    return DBSCAN
 from sqlalchemy.orm import Session
 import uuid
 
@@ -82,16 +80,11 @@ class SpeakerIdentificationState:
         self.SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
-
-    def get_dbscan(self):
-        if self.dbscan is None:
-            DBSCAN = get_dbscan_class()
-            self.dbscan = DBSCAN(
-                eps=self.DBSCAN_EPS,
-                min_samples=self.DBSCAN_MIN_SAMPLES,
-                metric="cosine",
-            )
-        return self.dbscan
+        self.dbscan = DBSCAN(
+            eps=self.DBSCAN_EPS,
+            min_samples=self.DBSCAN_MIN_SAMPLES,
+            metric="cosine",
+        )
 
 
 _speaker_state = SpeakerIdentificationState()
@@ -245,7 +238,6 @@ def assign_speaker(
 
     all_embeddings = _speaker_state._speaker_embeddings + [embedding]
     X = np.stack(all_embeddings)
-    DBSCAN = get_dbscan_class()
     dbscan = DBSCAN(
         eps=_speaker_state.DBSCAN_EPS,
         min_samples=_speaker_state.DBSCAN_MIN_SAMPLES,

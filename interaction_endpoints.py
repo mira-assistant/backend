@@ -4,10 +4,6 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, Form
 from db import get_db_session_context, handle_db_error
 from models import Interaction, Person
 from processors import sentence_processor as SentenceProcessor
-from processors.inference_processor import InferenceProcessor
-from processors.context_processor import ContextProcessor
-from processors.command_processor import CommandProcessor, WakeWordDetector
-from processors.multi_stream_processor import MultiStreamProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +24,10 @@ def get_processors():
 @handle_db_error("register_interaction")
 async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
-    
+
     status = get_status()
     context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor = get_processors()
-    
+
     if not status["enabled"]:
         raise HTTPException(status_code=503, detail="Service is currently disabled")
 
@@ -73,6 +69,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
 
         sentence_buf = bytearray(sentence_buf_raw)
         transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, True)
+        print(f"Transcription result: {transcription_result}")
 
         interaction = Interaction(**transcription_result)
 
@@ -130,10 +127,10 @@ def get_interaction(interaction_id: str):
 @handle_db_error("interaction_inference")
 def interaction_inference(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
-    
+
     status = get_status()
     context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor = get_processors()
-    
+
     if not status["enabled"]:
         raise HTTPException(status_code=503, detail="Service is currently disabled")
 
@@ -171,7 +168,7 @@ def get_interactions(limit: int = 0):
 def delete_interaction(interaction_id: str):
     """Delete a specific interaction from the database."""
     status = get_status()
-    
+
     with get_db_session_context() as db:
         interaction = db.query(Interaction).filter_by(id=uuid.UUID(interaction_id)).first()
         if not interaction:
