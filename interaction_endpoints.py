@@ -1,5 +1,7 @@
 import uuid
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, File, HTTPException, UploadFile, Form
 from db import get_db_session_context, handle_db_error
 from models import Interaction, Person
@@ -68,48 +70,66 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, True)
-        print(f"Transcription result: {transcription_result}")
-
-        interaction = Interaction(**transcription_result)
-
-        db.add(interaction)
-        db.flush()
-
-        logger.info(f"Interaction saved to database with ID: {interaction.id}")
-        status["recent_interactions"].append(interaction.id)
-
-        speaker = None
-        if interaction.speaker_id:
-            speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
-
-        if not speaker and interaction.speaker_id:
-            raise HTTPException(status_code=404, detail="Speaker not found")
-
-        if speaker and speaker.index == 1:
-            wake_word_detection = wake_word_detector.detect_wake_words_text(
-                client_id=client_id,
-                transcribed_text=transcription_result["text"],
-                audio_length=len(sentence_buf_raw) / (16000 * 2),
+        
+        # Run transcription in thread pool to avoid blocking the async event loop
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=1)
+        
+        try:
+            transcription_result = await loop.run_in_executor(
+                executor, 
+                SentenceProcessor.transcribe_interaction, 
+                sentence_buf, 
+                True
             )
+            print(f"Transcription result: {transcription_result}")
 
-            if wake_word_detection:
-                logger.info(
-                    f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
+            interaction = Interaction(**transcription_result)
+
+            db.add(interaction)
+            db.flush()
+
+            logger.info(f"Interaction saved to database with ID: {interaction.id}")
+            status["recent_interactions"].append(interaction.id)
+
+            speaker = None
+            if interaction.speaker_id:
+                speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
+
+            if not speaker and interaction.speaker_id:
+                raise HTTPException(status_code=404, detail="Speaker not found")
+
+            if speaker and speaker.index == 1:
+                wake_word_detection = wake_word_detector.detect_wake_words_text(
+                    client_id=client_id,
+                    transcribed_text=transcription_result["text"],
+                    audio_length=len(sentence_buf_raw) / (16000 * 2),
                 )
 
-                if wake_word_detection.callback:
-                    return None
+                if wake_word_detection:
+                    logger.info(
+                        f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
+                    )
 
-                response = command_processor.process_command(interaction=interaction)
+                    if wake_word_detection.callback:
+                        return None
 
-                db.delete(interaction)
-                db.flush()
+                    # Run command processing in thread pool to avoid blocking
+                    response = await loop.run_in_executor(
+                        executor, 
+                        command_processor.process_command, 
+                        interaction
+                    )
 
-                if response:
-                    return {"message": response}
+                    db.delete(interaction)
+                    db.flush()
 
-        return interaction
+                    if response:
+                        return {"message": response}
+
+            return interaction
+        finally:
+            executor.shutdown(wait=False)
 
 
 @router.get("/{interaction_id}")
@@ -127,7 +147,7 @@ def get_interaction(interaction_id: str):
 
 @router.post("/{interaction_id}/inference")
 @handle_db_error("interaction_inference")
-def interaction_inference(interaction_id: str):
+async def interaction_inference(interaction_id: str):
     """Inference endpoint with database-backed context integration."""
 
     status = get_status()
@@ -147,9 +167,20 @@ def interaction_inference(interaction_id: str):
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
 
-        action = inference_processor.extract_action(interaction=interaction, context=context)
-
-        return action
+        # Run inference in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=1)
+        
+        try:
+            action = await loop.run_in_executor(
+                executor,
+                inference_processor.extract_action,
+                interaction,
+                context
+            )
+            return action
+        finally:
+            executor.shutdown(wait=False)
 
 
 @router.get("", deprecated=True)
