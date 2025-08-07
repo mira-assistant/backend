@@ -19,7 +19,7 @@ def register_client(client_id: str, request: Request):
     status["connected_clients"][client_id] = {
         "ip": client_ip,
         "connection_start_time": connection_start_time,
-        "connection_runtime": 0.0,
+        "connection_uptime": 0.0,
     }
 
     success = audio_scorer.register_client(client_id=client_id)

@@ -130,7 +130,7 @@ def root():
                 connection_start = datetime.fromisoformat(connection_start.replace("Z", "+00:00"))
 
             runtime_seconds = (current_time - connection_start).total_seconds()
-            client_info["connection_runtime"] = round(runtime_seconds, 2)
+            client_info["connection_uptime"] = round(runtime_seconds, 2)
 
         if client_id in scores:
             client_info["score"] = scores[client_id]
