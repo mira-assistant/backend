@@ -29,7 +29,7 @@ import noisereduce as nr
 from scipy.signal import butter, lfilter
 
 from db import get_db_session
-from models import Person
+from models import Person, Interaction
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 import uuid
@@ -41,13 +41,11 @@ class SpeakerIdentificationState:
     """State variables for advanced speaker identification moved from context_processor."""
 
     def __init__(self):
-        # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: list[np.ndarray] = []
         self._speaker_ids: list[uuid.UUID] = []
         self._cluster_labels: list[int] = []
         self._clusters_dirty: bool = True
 
-        # DBSCAN configuration
         self.SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
@@ -66,18 +64,15 @@ class SentenceProcessor:
         """
         Initialize SentenceProcessor with Whisper ASR model and Resemblyzer voice encoder.
         """
-        # Load the Whisper model and Resemblyzer voice encoder
         self.asr_model = whisper.load_model("base")
         self.spk_encoder = VoiceEncoder()
         self._speaker_state = SpeakerIdentificationState()
         logger.info("SentenceProcessor initialized")
 
-
     def pcm_bytes_to_float32(self, pcm: bytes) -> np.ndarray:
         """Convert 16-bit PCM to float32 in [-1,1]."""
         audio_int16 = np.frombuffer(pcm, dtype=np.int16)
         return audio_int16.astype(np.float32) / 32768.0
-
 
     def butter_highpass(self, cutoff, fs, order=5):
         """Design a high-pass Butterworth filter."""
@@ -93,13 +88,11 @@ class SentenceProcessor:
         b, a = result[:2]
         return b, a
 
-
     def butter_highpass_filter(self, data, cutoff, fs, order=5):
         """Apply a high-pass Butterworth filter to the data."""
         b, a = self.butter_highpass(cutoff, fs, order=order)
         y = lfilter(b, a, data)
         return y
-
 
     def denoise_audio(self, audio_data: np.ndarray) -> np.ndarray:
         """
@@ -113,37 +106,31 @@ class SentenceProcessor:
             Denoised audio signal
         """
 
-        # Apply noise reduction using noisereduce library
         try:
-            # Ensure input is float32
             audio_data = np.array(audio_data, dtype=np.float32)
-            # Apply high-pass filter to remove low-frequency noise (e.g., 80 Hz cutoff)
             filtered_audio = self.butter_highpass_filter(audio_data, 80, self.SAMPLE_RATE)
             filtered_audio = np.array(filtered_audio, dtype=np.float32)
 
-            # If audio is very short, skip noise reduction to avoid nperseg/noverlap errors
             if len(filtered_audio) < 512:
                 return filtered_audio
 
-            # Use the first 0.5 seconds as noise sample for adaptive filtering
             if len(filtered_audio) > self.SAMPLE_RATE // 2:
                 noise_sample = filtered_audio[: self.SAMPLE_RATE // 2]
                 denoised_audio = nr.reduce_noise(
                     y=filtered_audio,
                     sr=self.SAMPLE_RATE,
                     y_noise=noise_sample,
-                    prop_decrease=0.8,  # Reduce noise by 80%
-                    stationary=False,  # Non-stationary noise reduction
+                    prop_decrease=0.8,
+                    stationary=False,
                     n_fft=min(512, len(filtered_audio)),
                     hop_length=min(128, len(filtered_audio) // 4),
                 )
             else:
-                # For very short audio, just apply basic noise reduction
                 denoised_audio = nr.reduce_noise(
                     y=filtered_audio,
                     sr=self.SAMPLE_RATE,
-                    prop_decrease=0.6,  # Reduce noise by 60%
-                    stationary=True,  # Stationary noise reduction for short clips
+                    prop_decrease=0.6,
+                    stationary=True,
                     n_fft=min(256, len(filtered_audio)),
                     hop_length=min(64, len(filtered_audio) // 4),
                 )
@@ -151,7 +138,6 @@ class SentenceProcessor:
             return np.array(denoised_audio, dtype=np.float32)
 
         except Exception as e:
-            # If denoising fails, return the original audio with just high-pass filtering
             logger.warning(f"Denoising failed: {e}")
             filtered = self.butter_highpass_filter(audio_data, 80, self.SAMPLE_RATE)
             filtered = np.array(filtered, dtype=np.float32)
@@ -159,15 +145,12 @@ class SentenceProcessor:
                 filtered = filtered[0]
             return filtered
 
-
     def cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-
     def _refresh_speaker_cache(self):
         """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
-        from models import Interaction
 
         session = get_db_session()
         try:
@@ -184,7 +167,6 @@ class SentenceProcessor:
         finally:
             session.close()
 
-
     def _recompute_clusters(self):
         """Run DBSCAN clustering on all cached embeddings and update labels."""
         if not self._speaker_state._speaker_embeddings or (
@@ -197,8 +179,8 @@ class SentenceProcessor:
         self._speaker_state._cluster_labels = self._speaker_state.dbscan.fit_predict(X).tolist()
         self._speaker_state._clusters_dirty = False
 
-
-    def assign_speaker(self,
+    def assign_speaker(
+        self,
         embedding: np.ndarray,
     ):
         """
@@ -226,7 +208,6 @@ class SentenceProcessor:
             self._refresh_speaker_cache()
             self._recompute_clusters()
 
-        # Add the new embedding to the cached ones for clustering
         all_embeddings = self._speaker_state._speaker_embeddings + [embedding]
         X = np.stack(all_embeddings)
         dbscan = DBSCAN(
@@ -238,7 +219,6 @@ class SentenceProcessor:
         labels = dbscan.fit_predict(X)
         new_label = labels[-1]
 
-        # Helper to append to cache with correct types
         def _append_cache(embedding, person_id):
             self._speaker_state._speaker_embeddings.append(embedding)
             self._speaker_state._speaker_ids.append(person_id)
@@ -301,7 +281,6 @@ class SentenceProcessor:
             self._update_db_clusters(session, labels[:-1] + [-1])
             return new_person.id
 
-        # Assign to the Person of the best match in the cluster
         matched_person_id = self._speaker_state._speaker_ids[best_idx]
         matched_person = session.query(Person).filter_by(id=matched_person_id).first()
         if matched_person and matched_person.voice_embedding is not None:
@@ -313,8 +292,9 @@ class SentenceProcessor:
         self._update_db_clusters(session, labels)
         return matched_person_id
 
-
-    def update_voice_embedding(self, person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str):
+    def update_voice_embedding(
+        self, person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str
+    ):
         """
         Update the embedding for a given person_id using new audio and expected text.
         Incorporates expected_text into the embedding update, similar to supervised phrase training.
@@ -339,7 +319,9 @@ class SentenceProcessor:
 
         denoised_audio = self.denoise_audio(self.pcm_bytes_to_float32(bytes(audio_buffer)))
         embedding_result = self.spk_encoder.embed_utterance(denoised_audio)
-        new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+        new_embedding = (
+            embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+        )
         new_embedding = np.array(new_embedding, dtype=np.float32)
 
         person = session.query(Person).filter_by(id=person_id).first()
@@ -361,8 +343,9 @@ class SentenceProcessor:
             self._speaker_state._speaker_embeddings[idx] = updated_embedding
             self._speaker_state._clusters_dirty = True
 
-        logger.info(f"Updated embedding for person {person_id} using expected text '{expected_text}'")
-
+        logger.info(
+            f"Updated embedding for person {person_id} using expected text '{expected_text}'"
+        )
 
     def _update_db_clusters(self, session: Session, cluster_labels):
         """
@@ -383,8 +366,9 @@ class SentenceProcessor:
                 person.cluster_id = int(label) if label != -1 else None  # type: ignore
         session.commit()
 
-
-    def transcribe_interaction(self, sentence_buf: bytearray, assign_or_create_speaker: bool) -> dict:
+    def transcribe_interaction(
+        self, sentence_buf: bytearray, assign_or_create_speaker: bool
+    ) -> dict:
         """
         Process a complete sentence buffer with real-time audio denoising and speaker recognition.
 
@@ -393,8 +377,6 @@ class SentenceProcessor:
         """
 
         audio_f32 = self.pcm_bytes_to_float32(bytes(sentence_buf))
-
-        # Apply real-time audio denoising to filter out white noise
         denoised_audio = self.denoise_audio(audio_f32)
 
         if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
@@ -416,7 +398,9 @@ class SentenceProcessor:
 
         if assign_or_create_speaker:
             embedding_result = self.spk_encoder.embed_utterance(denoised_audio)
-            embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+            embedding = (
+                embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+            )
             speaker_id = self.assign_speaker(embedding)
             interaction["voice_embedding"] = embedding.tolist()
             interaction["speaker_id"] = speaker_id

@@ -33,9 +33,7 @@ class StreamQualityMetrics:
     speech_clarity: float = 0.0
     volume_level: float = 0.0
     noise_level: float = 0.0
-    # GPS-based location data for this client
     location: Optional[Dict] = None
-    # RSSI signal strength for this client (from phone perspective)
     rssi: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sample_count: int = 0
@@ -75,8 +73,8 @@ class MultiStreamProcessor:
             "snr": 0.3,
             "speech_clarity": 0.3,
             "volume_level": 0.1,
-            "location": 0.15,  # GPS-based location scoring
-            "rssi": 0.15,  # RSSI-based proximity scoring
+            "location": 0.15,
+            "rssi": 0.15,
         }
 
     def register_client(self, client_id: str) -> bool:
@@ -132,7 +130,6 @@ class MultiStreamProcessor:
         if len(audio_data) == 0:
             return 0.0
 
-        # Calculate signal power (using the variance of the signal)
         signal_power = np.var(audio_data)
 
         if signal_power == 0:
@@ -143,8 +140,8 @@ class MultiStreamProcessor:
         windowed_power = []
         window_size = len(audio_data) // 10
 
-        if window_size < 100:  # Too small for windowing
-            noise_power = signal_power * 0.1  # Assume 10% noise
+        if window_size < 100:
+            noise_power = signal_power * 0.1
         else:
             for i in range(0, len(audio_data) - window_size, window_size):
                 window = audio_data[i : i + window_size]
@@ -155,11 +152,11 @@ class MultiStreamProcessor:
             noise_power = np.mean(windowed_power[: max(1, len(windowed_power) // 5)])
 
         if noise_power <= 0:
-            noise_power = signal_power * 0.01  # Fallback to 1% of signal
+            noise_power = signal_power * 0.01
 
         # Calculate SNR in dB
         snr_db = 10 * np.log10(signal_power / noise_power)
-        return max(0.0, snr_db)  # Ensure non-negative
+        return max(0.0, snr_db)
 
     def _calculate_speech_clarity(self, audio_data) -> float:
         """

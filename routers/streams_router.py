@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Body
 
 router = APIRouter(prefix="/streams")
 
+
 @router.get("/best")
 def get_best_stream():
     """Get the currently selected best audio stream."""
@@ -56,6 +57,7 @@ def get_client_stream_info(client_id: str):
         "last_update": client_info.last_update,
     }
 
+
 @router.post("/phone/location")
 def update_phone_location(request: dict = Body(...)):
     """Update GPS-based location data for phone tracking."""
@@ -68,13 +70,11 @@ def update_phone_location(request: dict = Body(...)):
         if not location:
             raise HTTPException(status_code=400, detail="location data is required")
 
-        # Validate location data structure
         required_fields = ["latitude", "longitude"]
         for field in required_fields:
             if field not in location:
                 raise HTTPException(status_code=400, detail=f"location.{field} is required")
 
-        # Update phone location in audio scorer
         success = audio_scorer.set_phone_location(client_id, location)
 
         if not success:
@@ -98,8 +98,8 @@ def update_phone_location(request: dict = Body(...)):
 def update_phone_rssi(request: dict = Body(...)):
     """Update RSSI-based proximity data for phone tracking to specific client."""
     try:
-        phone_client_id = request.get("phone_client_id")  # The phone doing the measurement
-        target_client_id = request.get("target_client_id")  # The client being measured
+        phone_client_id = request.get("phone_client_id")
+        target_client_id = request.get("target_client_id")
         rssi = request.get("rssi")
 
         if not phone_client_id:
@@ -109,7 +109,6 @@ def update_phone_rssi(request: dict = Body(...)):
         if rssi is None:
             raise HTTPException(status_code=400, detail="rssi value is required")
 
-        # Update RSSI between phone and target client
         success = audio_scorer.set_phone_rssi(target_client_id, rssi)
 
         if not success:

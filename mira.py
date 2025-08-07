@@ -86,7 +86,6 @@ async def lifespan(app: FastAPI):
     ):
         status["recent_interactions"].append(interaction.id)
 
-    # Initialize wake words
     wake_word_detector.add_wake_word("mira cancel", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira exit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
@@ -133,7 +132,6 @@ def root():
             runtime_seconds = (current_time - connection_start).total_seconds()
             client_info["connection_runtime"] = round(runtime_seconds, 2)
 
-        # Add score information
         if client_id in scores:
             client_info["score"] = scores[client_id]
 

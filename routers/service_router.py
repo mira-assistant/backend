@@ -12,18 +12,16 @@ router = APIRouter(prefix="/service")
 @router.post("/client/register/{client_id}")
 def register_client(client_id: str, request: Request):
     """Register a client and initialize stream scoring."""
-    # Get client IP address and connection start time
+
     client_ip = request.client.host if request.client else "unknown"
     connection_start_time = datetime.now(timezone.utc)
 
-    # Store client information in connected_clients dictionary
     status["connected_clients"][client_id] = {
         "ip": client_ip,
         "connection_start_time": connection_start_time,
-        "connection_runtime": 0.0,  # Runtime in seconds, updated dynamically
+        "connection_runtime": 0.0,
     }
 
-    # Register client with audio stream scorer
     success = audio_scorer.register_client(client_id=client_id)
 
     if success:
@@ -40,7 +38,6 @@ def deregister_client(client_id: str):
     else:
         print("Client already deregistered or not found:", client_id)
 
-    # Deregister from audio stream scorer
     success = audio_scorer.deregister_client(client_id)
 
     if len(status["connected_clients"]) == 0:

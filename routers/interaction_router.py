@@ -1,10 +1,20 @@
-from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, sentence_processor, logger
+from mira import (
+    status,
+    context_processor,
+    audio_scorer,
+    wake_word_detector,
+    command_processor,
+    inference_processor,
+    sentence_processor,
+    logger,
+)
 from db import get_db_session
 from models import Interaction, Person
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 import uuid
 
 router = APIRouter(prefix="/interactions")
+
 
 @router.post("/register")
 async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
@@ -42,7 +52,6 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                 detail="No active audio streams found. Please ensure clients are registered.",
             )
 
-        # Check if this client has the best stream quality
         if best_stream_info["client_id"] != client_id:
             logger.info(
                 f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
@@ -85,6 +94,8 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                     )
 
                     if wake_word_detection.callback:
+                        db.delete(interaction)
+                        db.commit()
                         return None
 
                     response = command_processor.process_command(

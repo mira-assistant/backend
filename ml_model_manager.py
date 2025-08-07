@@ -129,7 +129,6 @@ class MLModelManager:
             )
         )
 
-        # Add context as a separate assistant role if provided for better separation
         if context and context.strip():
             messages.append(
                 chat.ChatCompletionAssistantMessageParam(
@@ -144,7 +143,6 @@ class MLModelManager:
             )
         )
 
-        # Prepare the API call parameters
         api_params = {
             "model": self.model,
             "messages": messages,
@@ -153,7 +151,6 @@ class MLModelManager:
             **self.config,
         }
 
-        # Only include response_format if it's not None
         if self.response_format is not None:
             api_params["response_format"] = self.response_format
 
