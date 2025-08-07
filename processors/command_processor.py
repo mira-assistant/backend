@@ -138,8 +138,6 @@ class WakeWordDetector:
 
                 confidence = self._calculate_text_confidence(wake_word, text_normalized)
 
-                # Incorporate sensitivity: require higher confidence for lower sensitivity
-                # Effective threshold = min_confidence + (1 - sensitivity) * (1 - min_confidence)
                 effective_threshold = config.min_confidence + (1.0 - config.sensitivity) * (
                     1.0 - config.min_confidence
                 )
@@ -170,27 +168,22 @@ class WakeWordDetector:
         Returns:
             float: Confidence score (0.0-1.0)
         """
-        # Exact match
         if wake_word in text:
             return 1.0
 
-        # Word-by-word matching
         wake_words = wake_word.split()
         text_words = text.split()
 
         if len(wake_words) == 1:
-            # Single word - check for substring or similar
             for word in text_words:
                 if wake_word in word or word in wake_word:
                     return 0.8
-                # Simple fuzzy matching based on length and common characters
                 if len(word) >= 3 and len(wake_word) >= 3:
                     common_chars = len(set(wake_word) & set(word))
                     similarity = common_chars / max(len(wake_word), len(word))
                     if similarity > 0.6:
                         return 0.6
         else:
-            # Multi-word phrase - check for partial matches
             matches = 0
             for wake_word_part in wake_words:
                 for text_word in text_words:
@@ -210,26 +203,25 @@ class CommandProcessor:
 
     def __init__(self):
         """
-        Initialize command processor
-
-        Args:
-            callback_registry: Optional callback registry, creates default if None
+        Initialize command processor with all dependencies loaded at startup
         """
-
+        logger.info("CommandProcessor initializing with eager loading")
+        
+        # Load system prompt and configuration immediately
         system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
         structured_response = json.load(
             open("schemas/command_processing/structured_output.json", "r")
         )
 
+        # Initialize model manager immediately - no lazy loading
         self.model_manager = MLModelManager(
             model_name="llama-2-7b-chat-hf-function-calling-v3",
             system_prompt=system_prompt,
-            # structured_response=structured_response,
         )
 
+        # Load model tools immediately
         self.load_model_tools()
-
-        logger.info("CommandProcessor initialized")
+        logger.info("CommandProcessor fully initialized with all dependencies loaded")
 
     def load_model_tools(self):
         """
@@ -239,8 +231,6 @@ class CommandProcessor:
 
         def get_weather(location: str = "current location") -> str:
             """Get weather information (placeholder implementation)"""
-            # This is a placeholder implementation
-            # In a real system, this would integrate with a weather API
             return f"The weather in {location} is partly cloudy with a temperature of 72°F"
 
         def get_time() -> str:
@@ -251,7 +241,6 @@ class CommandProcessor:
 
         def disable_mira() -> str:
             """Disable the Mira assistant service"""
-            # Import here to avoid circular imports
             from mira import status
 
             status["enabled"] = False
@@ -272,10 +261,7 @@ class CommandProcessor:
         Returns:
             Result of command processing
         """
-
+        
         logger.info(f"Processing command: {interaction.text}")
-        response = self.model_manager.run_inference(
-            interaction,
-        )
-
+        response = self.model_manager.run_inference(interaction)
         return response

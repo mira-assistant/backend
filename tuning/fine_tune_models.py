@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Fine-tuning Framework Setup for Mira Assistant Models
 
@@ -63,12 +62,10 @@ class ModelFineTuner:
         """
         logger.info(f"Loading tokenizer and model for {self.model_name}")
         
-        # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_path)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        # Load model
         self.model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
             torch_dtype=torch.float16,
@@ -76,13 +73,11 @@ class ModelFineTuner:
             trust_remote_code=True,
         )
         
-        # Setup LoRA configuration
         lora_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             **self.config["fine_tuning"]["lora_config"]
         )
         
-        # Apply LoRA to model
         self.peft_model = get_peft_model(self.model, lora_config)
         
         logger.info("Model and tokenizer setup complete")
@@ -99,12 +94,9 @@ class ModelFineTuner:
         """
         logger.info(f"Loading dataset from {dataset_path}")
         
-        # Load dataset
         dataset = load_dataset('json', data_files=dataset_path, split='train')
         
-        # Tokenize dataset
         def tokenize_function(examples):
-            # Format input based on model type
             if self.model_name == "llama-2-7b-chat-hf-function-calling-v3":
                 formatted_texts = []
                 for i in range(len(examples['input'])):
@@ -120,7 +112,7 @@ class ModelFineTuner:
                     if 'output' in examples:
                         text += examples['output'][i]
                     formatted_texts.append(text)
-            else:  # tiiuae-falcon-40b-instruct
+            else:
                 formatted_texts = []
                 for i in range(len(examples['input'])):
                     text = self.config["prompt_templates"]["data_extraction"].format(
@@ -155,7 +147,6 @@ class ModelFineTuner:
         """
         logger.info("Starting fine-tuning process")
         
-        # Setup training arguments
         training_args = TrainingArguments(
             output_dir=output_dir,
             **self.config["fine_tuning"]["training_config"],
@@ -163,13 +154,11 @@ class ModelFineTuner:
             dataloader_pin_memory=False,
         )
         
-        # Setup data collator
         data_collator = DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
             mlm=False,
         )
         
-        # Create trainer
         trainer = Trainer(
             model=self.peft_model,
             args=training_args,
@@ -177,10 +166,8 @@ class ModelFineTuner:
             data_collator=data_collator,
         )
         
-        # Start training
         trainer.train()
         
-        # Save the fine-tuned model
         trainer.save_model()
         self.tokenizer.save_pretrained(output_dir)
         
@@ -198,13 +185,11 @@ def main():
     
     args = parser.parse_args()
     
-    # Setup paths
     base_dir = Path(__file__).parent
     config_path = base_dir / args.model / "model_config.json"
     output_dir = args.output_dir or str(base_dir / args.model / "fine_tuned")
     base_model = args.base_model or args.model
     
-    # Create fine-tuner and run training
     fine_tuner = ModelFineTuner(args.model, str(config_path))
     fine_tuner.setup_model_and_tokenizer(base_model)
     

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Data Acquisition Script for Mira Assistant Training Datasets
 
@@ -38,7 +37,6 @@ class DatasetAcquisition:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Define dataset sources
         self.command_datasets = {
             "assistant_conversations": {
                 "source": "microsoft/DialoGPT-medium",
@@ -95,11 +93,10 @@ class DatasetAcquisition:
         logger.info(f"Downloading Hugging Face dataset: {dataset_name}")
         
         try:
-            dataset = load_dataset(dataset_name, split='train[:1000]')  # Limit to 1000 samples
+            dataset = load_dataset(dataset_name, split='train[:1000]')
             examples = []
             
             if task_type == "command_processing":
-                # Process for command processing task
                 for item in dataset:
                     if dataset_name == "squad":
                         example = {
@@ -109,7 +106,6 @@ class DatasetAcquisition:
                             "task": "question_answering"
                         }
                     else:
-                        # Generic conversational format
                         example = {
                             "input": str(item.get('text', item.get('question', ''))),
                             "output": str(item.get('response', item.get('answer', ''))),
@@ -119,21 +115,18 @@ class DatasetAcquisition:
                     examples.append(example)
             
             elif task_type == "data_extraction":
-                # Process for data extraction task
                 for item in dataset:
                     if dataset_name == "conll2003":
-                        # Convert NER format to extraction format
                         tokens = item['tokens']
                         ner_tags = item['ner_tags']
                         text = " ".join(tokens)
                         
-                        # Extract entities
                         entities = []
                         current_entity = []
                         current_label = None
                         
                         for token, tag in zip(tokens, ner_tags):
-                            if tag != 0:  # Not O (Outside)
+                            if tag != 0:
                                 if current_label is None:
                                     current_entity = [token]
                                     current_label = tag
@@ -152,7 +145,6 @@ class DatasetAcquisition:
                             "task": "entity_extraction"
                         }
                     else:
-                        # Generic extraction format
                         example = {
                             "input": str(item.get('text', '')),
                             "output": json.dumps(item.get('label', {})),
@@ -189,9 +181,8 @@ class DatasetAcquisition:
             
             if url.endswith('.json'):
                 data = response.json()
-                # Process JSON data based on structure
                 if isinstance(data, list):
-                    for item in data[:1000]:  # Limit samples
+                    for item in data[:1000]:
                         example = {
                             "input": str(item.get('input', item.get('text', ''))),
                             "output": str(item.get('output', item.get('response', ''))),
@@ -200,7 +191,6 @@ class DatasetAcquisition:
                         }
                         examples.append(example)
                 elif isinstance(data, dict):
-                    # Handle dictionary format
                     for key, value in list(data.items())[:1000]:
                         example = {
                             "input": key,
@@ -233,7 +223,6 @@ class DatasetAcquisition:
         examples = []
         
         if task_type == "command_processing":
-            # Command processing synthetic data
             templates = [
                 ("What's the weather like?", "Let me check the weather for you."),
                 ("What time is it?", "The current time is {time}."),
@@ -256,7 +245,6 @@ class DatasetAcquisition:
                 examples.append(example)
         
         elif task_type == "data_extraction":
-            # Data extraction synthetic data
             templates = [
                 ("Remind me to call John tomorrow at 3pm", 
                  json.dumps({"call_to_action": True, "action_type": "remind", "remind": {"time": "2024-01-01T15:00:00", "description": "call John"}})),
@@ -303,7 +291,6 @@ class DatasetAcquisition:
         
         all_examples = []
         
-        # Download from various sources
         for name, info in self.command_datasets.items():
             if info["format"] == "huggingface":
                 examples = self.download_huggingface_dataset(info["source"], "command_processing")
@@ -312,11 +299,9 @@ class DatasetAcquisition:
             
             all_examples.extend(examples)
         
-        # Add synthetic data
         synthetic_examples = self.create_synthetic_data("command_processing", 500)
         all_examples.extend(synthetic_examples)
         
-        # Save dataset
         self.save_dataset(all_examples, "command_processing.jsonl")
         
         return len(all_examples)
@@ -327,7 +312,6 @@ class DatasetAcquisition:
         
         all_examples = []
         
-        # Download from various sources
         for name, info in self.extraction_datasets.items():
             if info["format"] == "huggingface":
                 examples = self.download_huggingface_dataset(info["source"], "data_extraction")
@@ -336,11 +320,9 @@ class DatasetAcquisition:
             
             all_examples.extend(examples)
         
-        # Add synthetic data
         synthetic_examples = self.create_synthetic_data("data_extraction", 500)
         all_examples.extend(synthetic_examples)
         
-        # Save dataset
         self.save_dataset(all_examples, "data_extraction.jsonl")
         
         return len(all_examples)
@@ -356,10 +338,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Create dataset acquisition instance
     acquisition = DatasetAcquisition(args.output_dir)
     
-    # Acquire datasets based on task
     if args.task in ["command", "both"]:
         command_count = acquisition.acquire_command_datasets()
         logger.info(f"Acquired {command_count} command processing examples")
