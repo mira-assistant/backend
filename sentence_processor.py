@@ -329,7 +329,7 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
 
     Args:
         person_id: UUID of the person to update
-        audio_data: Raw audio data as float32 numpy array
+        audio_buffer: Raw audio data as bytearray
         expected_text: The expected phrase spoken (for supervised adaptation)
 
     Returns:
@@ -337,24 +337,15 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
     """
     session = get_db_session()
 
-    audio_f32 = pcm_bytes_to_float32(bytes(audio_buffer))
-    denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
+    interaction = transcribe_interaction(audio_buffer, assign_or_create_speaker=False)
 
-    if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
-        raise ValueError("Audio contains NaN or Inf values")
-
-    result = asr_model.transcribe(denoised_audio)
-    transcribed_text = (
-        " ".join(result["text"]).strip()
-        if isinstance(result["text"], list)
-        else result["text"].strip()
-    )
-
+    transcribed_text = interaction.get("text", "")
     if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
         logger.info(
             f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'"
         )
 
+    denoised_audio = denoise_audio(pcm_bytes_to_float32(bytes(audio_buffer)), SAMPLE_RATE)
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
     new_embedding = np.array(new_embedding, dtype=np.float32)
@@ -364,7 +355,6 @@ def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expect
         raise ValueError(f"Person {person_id} not found or missing embedding")
 
     old_embedding = np.array(person.voice_embedding, dtype=np.float32)
-
     if old_embedding.dtype != np.float32:
         old_embedding = old_embedding.astype(np.float32)
     if new_embedding.dtype != np.float32:
@@ -402,24 +392,17 @@ def _update_db_clusters(session: Session, cluster_labels):
     session.commit()
 
 
-def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
+def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bool) -> dict:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
 
     Args:
         sentence_buf: Audio buffer containing the sentence
-        use_advanced_speaker_id: Whether to use advanced clustering-based speaker identification
     """
-
-    if asr_model is None or spk_encoder is None:
-        logger.error("Failed to load ML models")
-        raise RuntimeError("ML models not initialized")
 
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
 
-    # Not enough float32 samples (1 second worth)
-    if len(audio_f32) < SAMPLE_RATE * 1:
-        return None
+    print(f"Processing audio buffer of length {len(audio_f32)}")
 
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
@@ -436,16 +419,16 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     )
 
     if not text:
-        return None
-
-    embedding_result = spk_encoder.embed_utterance(denoised_audio)
-    embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-    speaker_id = assign_speaker(embedding)
+        raise ValueError("Transcription failed")
 
     interaction = dict()
-
     interaction["text"] = text
-    interaction["voice_embedding"] = embedding.tolist()
-    interaction["speaker_id"] = speaker_id
+
+    if assign_or_create_speaker:
+        embedding_result = spk_encoder.embed_utterance(denoised_audio)
+        embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+        speaker_id = assign_speaker(embedding)
+        interaction["voice_embedding"] = embedding.tolist()
+        interaction["speaker_id"] = speaker_id
 
     return interaction

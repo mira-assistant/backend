@@ -2,10 +2,10 @@ import uuid
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-import json
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import warnings
 
 
 from db import get_db_session
@@ -18,6 +18,7 @@ from context_processor import ContextProcessor
 from multi_stream_processor import MultiStreamProcessor
 from command_processor import CommandProcessor, WakeWordDetector
 
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -50,10 +51,10 @@ async def lifespan(app: FastAPI):
         status["recent_interactions"].append(interaction.id)
 
     # Initialize wake words
-    wake_word_detector.add_wake_word("mira cancel", sensitivity=0.7, callback=disable_service)
-    wake_word_detector.add_wake_word("mira exit", sensitivity=0.7, callback=disable_service)
+    wake_word_detector.add_wake_word("mira cancel", sensitivity=0.5, callback=disable_service)
+    wake_word_detector.add_wake_word("mira exit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
-    wake_word_detector.add_wake_word("mira stop", sensitivity=0.7, callback=disable_service)
+    wake_word_detector.add_wake_word("mira stop", sensitivity=0.5, callback=disable_service)
     yield
 
 
@@ -206,12 +207,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf)
-
-        if not transcription_result or not transcription_result["text"]:
-            raise HTTPException(
-                status_code=400, detail="Transcription failed. Please check the audio quality."
-            )
+        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, True)
 
         try:
             interaction = Interaction(
@@ -248,6 +244,9 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
                     response = command_processor.process_command(
                         interaction=interaction,
                     )
+
+                    db.delete(interaction)
+                    db.commit()
 
                     if response:
                         return {"message": response}
@@ -302,23 +301,9 @@ def interaction_inference(interaction_id: str):
         if not has_intent:
             return {"message": "Intent not recognized, no inference performed."}
 
-        response = InferenceProcessor.send_prompt(prompt=interaction.text, context=context)  # type: ignore
+        action = inference_processor.extract_action(interaction=interaction, context=context)  # type: ignore
 
-        # Add context information to response with database queries
-        response["context_used"] = str(bool(context))
-
-        # Get enhanced features from the database interaction
-        enhanced_features = {
-            "entities": interaction.entities,
-            "sentiment": interaction.sentiment,
-            "speaker_id": str(interaction.speaker_id),
-            "conversation_id": (
-                str(interaction.conversation_id) if bool(interaction.conversation_id) else None
-            ),
-        }
-        response["enhanced_features"] = json.dumps(enhanced_features)
-
-        return response
+        return action
 
     except Exception as e:
         logger.error(f"Error in inference: {e}")

@@ -220,6 +220,7 @@ class CommandProcessor:
         structured_response = json.load(
             open("schemas/command_processing/structured_output.json", "r")
         )
+
         self.model_manager = MLModelManager(
             model_name="llama-2-7b-chat-hf-function-calling-v3",
             system_prompt=system_prompt,
@@ -236,19 +237,19 @@ class CommandProcessor:
         This method can be extended to load additional tools as needed.
         """
 
-        def get_weather(self, location: str = "current location") -> str:
+        def get_weather(location: str = "current location") -> str:
             """Get weather information (placeholder implementation)"""
             # This is a placeholder implementation
             # In a real system, this would integrate with a weather API
             return f"The weather in {location} is partly cloudy with a temperature of 72°F"
 
-        def get_time(self) -> str:
+        def get_time() -> str:
             """Get current time in user's timezone (auto-detected)"""
             local_tz = tzlocal.get_localzone()
             current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
             return f"The current time is {current_time}"
 
-        def disable_mira(self) -> str:
+        def disable_mira() -> str:
             """Disable the Mira assistant service"""
             # Import here to avoid circular imports
             from mira import status
