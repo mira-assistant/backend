@@ -71,9 +71,13 @@ async def lifespan(app: FastAPI):
 
     from routers.service_router import router as service_router
     from routers.interaction_router import router as interaction_router
+    from routers.conversation_router import router as conversation_router
+    from routers.persons_router import router as persons_router
 
     app.include_router(service_router)
     app.include_router(interaction_router)
+    app.include_router(conversation_router)
+    app.include_router(persons_router)
 
     for interaction in (
         get_db_session().query(Interaction).order_by(Interaction.timestamp.desc()).limit(10).all()
@@ -135,84 +139,6 @@ def root():
 
 
 
-
-
-@app.get("/persons/all")
-def get_all_persons():
-    """Get all persons in the database."""
-    try:
-        db = get_db_session()
-        persons = db.query(Person).all()
-        db.close()
-
-        return persons
-    except Exception as e:
-        logger.error(f"Error fetching persons: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch persons: {str(e)}")
-
-
-@app.get("/persons/{person_id}")
-def get_person(person_id: str):
-    """Get a specific person by ID."""
-    try:
-        db = get_db_session()
-        try:
-            person = db.query(Person).filter_by(id=uuid.UUID(person_id)).first()
-            if not person:
-                raise HTTPException(status_code=404, detail="Person not found")
-
-            return person
-        finally:
-            db.close()
-    except Exception as e:
-        logger.error(f"Error fetching person: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch person: {str(e)}")
-
-
-@app.post("/persons/{person_id}/update")
-async def update_person(
-    person_id: str,
-    name: str = Form(...),
-    audio: UploadFile = File(...),
-    expected_text: str = Form(...),
-):
-    """Update a person's information, including training their embedding."""
-    db = get_db_session()
-    try:
-        person = db.query(Person).filter_by(id=uuid.UUID(person_id)).first()
-
-        if not person:
-            raise HTTPException(status_code=404, detail="Person not found")
-
-        if name:
-            person.name = name  # type: ignore
-
-        if audio and expected_text:
-            audio_data = await audio.read()
-            if len(audio_data) == 0:
-                raise HTTPException(
-                    status_code=400, detail="Received empty audio data. Please provide valid audio."
-                )
-
-            audio_data = bytearray(audio_data)
-
-            SentenceProcessor.update_voice_embedding(
-                person_id=person.id,  # type: ignore
-                audio_buffer=audio_data,
-                expected_text=expected_text,
-            )
-
-        db.commit()
-        db.refresh(person)
-
-        return {"message": "Person updated successfully", "person": person}
-
-    except Exception as e:
-        logger.error(f"Error updating person: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update person: {str(e)}")
-
-    finally:
-        db.close()
 
 
 @app.get("/streams/best")
