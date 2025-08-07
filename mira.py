@@ -1,5 +1,5 @@
 import uuid
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form, Request
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Form, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from collections import deque
@@ -40,7 +40,7 @@ class ColorFormatter(logging.Formatter):
 
 handler = logging.StreamHandler()
 handler.setFormatter(
-    ColorFormatter(fmt="%(levelname)s:\t  %(name)s:%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    ColorFormatter(fmt="%(levelname)s:\t  %(name)s:\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 )
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
@@ -67,6 +67,11 @@ hosting_urls = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from routers.service_router import disable_service
+    from routers.service_router import router as service_router
+
+    app.include_router(service_router)
+
     for interaction in (
         get_db_session().query(Interaction).order_by(Interaction.timestamp.desc()).limit(10).all()
     ):
@@ -78,7 +83,6 @@ async def lifespan(app: FastAPI):
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira stop", sensitivity=0.5, callback=disable_service)
     yield
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -124,62 +128,6 @@ def root():
             client_info["score"] = scores[client_id]
 
     return status
-
-
-@app.post("/service/client/register/{client_id}")
-def register_client(client_id: str, request: Request):
-    """Register a client and initialize stream scoring."""
-    # Get client IP address and connection start time
-    client_ip = request.client.host if request.client else "unknown"
-    connection_start_time = datetime.now(timezone.utc)
-
-    # Store client information in connected_clients dictionary
-    status["connected_clients"][client_id] = {
-        "ip": client_ip,
-        "connection_start_time": connection_start_time,
-        "connection_runtime": 0.0,  # Runtime in seconds, updated dynamically
-    }
-
-    # Register client with audio stream scorer
-    success = audio_scorer.register_client(client_id=client_id)
-
-    if success:
-        logger.info(f"Client {client_id} registered for stream scoring from IP {client_ip}")
-
-    return {"message": f"{client_id} registered successfully", "stream_scoring_enabled": success}
-
-
-@app.delete("/service/client/deregister/{client_id}")
-def deregister_client(client_id: str):
-    """Deregister a client and remove from stream scoring."""
-    if client_id in status["connected_clients"]:
-        del status["connected_clients"][client_id]
-    else:
-        print("Client already deregistered or not found:", client_id)
-
-    # Deregister from audio stream scorer
-    success = audio_scorer.deregister_client(client_id)
-
-    if len(status["connected_clients"]) == 0:
-        disable_service()
-        logging.info("All clients deregistered, service disabled")
-
-    if client_id not in status["connected_clients"] and not success:
-        return {"message": f"{client_id} already deregistered or not found"}
-
-    return {"message": f"{client_id} deregistered successfully", "stream_scoring_removed": success}
-
-
-@app.patch("/service/enable")
-def enable_service():
-    status["enabled"] = True
-    return {"message": "Service enabled successfully"}
-
-
-@app.patch("/service/disable")
-def disable_service():
-    status["enabled"] = False
-    return {"message": "Service disabled successfully"}
 
 
 @app.post("/interactions/register")

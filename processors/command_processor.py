@@ -14,7 +14,6 @@ Features:
 - Thread-safe operation for concurrent audio processing
 """
 
-import json
 import logging
 import threading
 from typing import Dict, List, Optional, Callable
@@ -217,9 +216,9 @@ class CommandProcessor:
         """
 
         system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
-        structured_response = json.load(
-            open("schemas/command_processing/structured_output.json", "r")
-        )
+        # structured_response = json.load(
+        #     open("schemas/command_processing/structured_output.json", "r")
+        # )
 
         self.model_manager = MLModelManager(
             model_name="llama-2-7b-chat-hf-function-calling-v3",
