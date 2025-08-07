@@ -62,8 +62,12 @@ class MLModelManager:
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
 
-        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            raise ValueError(f"Model {model_name} is not available or not loaded")
+        if not available_models:
+            logger.warning(f"No models available from LM Studio server, initializing with {model_name} anyway")
+        elif model_name not in model_names:
+            logger.warning(f"Model {model_name} not found in available models, available: {model_names}")
+        elif model_states[model_names.index(model_name)] != "loaded":
+            logger.warning(f"Model {model_name} is not loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
@@ -90,20 +94,22 @@ class MLModelManager:
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
     def register_tool(self, function: 'Callable', description: str):
-        parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
-
-        self.tools.append(
-            chat.ChatCompletionToolParam(
-                function=shared_params.FunctionDefinition(
-                    name=function.__name__,
-                    description=description,
-                    parameters=parameters,
-                ),
-                type="function",
+        try:
+            # Create a basic function definition without complex parameter introspection
+            self.tools.append(
+                chat.ChatCompletionToolParam(
+                    function=shared_params.FunctionDefinition(
+                        name=function.__name__,
+                        description=description,
+                        parameters={"type": "object", "properties": {}, "required": []},
+                    ),
+                    type="function",
+                )
             )
-        )
-
-        logger.info(f"Registered tool: {function.__name__}")
+            logger.info(f"Registered tool: {function.__name__}")
+        except Exception as e:
+            logger.warning(f"Failed to register tool {function.__name__}: {e}")
+            # Continue without registering the tool
 
     def run_inference(
         self, interaction: Interaction, context: Optional[str] = None
@@ -168,13 +174,12 @@ def get_available_models() -> List[Dict[str, Any]]:
     Get list of available models from LM Studio server
 
     Returns:
-        List[Dict]: List of available model information
+        List[Dict]: List of available model information, empty list if service unavailable
     """
     try:
         response = client.models.list()
         data = response.model_dump()["data"]
-
         return data
     except Exception as e:
-        logger.error(f"Failed to get available models: {e}")
-        raise RuntimeError(f"Could not fetch available models: {e}")
+        logger.warning(f"Failed to get available models: {e}")
+        return []

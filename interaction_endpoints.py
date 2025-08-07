@@ -79,12 +79,14 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
         logger.info(f"Interaction saved to database with ID: {interaction.id}")
         status["recent_interactions"].append(interaction.id)
 
-        speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
+        speaker = None
+        if interaction.speaker_id:
+            speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
 
-        if not speaker:
+        if not speaker and interaction.speaker_id:
             raise HTTPException(status_code=404, detail="Speaker not found")
 
-        if speaker.index == 1:
+        if speaker and speaker.index == 1:
             wake_word_detection = wake_word_detector.detect_wake_words_text(
                 client_id=client_id,
                 transcribed_text=transcription_result["text"],

@@ -7,9 +7,6 @@ from datetime import timezone, timedelta
 from typing import List, Optional, Tuple
 import numpy as np
 
-import spacy
-from sentence_transformers import SentenceTransformer
-
 from sqlalchemy import or_
 
 from models import (
@@ -90,16 +87,30 @@ class ContextProcessor:
     def _init_nlp_components(self):
         """Initialize NLP models as individual state variables."""
         if self.spacy_model is None:
-            self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+            try:
+                import spacy
+                self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+            except ImportError as e:
+                logger.warning(f"Failed to load spacy model: {e}")
+                self.spacy_model = None
         if self.sentence_transformer is None:
-            self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+            try:
+                from sentence_transformers import SentenceTransformer
+                self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+            except ImportError as e:
+                logger.warning(f"Failed to load sentence transformer: {e}")
+                self.sentence_transformer = None
         if self.sentiment_pipeline is None:
-            from transformers.pipelines import pipeline
-            self.sentiment_pipeline = pipeline(
-                task="text-classification",
-                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-                top_k=None,
-            )
+            try:
+                from transformers.pipelines import pipeline
+                self.sentiment_pipeline = pipeline(
+                    task="text-classification",
+                    model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+                    top_k=None,
+                )
+            except ImportError as e:
+                logger.warning(f"Failed to load sentiment pipeline: {e}")
+                self.sentiment_pipeline = None
 
     def _process_nlp_features(self, interaction: Interaction):
         """Process NLP features for a SQLAlchemy interaction."""

@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import threading
 import numpy as np
-from scipy import signal
 
 
 logger = logging.getLogger(__name__)
@@ -171,7 +170,15 @@ class MultiStreamProcessor:
         nperseg = max(nperseg, 64)
         nperseg = min(nperseg, len(audio_data))
 
-        freqs, psd = signal.welch(audio_data, fs=self.sample_rate, nperseg=nperseg)
+        try:
+            from scipy import signal
+            freqs, psd = signal.welch(audio_data, fs=self.sample_rate, nperseg=nperseg)
+        except ImportError:
+            logger.warning("scipy not available, using simplified frequency analysis")
+            # Fallback: use FFT for basic frequency analysis
+            fft = np.fft.fft(audio_data)
+            freqs = np.fft.fftfreq(len(fft), 1/self.sample_rate)
+            psd = np.abs(fft) ** 2
 
         speech_low = 300
         speech_high = 3400
