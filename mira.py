@@ -135,37 +135,6 @@ def root():
 
 
 
-@app.get("/conversations")
-def get_recent_conversations(limit: int = 10):
-    """Get recent conversations with their interactions."""
-    try:
-        db = get_db_session()
-        try:
-            conversations = (
-                db.query(Conversation)
-                .order_by(Conversation.interactions[0].timestamp.desc())
-                .limit(limit)
-                .all()
-            )
-
-            result = []
-            for conv in conversations:
-                conv_data = {
-                    "id": str(conv.id),
-                    "user_ids": [str(user_id) for user_id in conv.user_ids],
-                    "interaction_count": len(conv.interactions),
-                    "topic_summary": conv.topic_summary,
-                }
-                result.append(conv_data)
-
-            return result
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        logger.error(f"Error fetching conversations: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch conversations: {str(e)}")
 
 
 @app.get("/persons/all")
