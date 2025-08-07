@@ -1,10 +1,6 @@
 from mira import (
     status,
-    context_processor,
     audio_scorer,
-    wake_word_detector,
-    command_processor,
-    inference_processor,
     logger,
 )
 from fastapi import HTTPException, Request, APIRouter
