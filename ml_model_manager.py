@@ -58,15 +58,12 @@ class MLModelManager:
                 - presence_penalty: Presence penalty
         """
 
-        try:
-            available_models = get_available_models()
-            model_names = [model.get("id", "") for model in available_models]
-            model_states = [model.get("state", "") for model in available_models]
+        available_models = get_available_models()
+        model_names = [model.get("id", "") for model in available_models]
+        model_states = [model.get("state", "") for model in available_models]
 
-            if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-                logger.warning(f"Model '{model_name}' not available or loaded, proceeding anyway")
-        except Exception as e:
-            logger.warning(f"Could not check model availability: {e}, proceeding anyway")
+        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
+            raise ValueError(f"Model {model_name} is not available or not loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
