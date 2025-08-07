@@ -1,4 +1,12 @@
-from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, logger
+from mira import (
+    status,
+    context_processor,
+    audio_scorer,
+    wake_word_detector,
+    command_processor,
+    inference_processor,
+    logger,
+)
 from db import get_db_session
 from models import Conversation
 from fastapi import APIRouter, HTTPException
@@ -13,9 +21,7 @@ def get_conversations():
         db = get_db_session()
         try:
             conversations = (
-                db.query(Conversation)
-                .order_by(Conversation.interactions[0].timestamp.desc())
-                .all()
+                db.query(Conversation).order_by(Conversation.interactions[0].timestamp.desc()).all()
             )
 
             return conversations

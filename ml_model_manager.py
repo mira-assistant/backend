@@ -90,7 +90,7 @@ class MLModelManager:
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
-    def register_tool(self, function: 'Callable', description: str):
+    def register_tool(self, function: "Callable", description: str):
         parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
 
         self.tools.append(

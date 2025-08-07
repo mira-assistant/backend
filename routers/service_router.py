@@ -1,8 +1,17 @@
-from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, logger
-from fastapi import Request, APIRouter
+from mira import (
+    status,
+    context_processor,
+    audio_scorer,
+    wake_word_detector,
+    command_processor,
+    inference_processor,
+    logger,
+)
+from fastapi import HTTPException, Request, APIRouter
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/service")
+
 
 @router.post("/client/register/{client_id}")
 def register_client(client_id: str, request: Request):
@@ -46,6 +55,18 @@ def deregister_client(client_id: str):
         return {"message": f"{client_id} already deregistered or not found"}
 
     return {"message": f"{client_id} deregistered successfully", "stream_scoring_removed": success}
+
+
+@router.get("/{client_id}")
+def get_client_info(client_id: str):
+    """Get detailed information about a specific client."""
+
+    client_dict = status["connected_clients"].get(client_id)
+
+    if not client_dict:
+        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
+    return client_dict
 
 
 @router.patch("/enable")

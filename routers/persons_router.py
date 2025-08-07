@@ -1,4 +1,12 @@
-from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, logger
+from mira import (
+    status,
+    context_processor,
+    audio_scorer,
+    wake_word_detector,
+    command_processor,
+    inference_processor,
+    logger,
+)
 from db import get_db_session
 import processors.sentence_processor as SentenceProcessor
 from models import Person
@@ -6,6 +14,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 import uuid
 
 router = APIRouter(prefix="/persons")
+
 
 @router.get("/all")
 def get_all_persons():

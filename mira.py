@@ -194,19 +194,6 @@ def get_client_stream_info(client_id: str):
         "last_update": client_info.last_update,
     }
 
-
-@app.get("/service/{client_id}")
-def get_client_info(client_id: str):
-    """Get detailed information about a specific client."""
-
-    client_dict = status["connected_clients"].get(client_id)
-
-    if not client_dict:
-        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-
-    return client_dict
-
-
 @app.post("/streams/phone/location")
 def update_phone_location(request: dict = Body(...)):
     """Update GPS-based location data for phone tracking."""
