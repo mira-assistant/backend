@@ -1,4 +1,4 @@
-from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, SentenceProcessor, logger
+from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, sentence_processor, logger
 from db import get_db_session
 from models import Interaction, Person
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -33,7 +33,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
         )
 
         best_stream_info = audio_scorer.get_best_stream()
-        audio_float = SentenceProcessor.pcm_bytes_to_float32(sentence_buf_raw)
+        audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
         audio_scorer.update_stream_quality(client_id, audio_float)
 
         if not best_stream_info:
@@ -53,7 +53,7 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
             }
 
         sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = SentenceProcessor.transcribe_interaction(sentence_buf, True)
+        transcription_result = sentence_processor.transcribe_interaction(sentence_buf, True)
 
         try:
             interaction = Interaction(
@@ -141,7 +141,6 @@ def interaction_inference(interaction_id: str):
         if not interaction:
             raise HTTPException(status_code=404, detail="Interaction not found")
 
-        # Use database-backed context processing
         context, has_intent = context_processor.build_context(interaction)
 
         if not has_intent:

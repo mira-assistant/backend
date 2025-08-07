@@ -117,16 +117,14 @@ class ContextProcessor:
             # Sentiment Analysis
             sentiment_result = self.sentiment_pipeline(interaction.text)  # type: ignore
             if sentiment_result and len(sentiment_result[0]) > 0:
-                # Get the positive sentiment score
                 positive_score = next(
                     (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"), # type: ignore
                     0.5,
                 )
                 interaction.sentiment = positive_score  # type: ignore
 
-            # Text Embedding for semantic similarity (NOT voice embedding)
-            embedding = self.sentence_transformer.encode(interaction.text)  # type: ignore
-            # Store text embedding in the correct field
+            # Text Embedding for semantic similarity
+            embedding = self.sentence_transformer.encode(interaction.text, show_progress_bar=False)  # type: ignore
             interaction.text_embedding = embedding.tolist()
 
         except Exception as e:
@@ -583,13 +581,8 @@ class ContextProcessor:
             if self.detect_conversation_boundary(interaction):
                 self.current_conversation = Conversation(user_ids=[interaction.speaker_id])
 
-            # Process NLP features for the interaction
             self._process_nlp_features(interaction)
-
-            # Build context using database
             enhanced_prompt = self.build_context_prompt(interaction)
-
-            # Enhanced intent classification
             has_intent = self._classify_intent(interaction.text)
 
             if ContextProcessorConfig.DebugConfig.DEBUG_MODE:

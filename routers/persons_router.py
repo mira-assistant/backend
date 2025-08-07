@@ -1,8 +1,8 @@
 from mira import (
+    sentence_processor,
     logger,
 )
 from db import get_db_session
-import processors.sentence_processor as SentenceProcessor
 from models import Person
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 import uuid
@@ -69,7 +69,7 @@ async def update_person(
 
             audio_data = bytearray(audio_data)
 
-            SentenceProcessor.update_voice_embedding(
+            sentence_processor.update_voice_embedding(
                 person_id=person.id,  # type: ignore
                 audio_buffer=audio_data,
                 expected_text=expected_text,

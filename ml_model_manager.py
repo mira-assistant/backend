@@ -157,7 +157,7 @@ class MLModelManager:
         if self.response_format is not None:
             api_params["response_format"] = self.response_format
 
-        response = client.chat.completions.create(**api_params)
+        response = client.chat.completions.create(**api_params, timeout=60)
 
         if response.choices[0].message.content is None:
             raise RuntimeError(f"Model {self.model} generated no content")

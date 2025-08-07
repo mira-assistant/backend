@@ -10,14 +10,15 @@ import warnings
 from db import get_db_session
 from models import Interaction
 
-import processors.sentence_processor as SentenceProcessor
+from processors.sentence_processor import SentenceProcessor
 from processors.inference_processor import InferenceProcessor
 from processors.context_processor import ContextProcessor
 from processors.multi_stream_processor import MultiStreamProcessor
 from processors.command_processor import CommandProcessor, WakeWordDetector
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module=".*webrtcvad.*")
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 
 
 class ColorFormatter(logging.Formatter):
@@ -38,7 +39,7 @@ class ColorFormatter(logging.Formatter):
 
 handler = logging.StreamHandler()
 handler.setFormatter(
-    ColorFormatter(fmt="%(levelname)s:\t  %(name)s:\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    ColorFormatter(fmt="%(levelname)s:\t  %(name)s:%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 )
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ audio_scorer = MultiStreamProcessor()
 wake_word_detector = WakeWordDetector()
 command_processor = CommandProcessor()
 inference_processor = InferenceProcessor()
+sentence_processor = SentenceProcessor()
 
 status: dict = {
     "enabled": False,
