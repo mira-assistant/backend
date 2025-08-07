@@ -1,6 +1,5 @@
 from mira import status, context_processor, audio_scorer, wake_word_detector, command_processor, inference_processor, logger
 from fastapi import Request, APIRouter
-import logging
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/service")
@@ -41,7 +40,7 @@ def deregister_client(client_id: str):
 
     if len(status["connected_clients"]) == 0:
         disable_service()
-        logging.info("All clients deregistered, service disabled")
+        logger.info("All clients deregistered, service disabled")
 
     if client_id not in status["connected_clients"] and not success:
         return {"message": f"{client_id} already deregistered or not found"}
