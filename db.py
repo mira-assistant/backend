@@ -1,5 +1,7 @@
 import os
 import logging
+import functools
+import inspect
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -52,17 +54,34 @@ class DatabaseConnectionError(DatabaseError):
 
 def handle_db_error(operation_name: str):
     def decorator(func):
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except IntegrityError as e:
-                logger.error(f"Database integrity error in {operation_name}: {e}")
-                raise DatabaseIntegrityError(f"Data integrity violation in {operation_name}")
-            except DatabaseError as e:
-                logger.error(f"Database connection error in {operation_name}: {e}")
-                raise DatabaseConnectionError(f"Database connection failed in {operation_name}")
-            except SQLAlchemyError as e:
-                logger.error(f"Database error in {operation_name}: {e}")
-                raise DatabaseError(f"Database operation failed in {operation_name}")
-        return wrapper
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                try:
+                    return await func(*args, **kwargs)
+                except IntegrityError as e:
+                    logger.error(f"Database integrity error in {operation_name}: {e}")
+                    raise DatabaseIntegrityError(f"Data integrity violation in {operation_name}")
+                except DatabaseError as e:
+                    logger.error(f"Database connection error in {operation_name}: {e}")
+                    raise DatabaseConnectionError(f"Database connection failed in {operation_name}")
+                except SQLAlchemyError as e:
+                    logger.error(f"Database error in {operation_name}: {e}")
+                    raise DatabaseError(f"Database operation failed in {operation_name}")
+            return async_wrapper
+        else:
+            @functools.wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                try:
+                    return func(*args, **kwargs)
+                except IntegrityError as e:
+                    logger.error(f"Database integrity error in {operation_name}: {e}")
+                    raise DatabaseIntegrityError(f"Data integrity violation in {operation_name}")
+                except DatabaseError as e:
+                    logger.error(f"Database connection error in {operation_name}: {e}")
+                    raise DatabaseConnectionError(f"Database connection failed in {operation_name}")
+                except SQLAlchemyError as e:
+                    logger.error(f"Database error in {operation_name}: {e}")
+                    raise DatabaseError(f"Database operation failed in {operation_name}")
+            return sync_wrapper
     return decorator
