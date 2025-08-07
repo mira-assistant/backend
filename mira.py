@@ -19,11 +19,9 @@ from multi_stream_processor import MultiStreamProcessor
 from command_processor import CommandProcessor, WakeWordDetector
 
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-print("\n\n\n\n\n\nInitializing Mira backend service...")
 context_processor = ContextProcessor()
 audio_scorer = MultiStreamProcessor()
 wake_word_detector = WakeWordDetector()
@@ -31,12 +29,11 @@ command_processor = CommandProcessor()
 inference_processor = InferenceProcessor()
 
 status: dict = {
+    "enabled": False,
     "version": "4.3.0",
     "connected_clients": dict(),
     "best_client": None,
-    "enabled": False,
     "recent_interactions": deque(maxlen=10),
-    "last_command_result": None,  # Store last command processing result
 }
 
 hosting_urls = {
@@ -60,13 +57,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# Initialize FastAPI app first
 app = FastAPI(lifespan=lifespan)
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -91,13 +86,11 @@ def root():
     scores = audio_scorer.get_all_stream_scores()
     status["best_client"] = audio_scorer.get_best_stream()
 
-    # Update connection runtime for all connected clients
     current_time = datetime.now(timezone.utc)
     for client_id, client_info in status["connected_clients"].items():
         if "connection_start_time" in client_info:
             connection_start = client_info["connection_start_time"]
             if isinstance(connection_start, str):
-                # Handle backward compatibility if stored as string
                 connection_start = datetime.fromisoformat(connection_start.replace("Z", "+00:00"))
 
             runtime_seconds = (current_time - connection_start).total_seconds()
