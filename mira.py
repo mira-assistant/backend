@@ -29,11 +29,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 class ColorFormatter(logging.Formatter):
     COLORS = {
-        "INFO": "\033[92m",  # Green
-        "ERROR": "\033[91m",  # Red
-        "WARNING": "\033[93m",  # Yellow
-        "DEBUG": "\033[94m",  # Blue
-        "CRITICAL": "\033[95m",  # Magenta
+        "INFO": "\033[92m",
+        "ERROR": "\033[91m",
+        "WARNING": "\033[93m",
+        "DEBUG": "\033[94m",
+        "CRITICAL": "\033[95m",
     }
     RESET = "\033[0m"
 
@@ -77,7 +77,6 @@ async def lifespan(app: FastAPI):
     ):
         status["recent_interactions"].append(interaction.id)
 
-    # Initialize wake words
     wake_word_detector.add_wake_word("mira cancel", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira exit", sensitivity=0.5, callback=disable_service)
     wake_word_detector.add_wake_word("mira quit", sensitivity=0.5, callback=disable_service)

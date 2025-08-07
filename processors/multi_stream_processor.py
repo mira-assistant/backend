@@ -33,9 +33,7 @@ class StreamQualityMetrics:
     speech_clarity: float = 0.0
     volume_level: float = 0.0
     noise_level: float = 0.0
-    # GPS-based location data for this client
     location: Optional[Dict] = None
-    # RSSI signal strength for this client (from phone perspective)
     rssi: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sample_count: int = 0
@@ -70,13 +68,12 @@ class MultiStreamProcessor:
         self.clients: Dict[str, ClientStreamInfo] = {}
         self._lock = threading.Lock()
 
-        # Scoring weights (can be adjusted based on requirements)
         self.weights = {
             "snr": 0.3,
             "speech_clarity": 0.3,
             "volume_level": 0.1,
-            "location": 0.15,  # GPS-based location scoring
-            "rssi": 0.15,  # RSSI-based proximity scoring
+            "location": 0.15,
+            "rssi": 0.15,
         }
 
     def register_client(self, client_id: str) -> bool:
@@ -132,34 +129,29 @@ class MultiStreamProcessor:
         if len(audio_data) == 0:
             return 0.0
 
-        # Calculate signal power (using the variance of the signal)
         signal_power = np.var(audio_data)
 
         if signal_power == 0:
             return 0.0
 
-        # Estimate noise using the quieter portions (bottom 20% of audio power)
-        # This is a simple noise estimation approach
         windowed_power = []
         window_size = len(audio_data) // 10
 
-        if window_size < 100:  # Too small for windowing
-            noise_power = signal_power * 0.1  # Assume 10% noise
+        if window_size < 100:
+            noise_power = signal_power * 0.1
         else:
             for i in range(0, len(audio_data) - window_size, window_size):
                 window = audio_data[i : i + window_size]
                 windowed_power.append(np.var(window))
 
-            # Use bottom 20% as noise estimate
             windowed_power.sort()
             noise_power = np.mean(windowed_power[: max(1, len(windowed_power) // 5)])
 
         if noise_power <= 0:
-            noise_power = signal_power * 0.01  # Fallback to 1% of signal
+            noise_power = signal_power * 0.01
 
-        # Calculate SNR in dB
         snr_db = 10 * np.log10(signal_power / noise_power)
-        return max(0.0, snr_db)  # Ensure non-negative
+        return max(0.0, snr_db)
 
     def _calculate_speech_clarity(self, audio_data) -> float:
         """
@@ -175,16 +167,12 @@ class MultiStreamProcessor:
         if len(audio_data) == 0:
             return 0.0
 
-        # Calculate power spectral density
-        # Use smaller nperseg for short audio clips
         nperseg = min(1024, len(audio_data) // 4) if len(audio_data) > 256 else len(audio_data) // 2
-        nperseg = max(nperseg, 64)  # Minimum window size
-        nperseg = min(nperseg, len(audio_data))  # Ensure nperseg does not exceed audio length
+        nperseg = max(nperseg, 64)
+        nperseg = min(nperseg, len(audio_data))
 
         freqs, psd = signal.welch(audio_data, fs=self.sample_rate, nperseg=nperseg)
 
-        # Speech frequency ranges (fundamental frequencies for clarity)
-        # Focus on 300-3400 Hz range which is most important for speech intelligibility
         speech_low = 300
         speech_high = 3400
 
@@ -195,20 +183,16 @@ class MultiStreamProcessor:
         if total_power == 0:
             return 0.0
 
-        # Speech clarity as ratio of speech-band power to total power
         speech_ratio = speech_power / total_power
 
-        # Also consider spectral flatness (measure of how noise-like vs. tonal)
-        # Lower spectral flatness in speech band indicates clearer speech
         if np.any(psd[speech_mask] > 0):
             geometric_mean = np.exp(np.mean(np.log(psd[speech_mask] + 1e-10)))
             arithmetic_mean = np.mean(psd[speech_mask])
             spectral_flatness = geometric_mean / (arithmetic_mean + 1e-10)
-            clarity_factor = 1.0 - spectral_flatness  # Invert so higher is better
+            clarity_factor = 1.0 - spectral_flatness
         else:
             clarity_factor = 0.0
 
-        # Combine speech ratio and clarity factor
         clarity_score = (speech_ratio * 0.7 + clarity_factor * 0.3) * 100
         return min(100.0, max(0.0, float(clarity_score)))
 
@@ -230,21 +214,19 @@ class MultiStreamProcessor:
 
             client_info = self.clients[client_id]
 
-            # Calculate quality metrics
             snr = self._calculate_snr(audio_data)
             speech_clarity = self._calculate_speech_clarity(audio_data)
 
-            volume_level = float(np.sqrt(np.mean(audio_data**2)))  # RMS volume
-            noise_level = max(0.0, volume_level - (snr / 20.0))  # Estimate based on SNR
+            volume_level = float(np.sqrt(np.mean(audio_data**2)))
+            noise_level = max(0.0, volume_level - (snr / 20.0))
 
-            # Update metrics
             metrics = StreamQualityMetrics(
                 snr=snr,
                 speech_clarity=speech_clarity,
                 volume_level=volume_level,
                 noise_level=noise_level,
-                location=client_info.quality_metrics.location,  # Preserve existing value
-                rssi=client_info.quality_metrics.rssi,  # Preserve existing value
+                location=client_info.quality_metrics.location,
+                rssi=client_info.quality_metrics.rssi,
                 sample_count=client_info.quality_metrics.sample_count + 1,
             )
 
@@ -266,27 +248,20 @@ class MultiStreamProcessor:
         Returns:
             float: Overall score (0-100)
         """
-        # Normalize individual metrics to 0-100 scale
-        snr_score = min(100.0, (metrics.snr / 30.0) * 100)  # Assume 30dB is excellent
-        clarity_score = metrics.speech_clarity  # Already 0-100
-        volume_score = min(100.0, metrics.volume_level * 1000)  # Scale volume appropriately
+        snr_score = min(100.0, (metrics.snr / 30.0) * 100)
+        clarity_score = metrics.speech_clarity
+        volume_score = min(100.0, metrics.volume_level * 1000)
 
-        # Location score (will be 100 if no location info)
         location_score = 100.0
         if metrics.location is not None:
-            # Simple scoring based on location accuracy - better accuracy = higher score
-            accuracy = metrics.location.get("accuracy", 100.0)  # meters
-            location_score = max(0.0, 100.0 - (accuracy / 10.0))  # Better accuracy = higher score
+            accuracy = metrics.location.get("accuracy", 100.0)
+            location_score = max(0.0, 100.0 - (accuracy / 10.0))
 
-        # RSSI score (will be 100 if no RSSI info)
         rssi_score = 100.0
         if metrics.rssi is not None:
-            # Higher RSSI (less negative) = better signal = higher score
-            # Typical RSSI range: -30 (excellent) to -90 (poor)
-            rssi_normalized = max(-90.0, min(-30.0, metrics.rssi))  # Clamp to typical range
-            rssi_score = ((rssi_normalized + 90.0) / 60.0) * 100.0  # Convert to 0-100
+            rssi_normalized = max(-90.0, min(-30.0, metrics.rssi))
+            rssi_score = ((rssi_normalized + 90.0) / 60.0) * 100.0
 
-        # Calculate weighted score
         overall_score = (
             self.weights["snr"] * snr_score
             + self.weights["speech_clarity"] * clarity_score
@@ -310,7 +285,6 @@ class MultiStreamProcessor:
         }
 
         for client_id, client_info in self.clients.items():
-            # Calculate current score for this client
             current_score = self.calculate_overall_score(client_info.quality_metrics)
             client_info.quality_metrics.score = current_score
 

@@ -38,7 +38,6 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-# Suppress warnings
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 warnings.filterwarnings(
     "ignore",
@@ -59,13 +58,11 @@ class SpeakerIdentificationState:
     """State variables for advanced speaker identification moved from context_processor."""
 
     def __init__(self):
-        # Speaker detection state variables for advanced clustering
         self._speaker_embeddings: list[np.ndarray] = []
         self._speaker_ids: list[uuid.UUID] = []
         self._cluster_labels: list[int] = []
         self._clusters_dirty: bool = True
 
-        # DBSCAN configuration
         self.SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
@@ -77,7 +74,6 @@ class SpeakerIdentificationState:
         )
 
 
-# Global speaker identification state
 _speaker_state = SpeakerIdentificationState()
 
 
@@ -121,37 +117,31 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
         Denoised audio signal
     """
 
-    # Apply noise reduction using noisereduce library
     try:
-        # Ensure input is float32
         audio_data = np.array(audio_data, dtype=np.float32)
-        # Apply high-pass filter to remove low-frequency noise (e.g., 80 Hz cutoff)
         filtered_audio = butter_highpass_filter(audio_data, 80, sample_rate)
         filtered_audio = np.array(filtered_audio, dtype=np.float32)
 
-        # If audio is very short, skip noise reduction to avoid nperseg/noverlap errors
         if len(filtered_audio) < 512:
             return filtered_audio
 
-        # Use the first 0.5 seconds as noise sample for adaptive filtering
         if len(filtered_audio) > sample_rate // 2:
             noise_sample = filtered_audio[: sample_rate // 2]
             denoised_audio = nr.reduce_noise(
                 y=filtered_audio,
                 sr=sample_rate,
                 y_noise=noise_sample,
-                prop_decrease=0.8,  # Reduce noise by 80%
-                stationary=False,  # Non-stationary noise reduction
+                prop_decrease=0.8,
+                stationary=False,
                 n_fft=min(512, len(filtered_audio)),
                 hop_length=min(128, len(filtered_audio) // 4),
             )
         else:
-            # For very short audio, just apply basic noise reduction
             denoised_audio = nr.reduce_noise(
                 y=filtered_audio,
                 sr=sample_rate,
-                prop_decrease=0.6,  # Reduce noise by 60%
-                stationary=True,  # Stationary noise reduction for short clips
+                prop_decrease=0.6,
+                stationary=True,
                 n_fft=min(256, len(filtered_audio)),
                 hop_length=min(64, len(filtered_audio) // 4),
             )
@@ -159,7 +149,6 @@ def denoise_audio(audio_data: np.ndarray, sample_rate: int = SAMPLE_RATE) -> np.
         return np.array(denoised_audio, dtype=np.float32)
 
     except Exception as e:
-        # If denoising fails, return the original audio with just high-pass filtering
         logger.warning(f"Denoising failed: {e}")
         filtered = butter_highpass_filter(audio_data, 80, sample_rate)
         filtered = np.array(filtered, dtype=np.float32)
@@ -187,7 +176,7 @@ def _refresh_speaker_cache():
         _speaker_state._speaker_embeddings = [
             np.array(i.voice_embedding, dtype=np.float32) for i in interactions
         ]
-        _speaker_state._speaker_ids = [i.speaker_id for i in interactions]  # type: ignore
+        _speaker_state._speaker_ids = [i.speaker_id for i in interactions]
         _speaker_state._clusters_dirty = True
     finally:
         session.close()
@@ -234,7 +223,6 @@ def assign_speaker(
         _refresh_speaker_cache()
         _recompute_clusters()
 
-    # Add the new embedding to the cached ones for clustering
     all_embeddings = _speaker_state._speaker_embeddings + [embedding]
     X = np.stack(all_embeddings)
     dbscan = DBSCAN(
@@ -246,7 +234,6 @@ def assign_speaker(
     labels = dbscan.fit_predict(X)
     new_label = labels[-1]
 
-    # Helper to append to cache with correct types
     def _append_cache(embedding, person_id):
         _speaker_state._speaker_embeddings.append(embedding)
         _speaker_state._speaker_ids.append(person_id)
@@ -309,7 +296,6 @@ def assign_speaker(
         _update_db_clusters(session, labels[:-1] + [-1])
         return new_person.id
 
-    # Assign to the Person of the best match in the cluster
     matched_person_id = _speaker_state._speaker_ids[best_idx]
     matched_person = session.query(Person).filter_by(id=matched_person_id).first()
     if matched_person and matched_person.voice_embedding is not None:
@@ -388,7 +374,7 @@ def _update_db_clusters(session: Session, cluster_labels):
             continue
         person = session.query(Person).filter_by(id=person_id).first()
         if person:
-            person.cluster_id = int(label) if label != -1 else None  # type: ignore
+            person.cluster_id = int(label) if label != -1 else None
     session.commit()
 
 
@@ -404,7 +390,6 @@ def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bo
 
     print(f"Processing audio buffer of length {len(audio_f32)}")
 
-    # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
 
     if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
