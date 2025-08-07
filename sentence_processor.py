@@ -25,7 +25,6 @@ import logging
 
 import numpy as np
 
-# Required heavy dependencies - hard imports
 import whisper
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
@@ -47,17 +46,13 @@ warnings.filterwarnings(
     message="pkg_resources is deprecated as an API",
 )
 
-# ---------- Constants ----------
 SAMPLE_RATE = 16_000
 SIM_THRESHOLD = 0.75
 MAX_SPEAKERS = 1
 
-# ---------- Global model instances (loaded once) ----------
-_asr_model = None
-_spk_encoder = None
-_speaker_centroids: list[np.ndarray] = []
 
-# ---------- Advanced Speaker Identification State Variables ----------
+asr_model = whisper.load_model("base")
+spk_encoder = VoiceEncoder()
 
 
 class SpeakerIdentificationState:
@@ -84,19 +79,6 @@ class SpeakerIdentificationState:
 
 # Global speaker identification state
 _speaker_state = SpeakerIdentificationState()
-
-
-def get_models():
-    """Get or initialize the ASR model and speaker encoder (singleton pattern)"""
-    global _asr_model, _spk_encoder
-
-    if _asr_model is None:
-        _asr_model = whisper.load_model("base")
-
-    if _spk_encoder is None:
-        _spk_encoder = VoiceEncoder()
-
-    return _asr_model, _spk_encoder
 
 
 def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
@@ -340,45 +322,30 @@ def assign_speaker(
     return matched_person_id
 
 
-def update_voice_embedding(
-    person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str
-):
+def update_voice_embedding(person_id: uuid.UUID, audio_buffer: bytearray, expected_text: str):
     """
     Update the embedding for a given person_id using new audio and expected text.
     Incorporates expected_text into the embedding update, similar to supervised phrase training.
 
     Args:
         person_id: UUID of the person to update
-        audio_data: Raw audio data as float32 numpy array
+        audio_buffer: Raw audio data as bytearray
         expected_text: The expected phrase spoken (for supervised adaptation)
 
     Returns:
         True if update was successful, False otherwise
     """
-    asr_model, spk_encoder = get_models()
     session = get_db_session()
 
-    audio_f32 = pcm_bytes_to_float32(bytes(audio_buffer))
+    interaction = transcribe_interaction(audio_buffer, assign_or_create_speaker=False)
 
-    # Denoise audio
-    denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
+    transcribed_text = interaction.get("text", "")
+    if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
+        logger.info(
+            f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'"
+        )
 
-    if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
-        raise ValueError("Audio contains NaN or Inf values")
-
-    # Transcribe audio
-    result = asr_model.transcribe(denoised_audio)
-    transcribed_text = (
-        " ".join(result["text"]).strip()
-        if isinstance(result["text"], list)
-        else result["text"].strip()
-    )
-
-    # Only update if transcribed text matches expected text closely
-    # if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
-    #     logger.info(f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'")
-    #     return False
-
+    denoised_audio = denoise_audio(pcm_bytes_to_float32(bytes(audio_buffer)), SAMPLE_RATE)
     embedding_result = spk_encoder.embed_utterance(denoised_audio)
     new_embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
     new_embedding = np.array(new_embedding, dtype=np.float32)
@@ -388,7 +355,6 @@ def update_voice_embedding(
         raise ValueError(f"Person {person_id} not found or missing embedding")
 
     old_embedding = np.array(person.voice_embedding, dtype=np.float32)
-
     if old_embedding.dtype != np.float32:
         old_embedding = old_embedding.astype(np.float32)
     if new_embedding.dtype != np.float32:
@@ -426,27 +392,17 @@ def _update_db_clusters(session: Session, cluster_labels):
     session.commit()
 
 
-def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
+def transcribe_interaction(sentence_buf: bytearray, assign_or_create_speaker: bool) -> dict:
     """
     Process a complete sentence buffer with real-time audio denoising and speaker recognition.
 
     Args:
         sentence_buf: Audio buffer containing the sentence
-        use_advanced_speaker_id: Whether to use advanced clustering-based speaker identification
     """
-
-    # Use cached models instead of loading them each time
-    asr_model, spk_encoder = get_models()
-
-    if asr_model is None or spk_encoder is None:
-        logger.error("Failed to load ML models")
-        raise RuntimeError("ML models not initialized")
 
     audio_f32 = pcm_bytes_to_float32(bytes(sentence_buf))
 
-    # Not enough float32 samples (1 second worth)
-    if len(audio_f32) < SAMPLE_RATE * 1:
-        return None
+    print(f"Processing audio buffer of length {len(audio_f32)}")
 
     # Apply real-time audio denoising to filter out white noise
     denoised_audio = denoise_audio(audio_f32, SAMPLE_RATE)
@@ -463,16 +419,16 @@ def transcribe_interaction(sentence_buf: bytearray) -> dict | None:
     )
 
     if not text:
-        return None
-
-    embedding_result = spk_encoder.embed_utterance(denoised_audio)
-    embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
-    speaker_id = assign_speaker(embedding)
+        raise ValueError("Transcription failed")
 
     interaction = dict()
-
     interaction["text"] = text
-    interaction["voice_embedding"] = embedding.tolist()
-    interaction["speaker_id"] = speaker_id
+
+    if assign_or_create_speaker:
+        embedding_result = spk_encoder.embed_utterance(denoised_audio)
+        embedding = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+        speaker_id = assign_speaker(embedding)
+        interaction["voice_embedding"] = embedding.tolist()
+        interaction["speaker_id"] = speaker_id
 
     return interaction

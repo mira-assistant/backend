@@ -100,7 +100,9 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_ids = Column(JSON, nullable=True, default=list)  # List of UUIDs for backward compatibility
+    user_ids = Column(
+        JSON, nullable=True, default=lambda: list()
+    )  # List of UUIDs for backward compatibility
 
     # Enhanced conversation features
     topic_summary = Column(Text, nullable=True)  # AI-generated topic summary

@@ -3,6 +3,7 @@ import logging
 from ml_model_manager import MLModelManager
 from models import Action, Interaction
 
+
 class InferenceProcessor:
 
     def __init__(self):
@@ -12,11 +13,14 @@ class InferenceProcessor:
         """
 
         system_prompt = open("schemas/action_processing/system_prompt.txt", "r").read().strip()
-        structured_response = json.load(open("schemas/action_processing/structured_output.json", "r"))
-        self.model_manager = MLModelManager("nous-hermes-2-mistral-7b-dpo", system_prompt, structured_response)
+        structured_response = json.load(
+            open("schemas/action_processing/structured_output.json", "r")
+        )
+        self.model_manager = MLModelManager(
+            "tiiuae-falcon-40b-instruct", system_prompt, structured_response
+        )
 
         logging.info("InferenceProcessor initialized")
-
 
     def extract_action(self, interaction: Interaction, context=None) -> Action:
         """
@@ -34,8 +38,6 @@ class InferenceProcessor:
 
         response = self.model_manager.run_inference(interaction, context)
 
-        result = Action(
-            **response
-        )
+        result = Action(**response)
 
         return result

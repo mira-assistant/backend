@@ -15,10 +15,9 @@ Features:
 """
 
 import inspect
-import requests
 import json
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from openai import OpenAI
 from openai.types import chat, shared_params
 from models import Interaction
@@ -48,18 +47,24 @@ class MLModelManager:
         Args:
             model_name: Name of the model to use for inference
             system_prompt: Custom system prompt or uses default
-            **config_options: Additional configuration options
+            response_format: Optional JSON schema for structured output
+            **config_options: Additional configuration options including:
+                - temperature: Sampling temperature (0.0-2.0), default 0.7
+                - max_tokens: Maximum number of tokens to generate
+                - top_k: Top-k sampling parameter
+                - top_p: Top-p sampling parameter
+                - repetition_penalty: Repetition penalty
+                - frequency_penalty: Frequency penalty
+                - presence_penalty: Presence penalty
         """
 
         available_models = get_available_models()
 
-        # print(f"Available models: {available_models}")
-
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
 
-        # if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            # raise ValueError(f"Model '{model_name}' not available or loaded")
+        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
+            raise ValueError(f"Model '{model_name}' not available or loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
@@ -75,7 +80,9 @@ class MLModelManager:
                 )
             )
         else:
-            self.response_format = None
+            self.response_format: chat.completion_create_params.ResponseFormat = (
+                shared_params.ResponseFormatText(type="text")
+            )
 
         self.config = {
             **config_options,
@@ -83,13 +90,15 @@ class MLModelManager:
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
-    def register_tool(self, function, description: str):
+    def register_tool(self, function: 'Callable', description: str):
+        parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
+
         self.tools.append(
             chat.ChatCompletionToolParam(
                 function=shared_params.FunctionDefinition(
                     name=function.__name__,
                     description=description,
-                    parameters=dict(inspect.signature(function).parameters),
+                    parameters=parameters,
                 ),
                 type="function",
             )
@@ -119,6 +128,14 @@ class MLModelManager:
                 role="system",
             )
         )
+
+        # Add context as a separate assistant role if provided for better separation
+        if context and context.strip():
+            messages.append(
+                chat.ChatCompletionAssistantMessageParam(
+                    content=f"Context: {context.strip()}", role="assistant", name="context_provider"
+                )
+            )
 
         messages.append(
             chat.ChatCompletionUserMessageParam(
@@ -158,10 +175,10 @@ def get_available_models() -> List[Dict[str, Any]]:
         List[Dict]: List of available model information
     """
     try:
-        response = requests.get(f"{LM_STUDIO_URL}/models")
-        response.raise_for_status()
-        data = response.json()
-        return data.get("data", [])
+        response = client.models.list()
+        data = response.model_dump()["data"]
+
+        return data
     except Exception as e:
         logger.error(f"Failed to get available models: {e}")
         raise RuntimeError(f"Could not fetch available models: {e}")

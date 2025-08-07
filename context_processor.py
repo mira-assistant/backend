@@ -581,7 +581,7 @@ class ContextProcessor:
 
         try:
             if self.detect_conversation_boundary(interaction):
-                self._start_new_conversation(interaction, session)
+                self.current_conversation = Conversation(user_ids=[interaction.speaker_id])
 
             # Process NLP features for the interaction
             self._process_nlp_features(interaction)
@@ -601,26 +601,3 @@ class ContextProcessor:
 
         finally:
             session.close()
-
-    def _start_new_conversation(self, interaction: Interaction, session):
-        """Start a new conversation in the database with real-time tracking."""
-        try:
-            # Create new conversation
-            conversation = Conversation(
-                user_ids=(interaction.speaker_id),
-            )
-
-            session.add(conversation)
-            session.commit()
-            session.refresh(conversation)
-
-            self.current_conversation.id = conversation.id
-            self.current_conversation.user_ids.append(interaction.speaker_id)
-
-            # Assign this conversation to the interaction
-            interaction.conversation_id = conversation.id
-
-            self.logger.debug(f"Started new conversation with ID: {conversation.id}")
-
-        except Exception as e:
-            self.logger.error(f"Failed to start new conversation: {e}")

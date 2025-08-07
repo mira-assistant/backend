@@ -129,7 +129,7 @@ class WakeWordDetector:
         if not transcribed_text:
             return None
 
-        text_normalized = ''.join(
+        text_normalized = "".join(
             c for c in transcribed_text.lower().strip() if c.isalnum() or c.isspace()
         )
 
@@ -204,19 +204,6 @@ class WakeWordDetector:
 
         return 0.0
 
-    def _trigger_callbacks(self, detection: WakeWordDetection):
-        """
-        Trigger all registered detection callbacks.
-
-        Args:
-            detection: The wake word detection to pass to callbacks
-        """
-        for callback in self.detection_callbacks:
-            try:
-                callback(detection)
-            except Exception as e:
-                logger.error(f"Error in wake word detection callback: {e}")
-
 
 class CommandProcessor:
     """Main command processing workflow orchestrator"""
@@ -230,9 +217,12 @@ class CommandProcessor:
         """
 
         system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
-        structured_response = json.load(open("schemas/command_processing/structured_output.json", "r"))
+        structured_response = json.load(
+            open("schemas/command_processing/structured_output.json", "r")
+        )
+
         self.model_manager = MLModelManager(
-            model_name="find-a-model",
+            model_name="llama-2-7b-chat-hf-function-calling-v3",
             system_prompt=system_prompt,
             # structured_response=structured_response,
         )
@@ -247,19 +237,19 @@ class CommandProcessor:
         This method can be extended to load additional tools as needed.
         """
 
-        def get_weather(self, location: str = "current location") -> str:
+        def get_weather(location: str = "current location") -> str:
             """Get weather information (placeholder implementation)"""
             # This is a placeholder implementation
             # In a real system, this would integrate with a weather API
             return f"The weather in {location} is partly cloudy with a temperature of 72°F"
 
-        def get_time(self) -> str:
+        def get_time() -> str:
             """Get current time in user's timezone (auto-detected)"""
             local_tz = tzlocal.get_localzone()
             current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
             return f"The current time is {current_time}"
 
-        def disable_mira(self) -> str:
+        def disable_mira() -> str:
             """Disable the Mira assistant service"""
             # Import here to avoid circular imports
             from mira import status
@@ -269,7 +259,7 @@ class CommandProcessor:
 
         self.model_manager.register_tool(get_weather, "Fetch Weather Information")
         self.model_manager.register_tool(get_time, "Fetch Current Time")
-        self.model_manager.register_tool(disable_mira, "Disable Mira Assistant")
+        self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
 
     def process_command(self, interaction: Interaction):
         """
