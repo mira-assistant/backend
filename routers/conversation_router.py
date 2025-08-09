@@ -15,7 +15,11 @@ def get_conversations():
         db = get_db_session()
         try:
             conversations = (
-                db.query(Conversation).order_by(Conversation.interactions[0].timestamp.desc()).all()
+                db.query(Conversation)
+                .join(Interaction, Conversation.id == Interaction.conversation_id)
+                .group_by(Conversation.id)
+                .order_by(func.max(Interaction.timestamp).desc())
+                .all()
             )
 
             return conversations
