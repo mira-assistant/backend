@@ -67,9 +67,7 @@ hosting_urls = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from routers.service_router import disable_service
-
-    from routers.service_router import router as service_router
+    from routers.service_router import router as service_router, disable_service
     from routers.interaction_router import router as interaction_router
     from routers.conversation_router import router as conversation_router
     from routers.persons_router import router as persons_router

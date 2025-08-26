@@ -69,6 +69,7 @@ class MLModelManager:
         self.model = model_name
         self.system_prompt = system_prompt
         self.tools: list[chat.ChatCompletionToolParam] = []
+        self.callables: Dict[str, Callable] = {}
 
         if response_format is not None:
             self.response_format: chat.completion_create_params.ResponseFormat = (
@@ -104,7 +105,54 @@ class MLModelManager:
             )
         )
 
+        self.callables[function.__name__] = function
+
         logger.info(f"Registered tool: {function.__name__}")
+
+    def build_assistant_response(self, response) -> list[chat.ChatCompletionAssistantMessageParam]:
+        tool_calls = response.choices[0].message.tool_calls
+
+        if not tool_calls:
+            return []
+
+        assistant_tool_call_message = list[chat.ChatCompletionAssistantMessageParam]()
+
+        assistant_tool_call_message.append(
+            chat.ChatCompletionAssistantMessageParam(
+                role="assistant",
+                tool_calls=(
+                    chat.ChatCompletionMessageToolCallParam(
+                        id=tool_call.id,
+                        type=tool_call.type,
+                        function=tool_call.function,
+                    )
+                    for tool_call in tool_calls
+                ),
+            )
+        )
+
+        for tool_call in tool_calls:
+            arguments = (
+                json.loads(tool_call.function.arguments)
+                if tool_call.function.arguments.strip()
+                else {}
+            )
+
+            for name, tool in self.callables.items():
+                if name == tool_call.function.name:
+                    logger.info(f"Invoking tool: {name} with args: {arguments}")
+                    function_response = tool(**arguments)
+                    logger.info(f"Tool {name} response: {function_response}")
+
+                    assistant_tool_call_message.append(
+                        chat.ChatCompletionAssistantMessageParam(
+                            role="assistant",
+                            name=name,
+                            content=function_response,
+                        )
+                    )
+
+        return assistant_tool_call_message
 
     def run_inference(
         self, interaction: Interaction, context: Optional[str] = None
@@ -159,9 +207,21 @@ class MLModelManager:
         if response.choices[0].message.content is None:
             raise RuntimeError(f"Model {self.model} generated no content")
 
-        results = json.loads(response.choices[0].message.content)
+        assistant_message = self.build_assistant_response(response)
 
-        return results
+        if assistant_message:
+            messages.extend(assistant_message)
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=self.tools,
+                tool_choice="auto",
+                response_format=self.response_format,
+                **self.config,
+                timeout=60,
+            )
+
+        return response
 
 
 def get_available_models() -> List[Dict[str, Any]]:
