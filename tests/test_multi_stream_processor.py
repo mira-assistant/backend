@@ -11,7 +11,7 @@ import pytest
 from datetime import datetime, timezone
 import numpy as np
 
-from multi_stream_processor import MultiStreamProcessor, StreamQualityMetrics, ClientStreamInfo
+from processors.multi_stream_processor import MultiStreamProcessor, StreamQualityMetrics, ClientStreamInfo
 
 
 class TestAudioStreamScorer:

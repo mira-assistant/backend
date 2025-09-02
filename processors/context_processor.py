@@ -117,16 +117,14 @@ class ContextProcessor:
             # Sentiment Analysis
             sentiment_result = self.sentiment_pipeline(interaction.text)  # type: ignore
             if sentiment_result and len(sentiment_result[0]) > 0:
-                # Get the positive sentiment score
                 positive_score = next(
-                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"), # type: ignore
+                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),  # type: ignore
                     0.5,
                 )
                 interaction.sentiment = positive_score  # type: ignore
 
-            # Text Embedding for semantic similarity (NOT voice embedding)
-            embedding = self.sentence_transformer.encode(interaction.text)  # type: ignore
-            # Store text embedding in the correct field
+            # Text Embedding for semantic similarity
+            embedding = self.sentence_transformer.encode(interaction.text, show_progress_bar=False)  # type: ignore
             interaction.text_embedding = embedding.tolist()
 
         except Exception as e:
@@ -147,11 +145,9 @@ class ContextProcessor:
 
         last_interaction = self.current_conversation.interactions[-1]
 
-        # Time gap detection - handle timezone differences
         current_ts = current_interaction.timestamp
         last_ts = last_interaction.timestamp
 
-        # Ensure both timestamps are timezone-aware
         if current_ts.tzinfo is None:
             current_ts = current_ts.replace(tzinfo=timezone.utc)
         if last_ts.tzinfo is None:
@@ -161,7 +157,6 @@ class ContextProcessor:
         if time_gap > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD:
             return True
 
-        # Speaker change with extended silence
         if (
             current_interaction.speaker_id != last_interaction.speaker_id
             and time_gap
@@ -169,16 +164,14 @@ class ContextProcessor:
         ):
             return True
 
-        # Topic shift detection using NLP topic similarity
         current_doc = self.spacy_model(current_interaction.text)  # type: ignore
         last_doc = self.spacy_model(last_interaction.text)
 
-        # Use spaCy's built-in similarity (requires vectors)
         try:
             topic_similarity = current_doc.similarity(last_doc)
         except Exception as e:
             self.logger.debug(f"spaCy similarity failed: {e}")
-            topic_similarity = 1.0  # fallback: treat as similar
+            topic_similarity = 1.0
 
         if topic_similarity < ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
             return True
@@ -189,9 +182,7 @@ class ContextProcessor:
         """Short-term context retrieval from database."""
         session = get_db_session()
         try:
-            # Get interactions from current conversation or recent interactions
             if self.current_conversation.id is not None:
-                # Get interactions from current conversation
                 interactions = (
                     session.query(Interaction)
                     .filter_by(conversation_id=self.current_conversation.id)
@@ -201,9 +192,8 @@ class ContextProcessor:
                     )
                     .all()
                 )
-                interactions.reverse()  # Return in chronological order
+                interactions.reverse()
             else:
-                # Get recent interactions within time window
                 time_threshold = current_time - timedelta(
                     seconds=ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD
                 )
@@ -239,19 +229,16 @@ class ContextProcessor:
         try:
             relevant_interactions = []
 
-            # Keyword-based retrieval
             if keywords:
                 keyword_results = self._get_keyword_interactions_db(keywords, session, max_results)
                 relevant_interactions.extend(keyword_results)
 
-            # Semantic similarity retrieval using embeddings
             if current_interaction and current_interaction.text_embedding is not None:
                 semantic_results = self._get_semantic_similar_interactions_db(
                     current_interaction.text_embedding, session, max_results
                 )
                 relevant_interactions.extend(semantic_results)
 
-            # Remove duplicates and sort by relevance/recency
             seen_ids = set()
             unique_interactions = []
             for interaction in relevant_interactions:
@@ -259,7 +246,6 @@ class ContextProcessor:
                     seen_ids.add(interaction.id)
                     unique_interactions.append(interaction)
 
-            # Sort by timestamp (most recent first) and limit results
             unique_interactions.sort(key=lambda x: x.timestamp, reverse=True)
             return unique_interactions[:max_results]
 
@@ -273,7 +259,6 @@ class ContextProcessor:
         if not keywords:
             return []
 
-        # Simple text search for keywords
         keyword_filters = []
         for keyword in keywords:
             keyword_filters.append(Interaction.text.like(f"%{keyword}%"))
@@ -282,7 +267,7 @@ class ContextProcessor:
             session.query(Interaction)
             .filter(or_(*keyword_filters))
             .order_by(Interaction.timestamp.desc())
-            .limit(max_results * 2)  # Get more to allow for deduplication
+            .limit(max_results * 2)
             .all()
         )
 
@@ -294,12 +279,11 @@ class ContextProcessor:
         """Get semantically similar interactions using text embeddings from database."""
         query_embedding_np = np.array(query_embedding)
 
-        # Get all interactions with text embeddings (not voice embeddings)
         interactions_with_embeddings = (
             session.query(Interaction)
             .filter(Interaction.text_embedding.isnot(None))
             .order_by(Interaction.timestamp.desc())
-            .limit(100)  # Limit to recent interactions for performance
+            .limit(100)
             .all()
         )
 
@@ -313,24 +297,17 @@ class ContextProcessor:
             except Exception as e:
                 self.logger.debug(f"Error computing similarity: {e}")
 
-        # Sort by similarity and return top results
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [interaction for interaction, _ in similarities[:max_results]]
 
-    # Removed obsolete in-memory scoring methods (replaced by database queries)
-
     def build_context_prompt(self, interaction: Interaction) -> str:
         """Build context prompt with summarization using database."""
-        # Get contexts from database
         short_term = self.get_short_term_context(interaction.timestamp)
-
-        # Remove current interaction if it's already in short term context
         if short_term and interaction.text in short_term[-1].text:
             short_term = short_term[:-1]
 
         keywords = self._extract_keywords(interaction.text)
 
-        # For long-term context, try to get current interaction for semantic similarity
         current_interaction = None
         session = get_db_session()
         try:
@@ -343,7 +320,6 @@ class ContextProcessor:
         long_term = self.get_long_term_context(keywords, current_interaction)
         long_term = [i for i in long_term if str(i.text) != interaction.text]
 
-        # Build context with summarization
         context_parts = []
 
         if short_term:
@@ -364,7 +340,6 @@ class ContextProcessor:
 
         if long_term:
             if len(long_term) > 3:
-                # Summarize long-term context
                 summary = self._summarize_context(long_term)
                 context_parts.append(f"\n\nRelevant context summary: {summary}")
             else:
@@ -395,10 +370,8 @@ class ContextProcessor:
         if not interactions:
             return ""
 
-        # Simple extractive summarization
         texts = [i.text for i in interactions]
 
-        # Combine entities and key phrases
         key_info = []
         for interaction in interactions:
             if interaction.entities is not None:
@@ -409,17 +382,15 @@ class ContextProcessor:
                 ]
                 key_info.extend(entities)
 
-        # Create summary
         combined_text = " ".join([str(t) for t in texts])
         sentences = combined_text.split(". ")
 
-        # Keep the most informative sentences (simple heuristic)
         important_sentences = []
-        for sentence in sentences[:5]:  # Limit to first 5 sentences
+        for sentence in sentences[:5]:
             if any(keyword in sentence.lower() for keyword in key_info[:10]):
                 important_sentences.append(sentence)
 
-        summary = ". ".join(important_sentences[:3])  # Max 3 sentences
+        summary = ". ".join(important_sentences[:3])
 
         if len(summary) > ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH:
             summary = (
@@ -431,7 +402,6 @@ class ContextProcessor:
 
     def _extract_keywords(self, text) -> List[str]:
         """Keyword extraction with NLP features."""
-        # Base keyword extraction (existing logic)
         words = str(text).lower().split()
         stop_words = {
             "the",
@@ -506,11 +476,10 @@ class ContextProcessor:
             if clean_word and clean_word not in stop_words and len(clean_word) > 2:
                 keywords.append(clean_word)
 
-        return list(set(keywords))  # Remove duplicates
+        return list(set(keywords))
 
     def _classify_intent(self, text) -> bool:
         """Intent classification with NLP features."""
-        # Base classification (existing logic)
         action_keywords = {
             "contact": [
                 "call",
@@ -576,20 +545,14 @@ class ContextProcessor:
     def build_context(self, interaction: Interaction) -> Tuple[str, bool]:
         """Interaction processing with full feature integration using database-only approach."""
 
-        # Check for conversation boundary using database
         session = get_db_session()
 
         try:
             if self.detect_conversation_boundary(interaction):
                 self.current_conversation = Conversation(user_ids=[interaction.speaker_id])
 
-            # Process NLP features for the interaction
             self._process_nlp_features(interaction)
-
-            # Build context using database
             enhanced_prompt = self.build_context_prompt(interaction)
-
-            # Enhanced intent classification
             has_intent = self._classify_intent(interaction.text)
 
             if ContextProcessorConfig.DebugConfig.DEBUG_MODE:

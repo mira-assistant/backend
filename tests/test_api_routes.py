@@ -36,17 +36,6 @@ for module_name in _modules_to_mock:
     if module_name in sys.modules:
         _original_modules[module_name] = sys.modules[module_name]
 
-# Mock heavy dependencies that aren't needed for API testing
-# Note: We specifically avoid mocking scipy.signal as it interferes with other tests
-sys.modules["whisper"] = Mock()
-sys.modules["resemblyzer"] = Mock()
-sys.modules["noisereduce"] = Mock()
-sys.modules["spacy"] = Mock()
-sys.modules["sentence_transformers"] = Mock()
-sys.modules["transformers"] = Mock()
-sys.modules["sklearn"] = Mock()
-sys.modules["scikit-learn"] = Mock()
-
 # Mock the database and processor modules
 sys.modules["db"] = Mock()
 sys.modules["models"] = Mock()

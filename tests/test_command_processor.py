@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 
-from command_processor import (
+from processors.command_processor import (
     WakeWordDetector,
     WakeWordDetection,
     WakeWordConfig,
@@ -42,10 +42,10 @@ class TestWakeWordDetector:
         """Test adding wake word with full configuration"""
         def test_callback():
             return "callback executed"
-        
+
         result = self.detector.add_wake_word(
-            "custom trigger", 
-            sensitivity=0.9, 
+            "custom trigger",
+            sensitivity=0.9,
             min_confidence=0.7,
             callback=test_callback
         )
@@ -66,7 +66,7 @@ class TestWakeWordDetector:
         """Test wake word detection in text"""
         # First add a wake word
         self.detector.add_wake_word("hey mira")
-        
+
         detection = self.detector.detect_wake_words_text(
             "test_client", "Hey Mira, how are you today?", audio_length=2.5
         )
@@ -78,7 +78,7 @@ class TestWakeWordDetector:
     def test_detect_wake_words_text_without_wake_word(self):
         """Test text without wake words"""
         self.detector.add_wake_word("hey mira")
-        
+
         detection = self.detector.detect_wake_words_text(
             "test_client", "Hello there, nice weather today", audio_length=1.5
         )
@@ -94,14 +94,14 @@ class TestWakeWordConfig:
         """Test WakeWordConfig dataclass creation"""
         def test_callback():
             return "test"
-        
+
         config = WakeWordConfig(
             word="test word",
             sensitivity=0.8,
             min_confidence=0.6,
             callback=test_callback
         )
-        
+
         assert config.word == "test word"
         assert config.sensitivity == 0.8
         assert config.min_confidence == 0.6
@@ -118,7 +118,7 @@ class TestWakeWordDetection:
             callback=True,
             audio_snippet_length=2.5
         )
-        
+
         assert detection.wake_word == "test"
         assert detection.confidence == 0.9
         assert detection.client_id == "client123"
@@ -136,9 +136,9 @@ class TestCommandProcessor:
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
         mock_get_models.return_value = [{"id": "llama-2-7b-chat-hf-function-calling-v3", "state": "loaded"}]
-        
+
         processor = CommandProcessor()
-        
+
         assert processor.model_manager is not None
 
     @patch('ml_model_manager.get_available_models')
@@ -149,9 +149,9 @@ class TestCommandProcessor:
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
         mock_get_models.return_value = [{"id": "llama-2-7b-chat-hf-function-calling-v3", "state": "loaded"}]
-        
+
         processor = CommandProcessor()
-        
+
         # Verify that the model manager was created and has tools
         assert processor.model_manager is not None
         # The tools are registered in load_model_tools, we can't easily test the count
@@ -166,21 +166,38 @@ class TestCommandProcessor:
         mock_open.return_value.__enter__.return_value.read.return_value = "system prompt"
         mock_json_load.return_value = {"type": "object"}
         mock_get_models.return_value = [{"id": "llama-2-7b-chat-hf-function-calling-v3", "state": "loaded"}]
-        
+
         # Mock the OpenAI response with JSON content
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '{"action": "response", "data": "AI response"}'
-        mock_create.return_value = mock_response
-        
+        from openai.types.chat import ChatCompletion, ChatCompletionMessage
+        from openai.types.chat.chat_completion import Choice
+        from openai.types.completion_usage import CompletionUsage
+
+        mock_completion = ChatCompletion(
+            id="chatcmpl-test",
+            object="chat.completion",
+            created=1234567890,
+            model="test-model",
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant", content='{"action": "response", "data": "AI response"}'
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        )
+        mock_create.return_value = mock_completion
+
         processor = CommandProcessor()
-        
+
         # Create a mock interaction
         interaction = Mock()
         interaction.text = "What time is it?"
-        
+
         result = processor.process_command(interaction)
-        
+
         assert result == {"action": "response", "data": "AI response"}
 
 
