@@ -13,18 +13,17 @@ Usage:
 import argparse
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import torch
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForLanguageModeling,
 )
+from transformers.training_args import TrainingArguments
+from transformers.trainer import Trainer
+from transformers.data.data_collator import DataCollatorForLanguageModeling
 from peft import LoraConfig, get_peft_model, TaskType
 from datasets import Dataset, load_dataset
 
@@ -34,11 +33,11 @@ logger = logging.getLogger(__name__)
 
 class ModelFineTuner:
     """Fine-tuning framework for Mira assistant models."""
-    
+
     def __init__(self, model_name: str, config_path: str):
         """
         Initialize the fine-tuner.
-        
+
         Args:
             model_name: Name of the model to fine-tune
             config_path: Path to model configuration file
@@ -48,26 +47,26 @@ class ModelFineTuner:
         self.tokenizer = None
         self.model = None
         self.peft_model = None
-        
+
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load model configuration from JSON file."""
         with open(config_path, 'r') as f:
             return json.load(f)
-    
+
     def setup_model_and_tokenizer(self, base_model_path: str):
         """
         Setup the base model and tokenizer.
-        
+
         Args:
             base_model_path: Path or name of the base model
         """
         logger.info(f"Loading tokenizer and model for {self.model_name}")
-        
+
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_path)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # Load model
         self.model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
@@ -75,33 +74,33 @@ class ModelFineTuner:
             device_map="auto",
             trust_remote_code=True,
         )
-        
+
         # Setup LoRA configuration
         lora_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             **self.config["fine_tuning"]["lora_config"]
         )
-        
+
         # Apply LoRA to model
         self.peft_model = get_peft_model(self.model, lora_config)
-        
+
         logger.info("Model and tokenizer setup complete")
-    
+
     def prepare_dataset(self, dataset_path: str) -> Dataset:
         """
         Prepare training dataset from JSONL file.
-        
+
         Args:
             dataset_path: Path to JSONL dataset file
-            
+
         Returns:
             Prepared dataset for training
         """
         logger.info(f"Loading dataset from {dataset_path}")
-        
+
         # Load dataset
         dataset = load_dataset('json', data_files=dataset_path, split='train')
-        
+
         # Tokenize dataset
         def tokenize_function(examples):
             # Format input based on model type
@@ -130,7 +129,13 @@ class ModelFineTuner:
                     if 'output' in examples:
                         text += examples['output'][i]
                     formatted_texts.append(text)
-            
+
+            if not formatted_texts:
+                return None
+
+            if self.tokenizer is None:
+                raise ValueError("Tokenizer is not initialized")
+
             tokenized = self.tokenizer(
                 formatted_texts,
                 truncation=True,
@@ -139,22 +144,22 @@ class ModelFineTuner:
             )
             tokenized["labels"] = tokenized["input_ids"].copy()
             return tokenized
-        
+
         tokenized_dataset = dataset.map(tokenize_function, batched=True)
-        
-        logger.info(f"Dataset prepared with {len(tokenized_dataset)} samples")
-        return tokenized_dataset
-    
+
+        logger.info(f"Dataset prepared with {len(tokenized_dataset)} samples")  # pyright: ignore[reportArgumentType]
+        return tokenized_dataset  # pyright: ignore[reportReturnType]
+
     def train(self, dataset: Dataset, output_dir: str):
         """
         Fine-tune the model.
-        
+
         Args:
             dataset: Prepared training dataset
             output_dir: Directory to save the fine-tuned model
         """
         logger.info("Starting fine-tuning process")
-        
+
         # Setup training arguments
         training_args = TrainingArguments(
             output_dir=output_dir,
@@ -162,13 +167,16 @@ class ModelFineTuner:
             remove_unused_columns=False,
             dataloader_pin_memory=False,
         )
-        
+
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer is not initialized")
+
         # Setup data collator
         data_collator = DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
             mlm=False,
         )
-        
+
         # Create trainer
         trainer = Trainer(
             model=self.peft_model,
@@ -176,14 +184,14 @@ class ModelFineTuner:
             train_dataset=dataset,
             data_collator=data_collator,
         )
-        
+
         # Start training
         trainer.train()
-        
+
         # Save the fine-tuned model
         trainer.save_model()
         self.tokenizer.save_pretrained(output_dir)
-        
+
         logger.info(f"Fine-tuning complete. Model saved to {output_dir}")
 
 
@@ -195,22 +203,22 @@ def main():
     parser.add_argument("--dataset", required=True, help="Path to training dataset (JSONL format)")
     parser.add_argument("--base-model", help="Path or name of base model (if different from model name)")
     parser.add_argument("--output-dir", help="Output directory for fine-tuned model")
-    
+
     args = parser.parse_args()
-    
+
     # Setup paths
     base_dir = Path(__file__).parent
     config_path = base_dir / args.model / "model_config.json"
     output_dir = args.output_dir or str(base_dir / args.model / "fine_tuned")
     base_model = args.base_model or args.model
-    
+
     # Create fine-tuner and run training
     fine_tuner = ModelFineTuner(args.model, str(config_path))
     fine_tuner.setup_model_and_tokenizer(base_model)
-    
+
     dataset = fine_tuner.prepare_dataset(args.dataset)
     fine_tuner.train(dataset, output_dir)
-    
+
     logger.info("Fine-tuning process completed successfully")
 
 

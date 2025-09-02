@@ -65,20 +65,14 @@ hosting_urls = {
 }
 
 
+from routers.service_router import router as service_router, disable_service
+from routers.interaction_router import router as interaction_router
+from routers.conversation_router import router as conversation_router
+from routers.persons_router import router as persons_router
+from routers.streams_router import router as streams_router
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from routers.service_router import router as service_router, disable_service
-    from routers.interaction_router import router as interaction_router
-    from routers.conversation_router import router as conversation_router
-    from routers.persons_router import router as persons_router
-    from routers.streams_router import router as streams_router
-
-    app.include_router(service_router)
-    app.include_router(interaction_router)
-    app.include_router(conversation_router)
-    app.include_router(persons_router)
-    app.include_router(streams_router)
-
     for interaction in (
         get_db_session().query(Interaction).order_by(Interaction.timestamp.desc()).limit(10).all()
     ):
@@ -92,6 +86,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(service_router)
+app.include_router(interaction_router)
+app.include_router(conversation_router)
+app.include_router(persons_router)
+app.include_router(streams_router)
 
 app.add_middleware(
     CORSMiddleware,

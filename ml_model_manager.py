@@ -63,27 +63,22 @@ class MLModelManager:
         model_names = [model.get("id", "") for model in available_models]
         model_states = [model.get("state", "") for model in available_models]
 
-        # if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-        #     raise ValueError(f"Model '{model_name}' not available or loaded")
+        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
+            raise ValueError(f"Model '{model_name}' not available or loaded")
 
         self.model = model_name
         self.system_prompt = system_prompt
         self.tools: list[chat.ChatCompletionToolParam] = []
         self.callables: Dict[str, Callable] = {}
-
-        if response_format is not None:
-            self.response_format: chat.completion_create_params.ResponseFormat = (
+        self.response_format: chat.completion_create_params.ResponseFormat | None = (
                 shared_params.ResponseFormatJSONSchema(
                     json_schema=shared_params.response_format_json_schema.JSONSchema(
-                        name="Response Model", schema=response_format
+                        name="Response Model", schema=response_format or {}
                     ),
                     type="json_schema",
                 )
-            )
-        else:
-            self.response_format: chat.completion_create_params.ResponseFormat = (
-                shared_params.ResponseFormatText(type="text")
-            )
+            ) if response_format is not None else None
+
 
         self.config = {
             **config_options,
@@ -208,19 +203,20 @@ class MLModelManager:
             raise RuntimeError(f"Model {self.model} generated no content")
 
         assistant_message = self.build_assistant_response(response)
+        api_params["messages"] = messages.extend(assistant_message)
 
         if assistant_message:
             messages.extend(assistant_message)
             response = client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.tools,
-                tool_choice="auto",
-                response_format=self.response_format,
-                **self.config,
-                timeout=60,
+                **api_params
             )
 
+        content = response.choices[0].message.content
+        if content:
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                raise  # Re-raise the JSONDecodeError
         return response
 
 

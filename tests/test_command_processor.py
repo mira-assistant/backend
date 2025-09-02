@@ -168,10 +168,27 @@ class TestCommandProcessor:
         mock_get_models.return_value = [{"id": "llama-2-7b-chat-hf-function-calling-v3", "state": "loaded"}]
 
         # Mock the OpenAI response with JSON content
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '{"action": "response", "data": "AI response"}'
-        mock_create.return_value = mock_response
+        from openai.types.chat import ChatCompletion, ChatCompletionMessage
+        from openai.types.chat.chat_completion import Choice
+        from openai.types.completion_usage import CompletionUsage
+
+        mock_completion = ChatCompletion(
+            id="chatcmpl-test",
+            object="chat.completion",
+            created=1234567890,
+            model="test-model",
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant", content='{"action": "response", "data": "AI response"}'
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        )
+        mock_create.return_value = mock_completion
 
         processor = CommandProcessor()
 
