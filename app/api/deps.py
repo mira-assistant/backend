@@ -1,6 +1,7 @@
 """
 API dependencies for FastAPI.
 """
+
 from typing import Generator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -15,7 +16,7 @@ security = HTTPBearer()
 
 
 def get_current_user_dependency(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     """Get current user from JWT token."""
     return get_current_user(credentials.credentials)
@@ -27,11 +28,10 @@ def get_db_dependency() -> Generator[Session, None, None]:
 
 
 def get_optional_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     """Get current user from JWT token (optional)."""
     try:
         return get_current_user(credentials.credentials)
     except HTTPException:
         return None
-

@@ -1,6 +1,7 @@
 """
 Task management endpoints.
 """
+
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ router = APIRouter()
 def create_action(
     action: ActionCreate,
     db: Session = Depends(get_db_dependency),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     """Create a new action/task."""
     db_action = ActionModel(**action.dict())
@@ -32,12 +33,16 @@ def get_actions(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db_dependency),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     """Get all actions for the current user."""
-    actions = db.query(ActionModel).filter(
-        ActionModel.user_id == current_user["user_id"]
-    ).offset(skip).limit(limit).all()
+    actions = (
+        db.query(ActionModel)
+        .filter(ActionModel.user_id == current_user["user_id"])
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return actions
 
 
@@ -45,13 +50,16 @@ def get_actions(
 def get_action(
     action_id: str,
     db: Session = Depends(get_db_dependency),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     """Get a specific action by ID."""
-    action = db.query(ActionModel).filter(
-        ActionModel.id == uuid.UUID(action_id),
-        ActionModel.user_id == current_user["user_id"]
-    ).first()
+    action = (
+        db.query(ActionModel)
+        .filter(
+            ActionModel.id == uuid.UUID(action_id), ActionModel.user_id == current_user["user_id"]
+        )
+        .first()
+    )
 
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
@@ -64,13 +72,16 @@ def update_action(
     action_id: str,
     action_update: ActionUpdate,
     db: Session = Depends(get_db_dependency),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     """Update an action."""
-    action = db.query(ActionModel).filter(
-        ActionModel.id == uuid.UUID(action_id),
-        ActionModel.user_id == current_user["user_id"]
-    ).first()
+    action = (
+        db.query(ActionModel)
+        .filter(
+            ActionModel.id == uuid.UUID(action_id), ActionModel.user_id == current_user["user_id"]
+        )
+        .first()
+    )
 
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
@@ -87,13 +98,16 @@ def update_action(
 def delete_action(
     action_id: str,
     db: Session = Depends(get_db_dependency),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     """Delete an action."""
-    action = db.query(ActionModel).filter(
-        ActionModel.id == uuid.UUID(action_id),
-        ActionModel.user_id == current_user["user_id"]
-    ).first()
+    action = (
+        db.query(ActionModel)
+        .filter(
+            ActionModel.id == uuid.UUID(action_id), ActionModel.user_id == current_user["user_id"]
+        )
+        .first()
+    )
 
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
@@ -102,4 +116,3 @@ def delete_action(
     db.commit()
 
     return {"detail": "Action deleted successfully"}
-

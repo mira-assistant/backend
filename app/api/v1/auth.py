@@ -1,6 +1,7 @@
 """
 Authentication endpoints.
 """
+
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -19,23 +20,20 @@ router = APIRouter()
 def register_user(user: UserCreate, db: Session = Depends(get_db_dependency)):
     """Register a new user."""
     # Check if user already exists
-    db_user = db.query(UserModel).filter(
-        (UserModel.username == user.username) | (UserModel.email == user.email)
-    ).first()
+    db_user = (
+        db.query(UserModel)
+        .filter((UserModel.username == user.username) | (UserModel.email == user.email))
+        .first()
+    )
 
     if db_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already registered"
         )
 
     # Create new user
     hashed_password = get_password_hash(user.password)
-    db_user = UserModel(
-        username=user.username,
-        email=user.email,
-        hashed_password=hashed_password
-    )
+    db_user = UserModel(username=user.username, email=user.email, hashed_password=hashed_password)
 
     db.add(db_user)
     db.commit()
@@ -45,7 +43,9 @@ def register_user(user: UserCreate, db: Session = Depends(get_db_dependency)):
 
 
 @router.post("/login", response_model=Token)
-def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db_dependency)):
+def login_user(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db_dependency)
+):
     """Login user and return access token."""
     user = db.query(UserModel).filter(UserModel.username == form_data.username).first()
 
@@ -57,10 +57,7 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
@@ -71,12 +68,12 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
 
 
 @router.get("/me", response_model=User)
-def get_current_user_info(current_user: dict = Depends(get_current_user_dependency), db: Session = Depends(get_db_dependency)):
+def get_current_user_info(
+    current_user: dict = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db_dependency),
+):
     """Get current user information."""
     user = db.query(UserModel).filter(UserModel.username == current_user["sub"]).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user

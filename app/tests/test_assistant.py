@@ -1,6 +1,7 @@
 """
 Assistant API tests.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -15,10 +16,7 @@ client = TestClient(app)
 @pytest.fixture
 def test_person(db: Session):
     """Create a test person."""
-    person = Person(
-        name="Test Person",
-        index=1
-    )
+    person = Person(name="Test Person", index=1)
     db.add(person)
     db.commit()
     db.refresh(person)
@@ -28,10 +26,7 @@ def test_person(db: Session):
 @pytest.fixture
 def test_interaction(db: Session, test_person):
     """Create a test interaction."""
-    interaction = Interaction(
-        text="Hello, this is a test interaction",
-        speaker_id=test_person.id
-    )
+    interaction = Interaction(text="Hello, this is a test interaction", speaker_id=test_person.id)
     db.add(interaction)
     db.commit()
     db.refresh(interaction)
@@ -75,4 +70,3 @@ def test_interaction_inference(test_interaction):
     # This might return 200 with a message or 500 if inference fails
     # The exact behavior depends on the inference service implementation
     assert response.status_code in [200, 500]
-

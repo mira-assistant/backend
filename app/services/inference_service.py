@@ -1,6 +1,7 @@
 """
 Inference service for action extraction.
 """
+
 import json
 import logging
 from app.services.ai_engine import MLModelManager
@@ -28,9 +29,7 @@ class InferenceProcessor:
             structured_response = {}
 
         self.model_manager = MLModelManager(
-            "tiiuae-falcon-40b-instruct",
-            system_prompt,
-            structured_response
+            "tiiuae-falcon-40b-instruct", system_prompt, structured_response
         )
 
         logging.info("InferenceProcessor initialized")

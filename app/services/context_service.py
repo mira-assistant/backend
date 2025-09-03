@@ -1,6 +1,7 @@
 """
 Context processing service for conversation management.
 """
+
 from __future__ import annotations
 
 import re
@@ -21,7 +22,6 @@ from app.models.person import Person
 from app.models.interaction import Interaction
 from app.models.conversation import Conversation
 from app.core.config import settings
-from app.db.session import get_db_session
 
 from typing import Literal
 
@@ -31,11 +31,13 @@ class ContextProcessorConfig:
 
     class NLPConfig:
         """Natural Language Processing parameters."""
+
         SPACY_MODEL: Literal["en_core_web_sm"] = "en_core_web_sm"
         CONTEXT_SIMILARITY_THRESHOLD: float = settings.context_similarity_threshold
 
     class ContextManagementParameters:
         """Parameters for managing context and conversation boundaries."""
+
         CONVERSATION_GAP_THRESHOLD: int = settings.conversation_gap_threshold
         SHORT_TERM_CONTEXT_MAX_RESULTS: Literal[20] = 20
         LONG_TERM_CONTEXT_MAX_RESULTS: Literal[5] = 5
@@ -43,12 +45,14 @@ class ContextProcessorConfig:
 
     class PerformanceConfig:
         """Performance optimization parameters."""
+
         BATCH_PROCESSING: Literal[False] = False
         CACHE_EMBEDDINGS: Literal[True] = True
         ASYNC_PROCESSING: Literal[False] = False
 
     class DebugConfig:
         """Debugging and logging parameters."""
+
         DEBUG_MODE: Literal[False] = False
         LOG_LEVEL: Literal["INFO"] = "INFO"
 
@@ -83,7 +87,7 @@ class ContextProcessor:
         """Process NLP features for a SQLAlchemy interaction."""
         try:
             # Named Entity Recognition
-            doc = self.spacy_model(interaction.text)
+            doc = self.spacy_model(interaction.text)  # type: ignore
             entities_list = [
                 {
                     "text": ent.text,
@@ -94,19 +98,19 @@ class ContextProcessor:
                 for ent in doc.ents
             ]
 
-            interaction.entities = json.dumps(entities_list)
+            interaction.entities = json.dumps(entities_list)  # type: ignore
 
             # Sentiment Analysis
-            sentiment_result = self.sentiment_pipeline(interaction.text)
+            sentiment_result = self.sentiment_pipeline(interaction.text)  # type: ignore
             if sentiment_result and len(sentiment_result[0]) > 0:
                 positive_score = next(
-                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),
+                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),  # type: ignore
                     0.5,
                 )
-                interaction.sentiment = positive_score
+                interaction.sentiment = positive_score  # type: ignore
 
             # Text Embedding for semantic similarity
-            embedding = self.sentence_transformer.encode(interaction.text, show_progress_bar=False)
+            embedding = self.sentence_transformer.encode(interaction.text, show_progress_bar=False)  # type: ignore
             interaction.text_embedding = embedding.tolist()
 
         except Exception as e:
@@ -145,8 +149,8 @@ class ContextProcessor:
         ):
             return True
 
-        current_doc = self.spacy_model(current_interaction.text)
-        last_doc = self.spacy_model(last_interaction.text)
+        current_doc = self.spacy_model(current_interaction.text)  # type: ignore
+        last_doc = self.spacy_model(last_interaction.text)  # type: ignore
 
         try:
             topic_similarity = current_doc.similarity(last_doc)
@@ -196,9 +200,9 @@ class ContextProcessor:
     def get_long_term_context(
         self,
         keywords: List[str],
+        db: Session,
         current_interaction: Optional[Interaction] = None,
         max_results: Optional[int] = None,
-        db: Session = None
     ) -> List[Interaction]:
         """Long-term context retrieval with semantic similarity from database."""
         max_results = (
@@ -287,7 +291,7 @@ class ContextProcessor:
             short_term = short_term[:-1]
 
         keywords = self._extract_keywords(interaction.text)
-        long_term = self.get_long_term_context(keywords, interaction, db=db)
+        long_term = self.get_long_term_context(keywords, db, interaction)
         long_term = [i for i in long_term if str(i.text) != interaction.text]
 
         context_parts = []
@@ -371,11 +375,70 @@ class ContextProcessor:
         """Keyword extraction with NLP features."""
         words = str(text).lower().split()
         stop_words = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
-            "is", "am", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
-            "will", "would", "could", "should", "may", "might", "can", "i", "me", "my", "myself",
-            "you", "your", "yours", "yourself", "he", "him", "his", "himself", "she", "her", "hers", "herself",
-            "it", "its", "itself", "we", "us", "our", "ours", "ourselves", "they", "them", "their", "theirs", "themselves",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "am",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "i",
+            "me",
+            "my",
+            "myself",
+            "you",
+            "your",
+            "yours",
+            "yourself",
+            "he",
+            "him",
+            "his",
+            "himself",
+            "she",
+            "her",
+            "hers",
+            "herself",
+            "it",
+            "its",
+            "itself",
+            "we",
+            "us",
+            "our",
+            "ours",
+            "ourselves",
+            "they",
+            "them",
+            "their",
+            "theirs",
+            "themselves",
         }
 
         keywords = []
@@ -391,8 +454,37 @@ class ContextProcessor:
         action_keywords = {
             "contact": ["call", "text", "message", "email", "tell", "contact", "reach out"],
             "remind": ["remind", "remember", "later", "tomorrow", "next week", "schedule reminder"],
-            "schedule": ["schedule", "appointment", "meeting", "book", "plan", "event", "calendar", "let's", "let us", "we'll", "we will", "we're", "we are", "we can", "we could", "we should", "we might"],
-            "generic": ["yes", "okay", "sure", "alright", "sounds good", "go ahead", "do it", "i'm", "i'll", "bet"],
+            "schedule": [
+                "schedule",
+                "appointment",
+                "meeting",
+                "book",
+                "plan",
+                "event",
+                "calendar",
+                "let's",
+                "let us",
+                "we'll",
+                "we will",
+                "we're",
+                "we are",
+                "we can",
+                "we could",
+                "we should",
+                "we might",
+            ],
+            "generic": [
+                "yes",
+                "okay",
+                "sure",
+                "alright",
+                "sounds good",
+                "go ahead",
+                "do it",
+                "i'm",
+                "i'll",
+                "bet",
+            ],
         }
 
         text_lower = str(text).lower()
@@ -422,4 +514,3 @@ class ContextProcessor:
         except Exception as e:
             self.logger.error(f"Error building context: {e}")
             return "", False
-

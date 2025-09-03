@@ -41,7 +41,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Pytest (Unit Tests)
-        run: pytest
+        run: pytest app/tests/
 
       - name: Dependency audit (ignore en-core-web-sm warning)
         run: |

@@ -1,6 +1,7 @@
 """
 Command processing service.
 """
+
 import logging
 import threading
 from typing import Dict, List, Optional, Callable
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WakeWordDetection:
     """Container for wake word detection result"""
+
     wake_word: str
     confidence: float
     client_id: str
@@ -29,6 +31,7 @@ class WakeWordDetection:
 @dataclass
 class WakeWordConfig:
     """Configuration for a wake word"""
+
     word: str
     sensitivity: float = 0.7
     min_confidence: float = 0.5
@@ -40,14 +43,14 @@ class WakeWordDetector:
     Wake Word Detection System for monitoring audio streams.
     """
 
-    def __init__(self, sample_rate: int = None):
+    def __init__(self):
         """
         Initialize the wake word detector.
 
         Args:
             sample_rate: Audio sample rate for processing
         """
-        self.sample_rate = sample_rate or settings.sample_rate
+        self.sample_rate = settings.sample_rate
         self.wake_words: Dict[str, WakeWordConfig] = {}
         self.detection_callbacks: List[Callable[[WakeWordDetection], None]] = []
         self._lock = threading.Lock()

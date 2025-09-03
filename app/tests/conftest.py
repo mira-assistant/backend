@@ -1,6 +1,7 @@
 """
 Test configuration and fixtures.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -25,11 +26,13 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 def override_get_db():
     """Override database dependency for testing."""
+    db = None
     try:
         db = TestingSessionLocal()
         yield db
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 app.dependency_overrides[get_db] = override_get_db
@@ -62,4 +65,3 @@ def db(db_engine):
 def client():
     """Create test client."""
     return TestClient(app)
-

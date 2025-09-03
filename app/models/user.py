@@ -1,6 +1,7 @@
 """
 User model for authentication and user management.
 """
+
 from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
@@ -27,4 +28,3 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-

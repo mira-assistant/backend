@@ -1,6 +1,7 @@
 """
 Database initialization utilities.
 """
+
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, create_tables
 from app.models.user import User
@@ -38,4 +39,3 @@ def reset_db() -> None:
 
     # Initialize with default data
     init_db()
-

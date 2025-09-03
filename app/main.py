@@ -1,6 +1,7 @@
 """
 FastAPI application entrypoint.
 """
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,7 +62,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Mira AI Assistant Backend API",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -86,7 +87,7 @@ def root():
         "message": "Mira Backend API",
         "version": settings.app_version,
         "status": "running",
-        "status_info": status
+        "status_info": status,
     }
 
 
@@ -98,10 +99,5 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug
-    )
 
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=settings.debug)

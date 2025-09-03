@@ -1,6 +1,7 @@
 """
 Task management tests.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ def test_user_with_token(db: Session):
         username="taskuser",
         email="task@example.com",
         hashed_password=get_password_hash("taskpassword"),
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -28,11 +29,7 @@ def test_user_with_token(db: Session):
 
     # Login to get token
     login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "taskuser",
-            "password": "taskpassword"
-        }
+        "/api/v1/auth/login", data={"username": "taskuser", "password": "taskpassword"}
     )
     token = login_response.json()["access_token"]
 
@@ -45,12 +42,8 @@ def test_create_action(test_user_with_token):
 
     response = client.post(
         "/api/v1/tasks/",
-        json={
-            "user_id": str(user.id),
-            "action_type": "reminder",
-            "details": "Test reminder"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"user_id": str(user.id), "action_type": "reminder", "details": "Test reminder"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -63,10 +56,7 @@ def test_get_actions(test_user_with_token):
     """Test getting user actions."""
     user, token = test_user_with_token
 
-    response = client.get(
-        "/api/v1/tasks/",
-        headers={"Authorization": f"Bearer {token}"}
-    )
+    response = client.get("/api/v1/tasks/", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -79,19 +69,14 @@ def test_get_action(test_user_with_token):
     # First create an action
     create_response = client.post(
         "/api/v1/tasks/",
-        json={
-            "user_id": str(user.id),
-            "action_type": "reminder",
-            "details": "Test reminder"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"user_id": str(user.id), "action_type": "reminder", "details": "Test reminder"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     action_id = create_response.json()["id"]
 
     # Then get it
     response = client.get(
-        f"/api/v1/tasks/{action_id}",
-        headers={"Authorization": f"Bearer {token}"}
+        f"/api/v1/tasks/{action_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     data = response.json()
@@ -105,23 +90,16 @@ def test_update_action(test_user_with_token):
     # First create an action
     create_response = client.post(
         "/api/v1/tasks/",
-        json={
-            "user_id": str(user.id),
-            "action_type": "reminder",
-            "details": "Test reminder"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"user_id": str(user.id), "action_type": "reminder", "details": "Test reminder"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     action_id = create_response.json()["id"]
 
     # Then update it
     response = client.put(
         f"/api/v1/tasks/{action_id}",
-        json={
-            "status": "completed",
-            "details": "Updated reminder"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"status": "completed", "details": "Updated reminder"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -136,19 +114,14 @@ def test_delete_action(test_user_with_token):
     # First create an action
     create_response = client.post(
         "/api/v1/tasks/",
-        json={
-            "user_id": str(user.id),
-            "action_type": "reminder",
-            "details": "Test reminder"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"user_id": str(user.id), "action_type": "reminder", "details": "Test reminder"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     action_id = create_response.json()["id"]
 
     # Then delete it
     response = client.delete(
-        f"/api/v1/tasks/{action_id}",
-        headers={"Authorization": f"Bearer {token}"}
+        f"/api/v1/tasks/{action_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     data = response.json()
@@ -159,4 +132,3 @@ def test_unauthorized_access():
     """Test accessing tasks without authentication."""
     response = client.get("/api/v1/tasks/")
     assert response.status_code == 401
-

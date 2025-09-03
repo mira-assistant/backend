@@ -1,6 +1,7 @@
 """
 Action model for storing user actions and tasks.
 """
+
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -30,4 +31,3 @@ class Action(Base):
     status = Column(String, default="pending")
     scheduled_time = Column(DateTime, nullable=True)
     completed_time = Column(DateTime, nullable=True)
-

@@ -1,6 +1,7 @@
 """
 Security utilities for authentication and authorization.
 """
+
 from datetime import datetime, timedelta
 from typing import Optional, Union
 from jose import JWTError, jwt
@@ -60,6 +61,3 @@ def get_current_user(token: str) -> dict:
         raise credentials_exception
 
     return payload
-
-
-

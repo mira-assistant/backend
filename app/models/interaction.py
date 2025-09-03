@@ -1,6 +1,7 @@
 """
 Interaction model for storing conversation interactions.
 """
+
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -36,4 +37,3 @@ class Interaction(Base):
 
     person = relationship("Person", back_populates="interactions")
     conversation = relationship("Conversation", back_populates="interactions")
-

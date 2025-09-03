@@ -1,13 +1,12 @@
 """
 AI Assistant endpoints.
 """
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import uuid
 
-from app.api.deps import get_db_dependency, get_optional_current_user
-from app.schemas.interaction import Interaction, InteractionCreate
-from app.schemas.action import Action
+from app.api.deps import get_db_dependency
 from app.models.interaction import Interaction as InteractionModel
 from app.models.person import Person
 from app.services.command_service import CommandProcessor, WakeWordDetector
@@ -27,14 +26,13 @@ context_processor = ContextProcessor()
 async def register_interaction(
     audio: UploadFile = File(...),
     client_id: str = Form(...),
-    db: Session = Depends(get_db_dependency)
+    db: Session = Depends(get_db_dependency),
 ):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
 
     if len(await audio.read()) == 0:
         raise HTTPException(
-            status_code=400,
-            detail="Received empty audio data. Please provide valid audio."
+            status_code=400, detail="Received empty audio data. Please provide valid audio."
         )
 
     # Reset file pointer
@@ -57,7 +55,7 @@ async def register_interaction(
         # Check for wake words
         speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
 
-        if speaker and speaker.index == 1:  # Assuming index 1 is the primary user
+        if speaker and speaker.index == 1:  # type: ignore
             wake_word_detection = wake_word_detector.detect_wake_words_text(
                 client_id=client_id,
                 transcribed_text=interaction_data["text"],
@@ -85,10 +83,7 @@ async def register_interaction(
 
 
 @router.get("/interactions/{interaction_id}")
-def get_interaction(
-    interaction_id: str,
-    db: Session = Depends(get_db_dependency)
-):
+def get_interaction(interaction_id: str, db: Session = Depends(get_db_dependency)):
     """Get a specific interaction by ID."""
     try:
         interaction = db.query(InteractionModel).filter_by(id=uuid.UUID(interaction_id)).first()
@@ -102,10 +97,7 @@ def get_interaction(
 
 
 @router.post("/interactions/{interaction_id}/inference")
-def interaction_inference(
-    interaction_id: str,
-    db: Session = Depends(get_db_dependency)
-):
+def interaction_inference(interaction_id: str, db: Session = Depends(get_db_dependency)):
     """Inference endpoint with database-backed context integration."""
 
     try:
@@ -128,10 +120,7 @@ def interaction_inference(
 
 
 @router.delete("/interactions/{interaction_id}")
-def delete_interaction(
-    interaction_id: str,
-    db: Session = Depends(get_db_dependency)
-):
+def delete_interaction(interaction_id: str, db: Session = Depends(get_db_dependency)):
     """Delete a specific interaction from the database."""
     try:
         interaction = db.query(InteractionModel).filter_by(id=uuid.UUID(interaction_id)).first()
@@ -145,4 +134,3 @@ def delete_interaction(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete interaction: {str(e)}")
-

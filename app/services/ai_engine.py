@@ -1,6 +1,7 @@
 """
 AI Engine service for managing ML models and inference.
 """
+
 import inspect
 import json
 import logging
@@ -40,23 +41,24 @@ class MLModelManager:
         self.tools: list[chat.ChatCompletionToolParam] = []
         self.callables: Dict[str, Callable] = {}
         self.response_format: chat.completion_create_params.ResponseFormat | None = (
+            (
                 shared_params.ResponseFormatJSONSchema(
                     json_schema=shared_params.response_format_json_schema.JSONSchema(
                         name="Response Model", schema=response_format or {}
                     ),
                     type="json_schema",
                 )
-            ) if response_format is not None else None
+            )
+            if response_format is not None
+            else None
+        )
 
         self.config = {
             **config_options,
         }
 
         # Initialize OpenAI client
-        self.client = OpenAI(
-            base_url=settings.lm_studio_url,
-            api_key=settings.lm_studio_api_key
-        )
+        self.client = OpenAI(base_url=settings.lm_studio_url, api_key=settings.lm_studio_api_key)
 
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
@@ -155,7 +157,7 @@ class MLModelManager:
 
         messages.append(
             chat.ChatCompletionUserMessageParam(
-                content=interaction.text,
+                content=interaction.text,  # type: ignore
                 role="user",
             )
         )
@@ -199,10 +201,7 @@ def get_available_models() -> List[Dict[str, Any]]:
         List[Dict]: List of available model information
     """
     try:
-        client = OpenAI(
-            base_url=settings.lm_studio_url,
-            api_key=settings.lm_studio_api_key
-        )
+        client = OpenAI(base_url=settings.lm_studio_url, api_key=settings.lm_studio_api_key)
         response = client.models.list()
         data = response.model_dump()["data"]
         return data

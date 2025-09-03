@@ -1,6 +1,7 @@
 """
 Conversation model for managing conversation sessions.
 """
+
 from sqlalchemy import Column, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -25,4 +26,3 @@ class Conversation(Base):
     context_summary = Column(Text, nullable=True)
 
     interactions = relationship("Interaction", back_populates="conversation")
-

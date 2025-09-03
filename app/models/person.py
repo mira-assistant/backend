@@ -1,6 +1,7 @@
 """
 Person model for speaker recognition and management.
 """
+
 from sqlalchemy import Column, String, DateTime, Integer, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, object_session
@@ -43,12 +44,11 @@ class Person(Base):
             return []
 
         from app.models.conversation import Conversation
+
         return (
             session.query(Conversation)
             .filter(
-                Conversation.user_ids.isnot(None),
-                Conversation.user_ids.contains([str(self.id)])
+                Conversation.user_ids.isnot(None), Conversation.user_ids.contains([str(self.id)])
             )
             .all()
         )
-
