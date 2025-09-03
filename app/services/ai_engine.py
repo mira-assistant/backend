@@ -1,32 +1,17 @@
 """
-ML Model Manager
-
-This module manages all interactions with the LM Studio server for both command inference
-and action data extraction. It provides a unified interface for AI model communication
-with support for structured prompts, callback functions, and recursive execution.
-
-Features:
-- Command inference with callback function support
-- Action data extraction for calendar entries, etc.
-- Structured prompt management as state variables
-- Recursive callback execution with context
-- Model management and availability checking
-- Configurable model and payload parameters
+AI Engine service for managing ML models and inference.
 """
-
 import inspect
 import json
 import logging
 from typing import Dict, List, Optional, Any, Callable
 from openai import OpenAI
 from openai.types import chat, shared_params
-from models import Interaction
 
+from app.core.config import settings
+from app.models.interaction import Interaction
 
 logger = logging.getLogger(__name__)
-
-LM_STUDIO_URL = "http://localhost:1234/v1"
-client = OpenAI(base_url=LM_STUDIO_URL, api_key="lm-studio")
 
 
 class MLModelManager:
@@ -48,24 +33,8 @@ class MLModelManager:
             model_name: Name of the model to use for inference
             system_prompt: Custom system prompt or uses default
             response_format: Optional JSON schema for structured output
-            **config_options: Additional configuration options including:
-                - temperature: Sampling temperature (0.0-2.0), default 0.7
-                - max_tokens: Maximum number of tokens to generate
-                - top_k: Top-k sampling parameter
-                - top_p: Top-p sampling parameter
-                - repetition_penalty: Repetition penalty
-                - frequency_penalty: Frequency penalty
-                - presence_penalty: Presence penalty
+            **config_options: Additional configuration options
         """
-
-        available_models = get_available_models()
-
-        model_names = [model.get("id", "") for model in available_models]
-        model_states = [model.get("state", "") for model in available_models]
-
-        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            raise ValueError(f"Model '{model_name}' not available or loaded")
-
         self.model = model_name
         self.system_prompt = system_prompt
         self.tools: list[chat.ChatCompletionToolParam] = []
@@ -79,14 +48,20 @@ class MLModelManager:
                 )
             ) if response_format is not None else None
 
-
         self.config = {
             **config_options,
         }
 
+        # Initialize OpenAI client
+        self.client = OpenAI(
+            base_url=settings.lm_studio_url,
+            api_key=settings.lm_studio_api_key
+        )
+
         logger.info(f"MLModelManager initialized with model: {model_name}")
 
     def register_tool(self, function: "Callable", description: str):
+        """Register a tool function for the model."""
         parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
 
         self.tools.append(
@@ -101,10 +76,10 @@ class MLModelManager:
         )
 
         self.callables[function.__name__] = function
-
         logger.info(f"Registered tool: {function.__name__}")
 
     def build_assistant_response(self, response) -> list[chat.ChatCompletionAssistantMessageParam]:
+        """Build assistant response with tool calls."""
         tool_calls = response.choices[0].message.tool_calls
 
         if not tool_calls:
@@ -162,7 +137,6 @@ class MLModelManager:
         Returns:
             Dict: Response from the model
         """
-
         messages: list[chat.ChatCompletionMessageParam] = list()
 
         messages.append(
@@ -181,7 +155,7 @@ class MLModelManager:
 
         messages.append(
             chat.ChatCompletionUserMessageParam(
-                content=interaction.text,  # type: ignore
+                content=interaction.text,
                 role="user",
             )
         )
@@ -197,19 +171,16 @@ class MLModelManager:
         if self.response_format is not None:
             api_params["response_format"] = self.response_format
 
-        response = client.chat.completions.create(**api_params, timeout=60)
+        response = self.client.chat.completions.create(**api_params, timeout=60)
 
         if response.choices[0].message.content is None:
             raise RuntimeError(f"Model {self.model} generated no content")
 
         assistant_message = self.build_assistant_response(response)
-        api_params["messages"] = messages.extend(assistant_message)
 
         if assistant_message:
             messages.extend(assistant_message)
-            response = client.chat.completions.create(
-                **api_params
-            )
+            response = self.client.chat.completions.create(**api_params)
 
         content = response.choices[0].message.content
         if content:
@@ -228,9 +199,12 @@ def get_available_models() -> List[Dict[str, Any]]:
         List[Dict]: List of available model information
     """
     try:
+        client = OpenAI(
+            base_url=settings.lm_studio_url,
+            api_key=settings.lm_studio_api_key
+        )
         response = client.models.list()
         data = response.model_dump()["data"]
-
         return data
     except Exception as e:
         logger.error(f"Failed to get available models: {e}")

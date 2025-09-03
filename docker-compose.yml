@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mira-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./mira.db
+      - LM_STUDIO_URL=http://lm-studio:1234/v1
+      - SECRET_KEY=your-secret-key-here
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data
+      - ./mira.db:/app/mira.db
+    depends_on:
+      - lm-studio
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  lm-studio:
+    image: lmstudioai/lm-studio:latest
+    ports:
+      - "1234:1234"
+    volumes:
+      - lm-studio-data:/root/.cache/lm-studio
+    restart: unless-stopped
+    environment:
+      - LM_STUDIO_HOST=0.0.0.0
+      - LM_STUDIO_PORT=1234
+
+volumes:
+  lm-studio-data:
+
