@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import warnings
 
-
 from db import get_db_session
 from models import Interaction
 
@@ -15,6 +14,7 @@ from processors.inference_processor import InferenceProcessor
 from processors.context_processor import ContextProcessor
 from processors.multi_stream_processor import MultiStreamProcessor
 from processors.command_processor import CommandProcessor, WakeWordDetector
+
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module=".*webrtcvad.*")
@@ -44,6 +44,7 @@ handler.setFormatter(
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
+
 context_processor = ContextProcessor()
 audio_scorer = MultiStreamProcessor()
 wake_word_detector = WakeWordDetector()
@@ -70,6 +71,7 @@ from routers.interaction_router import router as interaction_router
 from routers.conversation_router import router as conversation_router
 from routers.persons_router import router as persons_router
 from routers.streams_router import router as streams_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
