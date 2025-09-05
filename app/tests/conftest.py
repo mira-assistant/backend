@@ -1,5 +1,5 @@
 """
-Test configuration and fixtures.
+Test fixtures and configuration.
 """
 
 import pytest
@@ -8,16 +8,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.main import app
 from app.db.base import Base
-from app.db.session import get_db
-from app.api.deps import get_db_dependency
+from app.db.session import get_db_session
+from app.main import app
+from app.models.network import MiraNetwork
 
-# Create test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+
+# Create in-memory test database
+SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    SQLALCHEMY_TEST_DATABASE_URL,
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
@@ -25,43 +26,40 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 def override_get_db():
-    """Override database dependency for testing."""
-    db = None
+    """Override database session for testing."""
     try:
         db = TestingSessionLocal()
         yield db
     finally:
-        if db is not None:
-            db.close()
+        db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-app.dependency_overrides[get_db_dependency] = override_get_db
+# Override database dependency
+app.dependency_overrides[get_db_session] = override_get_db
 
 
-@pytest.fixture(scope="session")
-def db_engine():
-    """Create test database engine."""
+@pytest.fixture
+def test_db():
+    """Create test database and tables."""
     Base.metadata.create_all(bind=engine)
-    yield engine
+    yield TestingSessionLocal()
     Base.metadata.drop_all(bind=engine)
 
 
-@pytest.fixture(scope="function")
-def db(db_engine):
-    """Create test database session."""
-    connection = db_engine.connect()
-    transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
-
-    yield session
-
-    session.close()
-    transaction.rollback()
-    connection.close()
-
-
-@pytest.fixture(scope="function")
+@pytest.fixture
 def client():
     """Create test client."""
     return TestClient(app)
+
+
+@pytest.fixture
+def test_network(test_db):
+    """Create test network."""
+    network = MiraNetwork.create(
+        name="Test Network",
+        password="testpassword123"
+    )
+    test_db.add(network)
+    test_db.commit()
+    test_db.refresh(network)
+    return network

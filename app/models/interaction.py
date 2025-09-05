@@ -1,19 +1,14 @@
 """
-Interaction model for storing conversation interactions.
+Interaction model for managing user interactions.
 """
 
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Float
+from sqlalchemy import Column, Float, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
-from typing import TYPE_CHECKING
 
 from app.db.base import Base
-
-if TYPE_CHECKING:
-    from app.models.person import Person
-    from app.models.conversation import Conversation
 
 
 class Interaction(Base):
@@ -23,9 +18,8 @@ class Interaction(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    text = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True)
 
     voice_embedding = Column(JSON, nullable=True)
     speaker_id = Column(UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True)
@@ -35,5 +29,7 @@ class Interaction(Base):
     topics = Column(JSON, nullable=True)
     sentiment = Column(Float, nullable=True)
 
+    # Relationships
     person = relationship("Person", back_populates="interactions")
     conversation = relationship("Conversation", back_populates="interactions")
+    network = relationship("MiraNetwork", back_populates="interactions")

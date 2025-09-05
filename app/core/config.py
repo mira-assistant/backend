@@ -25,10 +25,6 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: List[str] = Field(default=["*"])
 
-    # Security
-    secret_key: str = Field(default="your-secret-key-here")
-    access_token_expire_minutes: int = Field(default=30)
-
     # Logging
     log_level: str = Field(default="INFO")
 

@@ -2,13 +2,13 @@
 AI Assistant endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 import uuid
 
-from app.api.deps import get_db_dependency
+from app.api.deps import get_db_dependency, get_network_auth_dependency
+from app.models.network import MiraNetwork
 from app.models.interaction import Interaction as InteractionModel
-from app.models.person import Person
 from app.services.command_service import CommandProcessor, WakeWordDetector
 from app.services.inference_service import InferenceProcessor
 from app.services.context_service import ContextProcessor
@@ -22,17 +22,25 @@ inference_processor = InferenceProcessor()
 context_processor = ContextProcessor()
 
 
-@router.post("/interactions/register")
+@router.post("/networks/{network_id}/interactions/register")
 async def register_interaction(
+    network_id: str,
+    password: str,
     audio: UploadFile = File(...),
-    client_id: str = Form(...),
-    db: Session = Depends(get_db_dependency),
+    network: MiraNetwork = Depends(get_network_auth_dependency()),
+    db: Session = Depends(get_db_dependency)
 ):
-    """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
+    """Register interaction - transcribe sentence and process commands."""
+    if not network.service_enabled:  # type: ignore
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Network service is currently disabled"
+        )
 
     if len(await audio.read()) == 0:
         raise HTTPException(
-            status_code=400, detail="Received empty audio data. Please provide valid audio."
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Received empty audio data"
         )
 
     # Reset file pointer
@@ -40,11 +48,10 @@ async def register_interaction(
     sentence_buf_raw = await audio.read()
 
     try:
-        # This would need to be implemented with the actual audio processing
-        # For now, we'll create a mock interaction
+        # Mock interaction for now
         interaction_data = {
-            "text": "Mock transcription",  # This would come from actual transcription
-            "speaker_id": None,  # This would come from speaker identification
+            "text": "Mock transcription",
+            "network_id": network.id
         }
 
         interaction = InteractionModel(**interaction_data)
@@ -53,84 +60,76 @@ async def register_interaction(
         db.refresh(interaction)
 
         # Check for wake words
-        speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
+        wake_word_detection = wake_word_detector.detect_wake_words_text(
+            client_id=str(network.id),
+            transcribed_text=interaction_data["text"],
+            audio_length=len(sentence_buf_raw) / (16000 * 2),
+        )
 
-        if speaker and speaker.index == 1:  # type: ignore
-            wake_word_detection = wake_word_detector.detect_wake_words_text(
-                client_id=client_id,
-                transcribed_text=interaction_data["text"],
-                audio_length=len(sentence_buf_raw) / (16000 * 2),
-            )
-
-            if wake_word_detection:
-                if wake_word_detection.callback:
-                    db.delete(interaction)
-                    db.commit()
-                    return None
-
-                response = command_processor.process_command(interaction)
+        if wake_word_detection:
+            if wake_word_detection.callback:
                 db.delete(interaction)
                 db.commit()
+                return None
 
-                if response:
-                    return {"message": response}
+            response = command_processor.process_command(interaction)
+            db.delete(interaction)
+            db.commit()
+
+            if response:
+                return {"message": response}
 
         return interaction
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 
-@router.get("/interactions/{interaction_id}")
-def get_interaction(interaction_id: str, db: Session = Depends(get_db_dependency)):
-    """Get a specific interaction by ID."""
-    try:
-        interaction = db.query(InteractionModel).filter_by(id=uuid.UUID(interaction_id)).first()
+@router.get("/networks/{network_id}/interactions/{interaction_id}")
+async def get_interaction(
+    network_id: str,
+    interaction_id: str,
+    password: str,
+    network: MiraNetwork = Depends(get_network_auth_dependency()),
+    db: Session = Depends(get_db_dependency)
+):
+    """Get a specific interaction."""
+    interaction = (
+        db.query(InteractionModel)
+        .filter(
+            InteractionModel.id == uuid.UUID(interaction_id),
+            InteractionModel.network_id == network.id
+        )
+        .first()
+    )
 
-        if not interaction:
-            raise HTTPException(status_code=404, detail="Interaction not found")
+    if not interaction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interaction not found"
+        )
 
-        return interaction
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch interaction: {str(e)}")
-
-
-@router.post("/interactions/{interaction_id}/inference")
-def interaction_inference(interaction_id: str, db: Session = Depends(get_db_dependency)):
-    """Inference endpoint with database-backed context integration."""
-
-    try:
-        interaction = db.query(InteractionModel).filter_by(id=uuid.UUID(interaction_id)).first()
-
-        if not interaction:
-            raise HTTPException(status_code=404, detail="Interaction not found")
-
-        context, has_intent = context_processor.build_context(interaction, db)
-
-        if not has_intent:
-            return {"message": "Intent not recognized, no inference performed."}
-
-        action = inference_processor.extract_action(interaction=interaction, context=context)
-
-        return action
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+    return interaction
 
 
-@router.delete("/interactions/{interaction_id}")
-def delete_interaction(interaction_id: str, db: Session = Depends(get_db_dependency)):
-    """Delete a specific interaction from the database."""
-    try:
-        interaction = db.query(InteractionModel).filter_by(id=uuid.UUID(interaction_id)).first()
-        if not interaction:
-            raise HTTPException(status_code=404, detail="Interaction not found")
+@router.get("/networks/{network_id}/interactions")
+async def list_interactions(
+    network_id: str,
+    password: str,
+    network: MiraNetwork = Depends(get_network_auth_dependency()),
+    db: Session = Depends(get_db_dependency)
+):
+    """List recent interactions."""
+    interactions = (
+        db.query(InteractionModel)
+        .filter(InteractionModel.network_id == network.id)
+        .order_by(InteractionModel.created_at.desc())
+        .limit(50)
+        .all()
+    )
 
-        db.delete(interaction)
-        db.commit()
-
-        return {"detail": "Interaction deleted successfully"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete interaction: {str(e)}")
+    return interactions

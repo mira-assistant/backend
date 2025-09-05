@@ -1,93 +1,60 @@
 """
-Authentication tests.
+Tests for authentication endpoints.
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
-from app.main import app
-from app.db.session import get_db
-from app.models.user import User
-from app.core.security import get_password_hash
+from fastapi import status
 
 
-client = TestClient(app)
-
-
-@pytest.fixture
-def test_user(db: Session):
-    """Create a test user."""
-    user = User(
-        username="testuser",
-        email="test@example.com",
-        hashed_password=get_password_hash("testpassword"),
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-def test_register_user(db):
-    """Test user registration."""
+def test_register_network(client):
+    """Test network registration."""
     response = client.post(
         "/api/v1/auth/register",
-        json={"username": "newuser", "email": "newuser@example.com", "password": "newpassword"},
+        json={
+            "name": "Test Network",
+            "password": "testpassword123"
+        }
     )
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert data["username"] == "newuser"
-    assert data["email"] == "newuser@example.com"
-    assert "id" in data
+    assert data["name"] == "Test Network"
+    assert "network_id" in data
+    assert data["is_active"]
 
 
-def test_register_duplicate_user(db):
-    """Test registration with duplicate username."""
-    # First registration
-    client.post(
-        "/api/v1/auth/register",
-        json={"username": "duplicate", "email": "duplicate1@example.com", "password": "password"},
-    )
-
-    # Second registration with same username
+def test_login_network(client, test_network):
+    """Test network login."""
     response = client.post(
-        "/api/v1/auth/register",
-        json={"username": "duplicate", "email": "duplicate2@example.com", "password": "password"},
+        "/api/v1/auth/login",
+        json={
+            "network_id": test_network.network_id,
+            "password": "testpassword123"
+        }
     )
-    assert response.status_code == 400
-
-
-def test_login_user(test_user):
-    """Test user login."""
-    response = client.post(
-        "/api/v1/auth/login", data={"username": "testuser", "password": "testpassword"}
-    )
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+    assert data["network_id"] == test_network.network_id
 
 
-def test_login_invalid_credentials(db):
-    """Test login with invalid credentials."""
+def test_login_wrong_password(client, test_network):
+    """Test login with wrong password."""
     response = client.post(
-        "/api/v1/auth/login", data={"username": "nonexistent", "password": "wrongpassword"}
+        "/api/v1/auth/login",
+        json={
+            "network_id": test_network.network_id,
+            "password": "wrongpassword"
+        }
     )
-    assert response.status_code == 401
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-def test_get_current_user(test_user):
-    """Test getting current user info."""
-    # First login to get token
-    login_response = client.post(
-        "/api/v1/auth/login", data={"username": "testuser", "password": "testpassword"}
+def test_login_nonexistent_network(client):
+    """Test login with nonexistent network."""
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "network_id": "nonexistent",
+            "password": "testpassword123"
+        }
     )
-    token = login_response.json()["access_token"]
-
-    # Use token to get user info
-    response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["username"] == "testuser"
+    assert response.status_code == status.HTTP_404_NOT_FOUND

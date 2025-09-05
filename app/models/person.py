@@ -7,12 +7,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, object_session
 from datetime import datetime, timezone
 import uuid
-from typing import TYPE_CHECKING
 
 from app.db.base import Base
-
-if TYPE_CHECKING:
-    from app.models.conversation import Conversation
 
 
 class Person(Base):
@@ -38,13 +34,13 @@ class Person(Base):
 
     @property
     def conversations(self):
-        """Get conversations for this person."""
         session = object_session(self)
         if session is None:
             return []
-
-        from app.models.conversation import Conversation
-
+        Conversation = self.__class__.__module__
+        Conversation = globals().get("Conversation")
+        if Conversation is None:
+            from .conversation import Conversation
         return (
             session.query(Conversation)
             .filter(

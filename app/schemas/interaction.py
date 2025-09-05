@@ -1,64 +1,35 @@
 """
-Pydantic schemas for Interaction model.
+Schemas for interaction management.
 """
 
-from typing import Optional, List, Any, Dict
 from datetime import datetime
-from pydantic import BaseModel, Field
-import uuid
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, UUID4
 
 
 class InteractionBase(BaseModel):
-    """Base Interaction schema."""
-
-    text: str
-    conversation_id: Optional[uuid.UUID] = None
-    speaker_id: Optional[uuid.UUID] = None
+    """Base interaction schema."""
+    interaction_text: str  # Changed from text to interaction_text
+    interaction_data: Optional[Dict[str, Any]] = None
 
 
 class InteractionCreate(InteractionBase):
-    """Schema for creating an Interaction."""
-
+    """Schema for creating a new interaction."""
     pass
 
 
 class InteractionUpdate(BaseModel):
-    """Schema for updating an Interaction."""
-
-    text: Optional[str] = None
-    entities: Optional[List[Dict[str, Any]]] = None
-    topics: Optional[List[str]] = None
-    sentiment: Optional[float] = None
+    """Schema for updating an interaction."""
+    interaction_text: Optional[str] = None  # Changed from text to interaction_text
+    interaction_data: Optional[Dict[str, Any]] = None
 
 
-class InteractionInDB(InteractionBase):
-    """Interaction schema as stored in database."""
-
-    id: uuid.UUID
-    timestamp: datetime
-    voice_embedding: Optional[List[float]] = None
-    text_embedding: Optional[List[float]] = None
-    entities: Optional[List[Dict[str, Any]]] = None
-    topics: Optional[List[str]] = None
-    sentiment: Optional[float] = None
+class Interaction(InteractionBase):
+    """Complete interaction schema."""
+    id: UUID4
+    network_id: UUID4
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
-
-
-class Interaction(InteractionInDB):
-    """Interaction schema for API responses."""
-
-    pass
-
-
-class InteractionWithPerson(Interaction):
-    """Interaction schema with person information."""
-
-    person: Optional["Person"] = None
-
-
-class InteractionWithConversation(Interaction):
-    """Interaction schema with conversation information."""
-
-    conversation: Optional["Conversation"] = None

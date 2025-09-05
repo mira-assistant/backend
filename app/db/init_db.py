@@ -2,14 +2,7 @@
 Database initialization utilities.
 """
 
-from sqlalchemy.orm import Session
-from app.db.session import SessionLocal, create_tables
-from app.models.user import User
-from app.models.person import Person
-from app.models.interaction import Interaction
-from app.models.conversation import Conversation
-from app.models.action import Action
-from app.core.security import get_password_hash
+from app.db.session import create_tables, SessionLocal
 
 
 def init_db() -> None:

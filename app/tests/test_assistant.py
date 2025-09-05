@@ -1,72 +1,64 @@
 """
-Assistant API tests.
+Tests for assistant endpoints.
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
-from app.main import app
-from app.models.interaction import Interaction
-from app.models.person import Person
-
-client = TestClient(app)
+from fastapi import status
+import io
 
 
-@pytest.fixture
-def test_person(db: Session):
-    """Create a test person."""
-    person = Person(name="Test Person", index=1)
-    db.add(person)
-    db.commit()
-    db.refresh(person)
-    return person
+def test_register_interaction(client, test_network):
+    """Test registering a new interaction."""
+    # Create dummy audio file
+    audio_data = io.BytesIO(b"dummy audio data")
+    audio_data.name = "test.wav"
 
-
-@pytest.fixture
-def test_interaction(db: Session, test_person):
-    """Create a test interaction."""
-    interaction = Interaction(text="Hello, this is a test interaction", speaker_id=test_person.id)
-    db.add(interaction)
-    db.commit()
-    db.refresh(interaction)
-    return interaction
-
-
-def test_get_interaction(test_interaction):
-    """Test getting an interaction by ID."""
-    response = client.get(f"/api/v1/assistant/interactions/{test_interaction.id}")
-    assert response.status_code == 200
+    response = client.post(
+        f"/api/v1/assistant/networks/{test_network.network_id}/interactions/register",
+        params={"password": "testpassword123"},
+        files={"audio": ("test.wav", audio_data, "audio/wav")}
+    )
+    assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert data["text"] == "Hello, this is a test interaction"
-    assert data["id"] == str(test_interaction.id)
+    assert "id" in data
 
 
-def test_get_nonexistent_interaction():
-    """Test getting a nonexistent interaction."""
-    fake_id = "00000000-0000-0000-0000-000000000000"
-    response = client.get(f"/api/v1/assistant/interactions/{fake_id}")
-    assert response.status_code == 404
+def test_register_interaction_wrong_password(client, test_network):
+    """Test registering interaction with wrong password."""
+    audio_data = io.BytesIO(b"dummy audio data")
+    audio_data.name = "test.wav"
+
+    response = client.post(
+        f"/api/v1/assistant/networks/{test_network.network_id}/interactions/register",
+        params={"password": "wrongpassword"},
+        files={"audio": ("test.wav", audio_data, "audio/wav")}
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-def test_delete_interaction(test_interaction):
-    """Test deleting an interaction."""
-    response = client.delete(f"/api/v1/assistant/interactions/{test_interaction.id}")
-    assert response.status_code == 200
+def test_register_interaction_disabled_service(client, test_network, test_db):
+    """Test registering interaction when service is disabled."""
+    # Disable service
+    test_network.service_enabled = False
+    test_db.commit()
+
+    audio_data = io.BytesIO(b"dummy audio data")
+    audio_data.name = "test.wav"
+
+    response = client.post(
+        f"/api/v1/assistant/networks/{test_network.network_id}/interactions/register",
+        params={"password": "testpassword123"},
+        files={"audio": ("test.wav", audio_data, "audio/wav")}
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_list_interactions(client, test_network):
+    """Test listing interactions."""
+    response = client.get(
+        f"/api/v1/assistant/networks/{test_network.network_id}/interactions",
+        params={"password": "testpassword123"}
+    )
+    assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert data["detail"] == "Interaction deleted successfully"
-
-
-def test_delete_nonexistent_interaction():
-    """Test deleting a nonexistent interaction."""
-    fake_id = "00000000-0000-0000-0000-000000000000"
-    response = client.delete(f"/api/v1/assistant/interactions/{fake_id}")
-    assert response.status_code == 404
-
-
-def test_interaction_inference(test_interaction):
-    """Test interaction inference."""
-    response = client.post(f"/api/v1/assistant/interactions/{test_interaction.id}/inference")
-    # This might return 200 with a message or 500 if inference fails
-    # The exact behavior depends on the inference service implementation
-    assert response.status_code in [200, 500]
+    assert isinstance(data, list)

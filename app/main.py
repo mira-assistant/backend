@@ -3,27 +3,18 @@ FastAPI application entrypoint.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from collections import deque
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
 from app.db.init_db import init_db
-from app.api.v1 import auth, assistant, tasks
+from app.api.v1 import assistant, tasks, networks
 
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
-
-# Global status for backward compatibility
-status: dict = {
-    "enabled": False,
-    "version": settings.app_version,
-    "connected_clients": dict(),
-    "best_client": None,
-    "recent_interactions": deque(maxlen=10),
-}
 
 
 @asynccontextmanager
@@ -31,29 +22,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Starting Mira Backend API...")
-
-    # Initialize database
     init_db()
     logger.info("Database initialized")
-
-    # Load recent interactions
-    from app.db.session import get_db_session
-    from app.models.interaction import Interaction
-
-    db = get_db_session()
-    try:
-        for interaction in (
-            db.query(Interaction).order_by(Interaction.timestamp.desc()).limit(10).all()
-        ):
-            status["recent_interactions"].append(interaction.id)
-    finally:
-        db.close()
-
-    logger.info("Application startup complete")
-
     yield
-
-    # Shutdown
     logger.info("Shutting down Mira Backend API...")
 
 
@@ -65,17 +36,31 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for better error responses."""
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if settings.debug else "An unexpected error occurred"
+        }
+    )
+
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(networks.router, prefix="/api/v1/networks", tags=["networks"])
 app.include_router(assistant.router, prefix="/api/v1/assistant", tags=["assistant"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -87,17 +72,6 @@ def root():
         "message": "Mira Backend API",
         "version": settings.app_version,
         "status": "running",
-        "status_info": status,
+        "stable": "v1",
+        "beta": "v2"
     }
-
-
-@app.get("/health")
-def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "version": settings.app_version}
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=settings.debug)

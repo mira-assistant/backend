@@ -1,52 +1,42 @@
 """
-Pydantic schemas for Action model.
+Schemas for action/task management.
 """
 
-from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
-import uuid
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, UUID4
 
 
 class ActionBase(BaseModel):
-    """Base Action schema."""
-
-    user_id: uuid.UUID
-    person_id: Optional[uuid.UUID] = None
-    action_type: str
-    details: Optional[str] = None
-    interaction_id: Optional[uuid.UUID] = None
-    conversation_id: Optional[uuid.UUID] = None
+    """Base action schema."""
+    title: str
+    description: Optional[str] = None
+    action_data: Optional[Dict[str, Any]] = None
 
 
 class ActionCreate(ActionBase):
-    """Schema for creating an Action."""
-
+    """Schema for creating a new action."""
     pass
 
 
 class ActionUpdate(BaseModel):
-    """Schema for updating an Action."""
+    """Schema for updating an action."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    action_status: Optional[str] = None  # Changed from status to action_status
+    is_completed: Optional[bool] = None
+    action_data: Optional[Dict[str, Any]] = None
 
-    status: Optional[str] = None
-    scheduled_time: Optional[datetime] = None
-    completed_time: Optional[datetime] = None
-    details: Optional[str] = None
 
-
-class ActionInDB(ActionBase):
-    """Action schema as stored in database."""
-
-    id: uuid.UUID
-    status: str = "pending"
-    scheduled_time: Optional[datetime] = None
-    completed_time: Optional[datetime] = None
+class Action(ActionBase):
+    """Complete action schema."""
+    id: UUID4
+    network_id: UUID4
+    action_status: str  # Changed from status to action_status
+    is_completed: bool
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
-
-class Action(ActionInDB):
-    """Action schema for API responses."""
-
-    pass

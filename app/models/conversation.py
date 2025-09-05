@@ -2,21 +2,15 @@
 Conversation model for managing conversation sessions.
 """
 
+
 from sqlalchemy import Column, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
-from typing import TYPE_CHECKING
 
 from app.db.base import Base
 
-if TYPE_CHECKING:
-    from app.models.interaction import Interaction
-
-
 class Conversation(Base):
-    """Conversation entity for managing conversation sessions."""
-
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
