@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(default="sqlite:///./mira.db")
 
-    # LM Studio Configuration
-    lm_studio_url: str = Field(default="http://localhost:1234/v1")
-    lm_studio_api_key: str = Field(default="lm-studio")
+
+    # AWS Bedrock Configuration (for production)
+    aws_region: str = Field(default="us-east-1")
+    bedrock_model_id: str = Field(default="anthropic.claude-3-sonnet-20240229-v1:0")
 
     # CORS
     cors_origins: List[str] = Field(default=["*"])

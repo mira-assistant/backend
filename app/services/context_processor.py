@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 import json
-import logging
 from datetime import timezone, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
@@ -26,6 +25,7 @@ from app.models import (
     Interaction,
     Conversation,
 )
+from app.core.mira_logger import MiraLogger
 
 from typing import Literal
 
@@ -95,10 +95,8 @@ class ContextProcessor:
         # Initialize NLP models
         self._init_nlp_components()
 
-        logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
-        self.logger = logging.getLogger(__name__)
-
-        logging.info(f"ContextProcessor initialized for network {network_id}")
+        # MiraLogger is used directly via class methods
+        MiraLogger.info(f"ContextProcessor initialized for network {network_id}")
 
     def _init_nlp_components(self):
         """Initialize NLP models as individual state variables."""
@@ -142,7 +140,7 @@ class ContextProcessor:
             interaction.text_embedding = embedding.tolist()
 
         except Exception as e:
-            self.logger.error(f"NLP processing failed: {e}")
+            MiraLogger.error(f"NLP processing failed: {e}")
 
     @staticmethod
     def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
@@ -182,7 +180,7 @@ class ContextProcessor:
         try:
             topic_similarity = current_doc.similarity(last_doc)
         except Exception as e:
-            self.logger.debug(f"spaCy similarity failed: {e}")
+            MiraLogger.debug(f"spaCy similarity failed: {e}")
             topic_similarity = 1.0
 
         if topic_similarity < ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
@@ -310,7 +308,7 @@ class ContextProcessor:
                 if similarity >= ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
                     similarities.append((interaction, similarity))
             except Exception as e:
-                self.logger.debug(f"Error computing similarity: {e}")
+                MiraLogger.debug(f"Error computing similarity: {e}")
 
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [interaction for interaction, _ in similarities[:max_results]]
@@ -575,9 +573,9 @@ class ContextProcessor:
             has_intent = self._classify_intent(interaction.text)
 
             if ContextProcessorConfig.DebugConfig.DEBUG_MODE:
-                self.logger.debug(f"Processed interaction: {interaction.text}")
-                self.logger.debug(f"Intent detected: {has_intent}")
-                self.logger.debug(f"Entities: {interaction.entities}")
+                MiraLogger.debug(f"Processed interaction: {interaction.text}")
+                MiraLogger.debug(f"Intent detected: {has_intent}")
+                MiraLogger.debug(f"Entities: {interaction.entities}")
 
             return enhanced_prompt, has_intent
 
@@ -586,5 +584,5 @@ class ContextProcessor:
 
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
-        self.logger.info(f"Cleaning up ContextProcessor for network {self.network_id}")
+        MiraLogger.info(f"Cleaning up ContextProcessor for network {self.network_id}")
         # Add any cleanup logic here if needed

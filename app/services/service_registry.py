@@ -5,20 +5,19 @@ This module provides a proper service registry pattern for managing services
 across multiple networks with proper lifecycle management and cleanup.
 """
 
-import logging
 import threading
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, Type, TypeVar
+from typing import Callable, Dict, Any, Optional, Type, TypeVar
 from dataclasses import dataclass
+from app.core.mira_logger import MiraLogger
 
-logger = logging.getLogger(__name__)
-
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @dataclass
 class ServiceConfig:
     """Configuration for a service within a network"""
+
     network_id: str
     created_at: datetime
     last_accessed: datetime
@@ -50,9 +49,9 @@ class ServiceRegistry:
         self._max_networks = max_networks
         self._default_ttl_seconds = default_ttl_seconds
 
-        logger.info(f"ServiceRegistry initialized with max_networks={max_networks}")
+        MiraLogger.info(f"ServiceRegistry initialized with max_networks={max_networks}")
 
-    def get_service(self, network_id: str, service_name: str, service_factory: callable) -> Any:
+    def get_service(self, network_id: str, service_name: str, service_factory: Callable) -> Any:
         """
         Get or create a service for a specific network.
 
@@ -76,7 +75,7 @@ class ServiceRegistry:
             # Get or create the specific service
             if service_name not in self._services[network_id]:
                 self._services[network_id][service_name] = service_factory(network_id)
-                logger.info(f"Created {service_name} for network {network_id}")
+                MiraLogger.info(f"Created {service_name} for network {network_id}")
 
             # Update last accessed time
             self._configs[network_id].last_accessed = datetime.now(timezone.utc)
@@ -90,9 +89,9 @@ class ServiceRegistry:
             network_id=network_id,
             created_at=datetime.now(timezone.utc),
             last_accessed=datetime.now(timezone.utc),
-            ttl_seconds=self._default_ttl_seconds
+            ttl_seconds=self._default_ttl_seconds,
         )
-        logger.info(f"Initialized network {network_id}")
+        MiraLogger.info(f"Initialized network {network_id}")
 
     def _cleanup_expired(self):
         """Remove expired networks from the registry."""
@@ -105,31 +104,30 @@ class ServiceRegistry:
 
         for network_id in expired_networks:
             self._remove_network(network_id)
-            logger.info(f"Removed expired network {network_id}")
+            MiraLogger.info(f"Removed expired network {network_id}")
 
     def _evict_oldest(self):
         """Remove the oldest network to make room for a new one."""
         if not self._configs:
             return
 
-        oldest_network = min(
-            self._configs.items(),
-            key=lambda x: x[1].last_accessed
-        )[0]
+        oldest_network = min(self._configs.items(), key=lambda x: x[1].last_accessed)[0]
 
         self._remove_network(oldest_network)
-        logger.info(f"Evicted oldest network {oldest_network}")
+        MiraLogger.info(f"Evicted oldest network {oldest_network}")
 
     def _remove_network(self, network_id: str):
         """Remove a network and all its services."""
         # Clean up any resources if needed
         if network_id in self._services:
             for service_name, service in self._services[network_id].items():
-                if hasattr(service, 'cleanup'):
+                if hasattr(service, "cleanup"):
                     try:
                         service.cleanup()
                     except Exception as e:
-                        logger.warning(f"Error cleaning up {service_name} for network {network_id}: {e}")
+                        MiraLogger.warning(
+                            f"Error cleaning up {service_name} for network {network_id}: {e}"
+                        )
 
         self._services.pop(network_id, None)
         self._configs.pop(network_id, None)
@@ -138,7 +136,7 @@ class ServiceRegistry:
         """Manually remove a network and all its services."""
         with self._lock:
             self._remove_network(network_id)
-            logger.info(f"Manually removed network {network_id}")
+            MiraLogger.info(f"Manually removed network {network_id}")
 
     def get_network_stats(self) -> Dict[str, Any]:
         """Get statistics about the registry."""
@@ -151,11 +149,13 @@ class ServiceRegistry:
                         "services": list(services.keys()),
                         "created_at": config.created_at.isoformat(),
                         "last_accessed": config.last_accessed.isoformat(),
-                        "age_seconds": (datetime.now(timezone.utc) - config.created_at).total_seconds()
+                        "age_seconds": (
+                            datetime.now(timezone.utc) - config.created_at
+                        ).total_seconds(),
                     }
                     for network_id, services in self._services.items()
                     for config in [self._configs[network_id]]
-                }
+                },
             }
 
     def cleanup_all(self):
@@ -163,7 +163,7 @@ class ServiceRegistry:
         with self._lock:
             for network_id in list(self._services.keys()):
                 self._remove_network(network_id)
-            logger.info("Cleaned up all networks")
+            MiraLogger.info("Cleaned up all networks")
 
 
 # Global service registry instance

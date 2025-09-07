@@ -11,8 +11,6 @@ Now uses proper dependency injection and lifecycle management.
 
 from __future__ import annotations
 
-import logging
-import threading
 from typing import Dict, Any
 
 import numpy as np
@@ -27,8 +25,10 @@ from app.models import Person, Interaction
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 import uuid
+from app.core.mira_logger import MiraLogger
+from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+# MiraLogger is used directly via class methods
 
 
 class SpeakerIdentificationState:
@@ -54,9 +54,7 @@ class SpeakerIdentificationState:
 class SentenceProcessor:
     """Sentence processor for audio transcription and speaker identification with proper dependency injection"""
 
-    SAMPLE_RATE = 16_000
-
-    def __init__(self, network_id: str, config: Dict[str, Any] = None):
+    def __init__(self, network_id: str, config: Dict[str, Any] | None = None):
         """
         Initialize SentenceProcessor for a specific network.
 
@@ -65,15 +63,15 @@ class SentenceProcessor:
             config: Network-specific configuration
         """
         self.network_id = network_id
-        self.config = config or {}
-        self.sample_rate = config.get('sample_rate', self.SAMPLE_RATE)
+        self.config = config or {} if config else {}
+        self.sample_rate = settings.sample_rate
 
         # Initialize models
         self.asr_model = whisper.load_model("base")
         self.spk_encoder = VoiceEncoder()
         self._speaker_state = SpeakerIdentificationState()
 
-        logger.info(f"SentenceProcessor initialized for network {network_id}")
+        MiraLogger.info(f"SentenceProcessor initialized for network {network_id}")
 
     @staticmethod
     def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
@@ -145,7 +143,7 @@ class SentenceProcessor:
             return np.array(denoised_audio, dtype=np.float32)
 
         except Exception as e:
-            logger.warning(f"Denoising failed: {e}")
+            MiraLogger.warning(f"Denoising failed: {e}")
             filtered = self.butter_highpass_filter(audio_data, 80, self.sample_rate)
             filtered = np.array(filtered, dtype=np.float32)
             if isinstance(filtered, tuple):
@@ -266,7 +264,7 @@ class SentenceProcessor:
             similarities.append((idx, sim))
         best_idx, best_sim = max(similarities, key=lambda x: x[1])
 
-        logger.info(f"Best speaker similarity: {best_sim}")
+        MiraLogger.info(f"Best speaker similarity: {best_sim}")
 
         if best_sim < self._speaker_state.SPEAKER_SIMILARITY_THRESHOLD:
             new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
@@ -315,7 +313,7 @@ class SentenceProcessor:
 
         transcribed_text = interaction.get("text", "")
         if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
-            logger.info(
+            MiraLogger.info(
                 f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'"
             )
 
@@ -345,7 +343,7 @@ class SentenceProcessor:
             self._speaker_state._speaker_embeddings[idx] = updated_embedding
             self._speaker_state._clusters_dirty = True
 
-        logger.info(
+        MiraLogger.info(
             f"Updated embedding for person {person_id} using expected text '{expected_text}'"
         )
 
@@ -411,5 +409,5 @@ class SentenceProcessor:
 
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
-        logger.info(f"Cleaning up SentenceProcessor for network {self.network_id}")
+        MiraLogger.info(f"Cleaning up SentenceProcessor for network {self.network_id}")
         # Add any cleanup logic here if needed

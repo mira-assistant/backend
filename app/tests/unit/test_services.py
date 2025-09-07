@@ -3,6 +3,7 @@ Unit tests for service classes.
 """
 
 import pytest
+import os
 from unittest.mock import Mock, patch, MagicMock, mock_open
 from app.services.service_factory import ServiceFactory, get_command_processor, get_sentence_processor
 from app.services.service_registry import service_registry
@@ -17,30 +18,27 @@ def mock_open_with_content(content):
 class TestServiceFactory:
     """Test cases for ServiceFactory class."""
 
-    @patch('app.services.service_factory.MLModelManager')
+    @patch.dict('os.environ', {'GEMINI_API_KEY': 'test_key'})
+    @patch('app.services.command_processor.genai.Client')
     @patch('app.services.service_factory.ServiceFactory._load_network_config')
     @patch('app.services.service_factory.ServiceFactory._load_default_system_prompt')
-    @patch('app.services.service_factory.ServiceFactory._load_model_tools')
-    def test_create_command_processor(self, mock_load_tools, mock_load_prompt, mock_load_config, mock_model_manager):
-        """Test creating a CommandProcessor."""
+    def test_create_command_processor(self, mock_load_prompt, mock_load_config, mock_genai_client):
+        """Test creating a CommandProcessor with direct Gemini integration."""
         # Setup mocks
-        mock_config = {'model_name': 'test-model', 'system_prompt': 'test prompt'}
+        mock_config = {'system_prompt': 'test prompt'}
         mock_load_config.return_value = mock_config
         mock_load_prompt.return_value = 'test prompt'
-        mock_model_instance = Mock()
-        mock_model_manager.return_value = mock_model_instance
+        mock_genai_client.return_value = Mock()
 
         # Test
         processor = ServiceFactory.create_command_processor('test-network')
 
         # Assertions
         mock_load_config.assert_called_once_with('test-network')
-        mock_model_manager.assert_called_once_with(
-            model_name='test-model',
-            system_prompt='test prompt'
-        )
-        mock_load_tools.assert_called_once_with(mock_model_instance)
+        mock_load_prompt.assert_called_once()
         assert processor is not None
+        assert processor.network_id == 'test-network'
+        assert processor.system_prompt == 'test prompt'
 
     @patch('app.services.service_factory.ServiceFactory._load_network_config')
     @patch('app.services.context_processor.ContextProcessor')
@@ -60,26 +58,22 @@ class TestServiceFactory:
         mock_processor_class.assert_called_once_with('test-network', mock_config)
         assert processor == mock_processor_instance
 
-    @patch('app.services.service_factory.MLModelManager')
+    @patch.dict('os.environ', {'GEMINI_API_KEY': 'test_key'})
+    @patch('app.services.inference_processor.genai.Client')
     @patch('app.services.service_factory.ServiceFactory._load_network_config')
     @patch('app.services.service_factory.ServiceFactory._load_action_system_prompt')
     @patch('app.services.service_factory.ServiceFactory._load_action_response_format')
-    @patch('app.services.inference_processor.InferenceProcessor')
-    def test_create_inference_processor(self, mock_processor_class, mock_load_format, mock_load_prompt, mock_load_config, mock_model_manager):
-        """Test creating an InferenceProcessor."""
+    def test_create_inference_processor(self, mock_load_format, mock_load_prompt, mock_load_config, mock_genai_client):
+        """Test creating an InferenceProcessor with direct Gemini integration."""
         # Setup mocks
         mock_config = {
-            'model_name': 'test-model',
             'system_prompt': 'test prompt',
             'response_format': {'test': 'format'}
         }
         mock_load_config.return_value = mock_config
         mock_load_prompt.return_value = 'test prompt'
         mock_load_format.return_value = {'test': 'format'}
-        mock_model_instance = Mock()
-        mock_model_manager.return_value = mock_model_instance
-        mock_processor_instance = Mock()
-        mock_processor_class.return_value = mock_processor_instance
+        mock_genai_client.return_value = Mock()
 
         # Test
         processor = ServiceFactory.create_inference_processor('test-network')
@@ -88,13 +82,10 @@ class TestServiceFactory:
         mock_load_config.assert_called_once_with('test-network')
         mock_load_prompt.assert_called_once()
         mock_load_format.assert_called_once()
-        mock_model_manager.assert_called_once_with(
-            model_name='test-model',
-            system_prompt='test prompt',
-            response_format={'test': 'format'}
-        )
-        mock_processor_class.assert_called_once_with(mock_model_instance, 'test-network')
-        assert processor == mock_processor_instance
+        assert processor is not None
+        assert processor.network_id == 'test-network'
+        assert processor.system_prompt == 'test prompt'
+        assert processor.response_format == {'test': 'format'}
 
     @patch('app.services.service_factory.ServiceFactory._load_network_config')
     @patch('app.services.multi_stream_processor.MultiStreamProcessor')
@@ -181,19 +172,7 @@ class TestServiceFactory:
         format_dict = ServiceFactory._load_action_response_format()
         assert format_dict == {"test": "format"}
 
-    def test_load_model_tools(self):
-        """Test loading model tools."""
-        mock_model_manager = Mock()
-
-        # Test
-        ServiceFactory._load_model_tools(mock_model_manager)
-
-        # Assertions
-        assert mock_model_manager.register_tool.call_count == 2
-        # Check that tools were registered
-        calls = mock_model_manager.register_tool.call_args_list
-        assert any("get_weather" in str(call) for call in calls)
-        assert any("get_time" in str(call) for call in calls)
+    # _load_model_tools method no longer exists - tools are now registered directly in processors
 
 
 class TestServiceRegistry:

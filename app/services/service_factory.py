@@ -5,12 +5,12 @@ This module provides factory functions for creating network-specific service ins
 with proper dependency injection and configuration.
 """
 
-import logging
 from typing import Any, Dict
-from app.services.ml_model_manager import MLModelManager
-from app.services.service_registry import service_registry
 
-logger = logging.getLogger(__name__)
+# MLModelManager no longer needed - using direct Gemini integration
+from app.services.service_registry import service_registry
+from app.core.mira_logger import MiraLogger
+from app.core.config import settings
 
 
 class ServiceFactory:
@@ -24,16 +24,11 @@ class ServiceFactory:
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
 
-        # Create model manager with network-specific config
-        model_manager = MLModelManager(
-            model_name=config.get("model_name", "llama-2-7b-chat-hf-function-calling-v3"),
+        # Create command processor with direct Gemini integration
+        return CommandProcessor(
+            network_id=network_id,
             system_prompt=config.get("system_prompt", ServiceFactory._load_default_system_prompt()),
         )
-
-        # Load model tools
-        ServiceFactory._load_model_tools(model_manager)
-
-        return CommandProcessor(model_manager, network_id)
 
     @staticmethod
     def create_context_processor(network_id: str):
@@ -53,16 +48,14 @@ class ServiceFactory:
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
 
-        # Create model manager with network-specific config
-        model_manager = MLModelManager(
-            model_name=config.get("model_name", "tiiuae-falcon-40b-instruct"),
+        # Create inference processor with direct Gemini integration
+        return InferenceProcessor(
+            network_id=network_id,
             system_prompt=config.get("system_prompt", ServiceFactory._load_action_system_prompt()),
             response_format=config.get(
                 "response_format", ServiceFactory._load_action_response_format()
             ),
         )
-
-        return InferenceProcessor(model_manager, network_id)
 
     @staticmethod
     def create_multi_stream_processor(network_id: str):
@@ -90,13 +83,14 @@ class ServiceFactory:
         # For now, return default config
         # In production, this would load from database or config service
         return {
-            "model_name": "llama-2-7b-chat-hf-function-calling-v3",
+            "model_name": "gemini-1.5-pro",
+            "client_system": "gemini",
             "system_prompt": ServiceFactory._load_default_system_prompt(),
             "wake_words": [
                 {"word": "mira", "sensitivity": 0.7, "min_confidence": 0.5},
                 {"word": "hey mira", "sensitivity": 0.8, "min_confidence": 0.6},
             ],
-            "sample_rate": 16000,
+            "sample_rate": settings.sample_rate,
             "max_clients": 10,
         }
 
@@ -107,7 +101,7 @@ class ServiceFactory:
             with open("schemas/command_processing/system_prompt.txt", "r") as f:
                 return f.read().strip()
         except FileNotFoundError:
-            logger.warning("Command processing system prompt not found, using default")
+            MiraLogger.warning("Command processing system prompt not found, using default")
             return "You are a helpful AI assistant."
 
     @staticmethod
@@ -117,7 +111,7 @@ class ServiceFactory:
             with open("schemas/action_processing/system_prompt.txt", "r") as f:
                 return f.read().strip()
         except FileNotFoundError:
-            logger.warning("Action processing system prompt not found, using default")
+            MiraLogger.warning("Action processing system prompt not found, using default")
             return "You are a helpful AI assistant for action processing."
 
     @staticmethod
@@ -129,27 +123,11 @@ class ServiceFactory:
             with open("schemas/action_processing/structured_output.json", "r") as f:
                 return json.load(f)
         except FileNotFoundError:
-            logger.warning("Action processing response format not found, using default")
+            MiraLogger.warning("Action processing response format not found, using default")
             return {}
 
-    @staticmethod
-    def _load_model_tools(model_manager: MLModelManager):
-        """Load model tools for the AI model manager."""
-        import tzlocal
-        from datetime import datetime
 
-        def get_weather(location: str = "current location") -> str:
-            """Get weather information (placeholder implementation)"""
-            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
-
-        def get_time() -> str:
-            """Get current time in user's timezone (auto-detected)"""
-            local_tz = tzlocal.get_localzone()
-            current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
-            return f"The current time is {current_time}"
-
-        model_manager.register_tool(get_weather, "Fetch Weather Information")
-        model_manager.register_tool(get_time, "Fetch Current Time")
+# Tool registration is now handled directly in CommandProcessor and InferenceProcessor
 
 
 # Convenience functions for getting services

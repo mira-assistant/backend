@@ -16,14 +16,14 @@ Features:
 - Proper dependency injection and lifecycle management
 """
 
-import logging
+import json
+import os
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from app.services.ml_model_manager import MLModelManager
+from google import genai
 from app.models import Interaction
-
-logger = logging.getLogger(__name__)
+from app.core.mira_logger import MiraLogger
 
 
 @dataclass
@@ -57,7 +57,7 @@ class WakeWordDetector:
     the audio stream scoring system.
     """
 
-    def __init__(self, network_id: str, wake_words_config: List[Dict[str, Any]] | None = None):
+    def __init__(self, network_id: str):
         """
         Initialize the wake word detector for a specific network.
 
@@ -69,17 +69,7 @@ class WakeWordDetector:
         self.wake_words: Dict[str, WakeWordConfig] = {}
         self.detection_callbacks: List[Callable[[WakeWordDetection], None]] = []
 
-        # Load wake words from configuration
-        if wake_words_config:
-            for config in wake_words_config:
-                self.add_wake_word(
-                    word=config["word"],
-                    sensitivity=config.get("sensitivity", 0.7),
-                    min_confidence=config.get("min_confidence", 0.5),
-                    callback=config.get("callback"),
-                )
-
-        logger.info(f"WakeWordDetector initialized for network {network_id}")
+        MiraLogger.info(f"WakeWordDetector initialized for network {network_id}")
 
     def add_wake_word(
         self,
@@ -103,7 +93,7 @@ class WakeWordDetector:
         word_normalized = word.lower().strip()
 
         if not word_normalized:
-            logger.warning("Cannot add empty wake word")
+            MiraLogger.warning("Cannot add empty wake word")
             return False
 
         config = WakeWordConfig(
@@ -114,7 +104,7 @@ class WakeWordDetector:
         )
 
         self.wake_words[word_normalized] = config
-        logger.info(
+        MiraLogger.info(
             f"Added wake word: '{word_normalized}' for network {self.network_id} with sensitivity {sensitivity}"
         )
         return True
@@ -207,34 +197,157 @@ class WakeWordDetector:
 
 
 class CommandProcessor:
-    """Main command processing workflow orchestrator with proper dependency injection"""
+    """Main command processing workflow orchestrator with direct Gemini integration"""
 
-    def __init__(self, model_manager: MLModelManager, network_id: str):
+    def __init__(self, network_id: str, system_prompt: str = "You are a helpful AI assistant."):
         """
-        Initialize command processor with dependency injection.
+        Initialize command processor with direct Gemini integration.
 
         Args:
-            model_manager: Injected ML model manager
             network_id: ID of the network this processor belongs to
+            system_prompt: System prompt for the AI model
         """
-        self.model_manager = model_manager
         self.network_id = network_id
+        self.system_prompt = system_prompt
         self.wake_word_detector = WakeWordDetector(network_id)
 
-        logger.info(f"CommandProcessor initialized for network {network_id}")
+        # Initialize Gemini client
+        self.gemini_client = self._initialize_gemini_client()
 
-    def process_command(self, interaction: Interaction):
+        # Register tools
+        self._register_tools()
+
+        MiraLogger.info(f"CommandProcessor initialized for network {network_id}")
+
+    def _initialize_gemini_client(self):
+        """Initialize Gemini client with API key from environment."""
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY environment variable not set")
+        return genai.Client(api_key=api_key)
+
+    def _register_tools(self):
+        """Register tools for the command processor."""
+        import tzlocal
+        from datetime import datetime
+
+        def get_weather(location: str = "current location") -> str:
+            """Get weather information for a specific location.
+
+            Args:
+                location: The location to get weather for (default: "current location")
+
+            Returns:
+                Weather information string
+            """
+            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
+
+        def get_time() -> str:
+            """Get current time in user's timezone (auto-detected).
+
+            Returns:
+                Current time string in user's local timezone
+            """
+            local_tz = tzlocal.get_localzone()
+            current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
+            return f"The current time is {current_time}"
+
+        def get_network_info(network_id: str) -> str:
+            """Get information about a specific network.
+
+            Args:
+                network_id: The ID of the network to get information about
+
+            Returns:
+                Network information string
+            """
+            return f"Network {network_id} is active with 5 connected devices"
+
+        # Store tools for execution
+        self.tools = {
+            "get_weather": get_weather,
+            "get_time": get_time,
+            "get_network_info": get_network_info,
+        }
+
+    def _get_gemini_tools(self) -> List[Dict[str, Any]]:
+        """Convert tools to Gemini format."""
+        gemini_tools = []
+        for tool_name, tool_func in self.tools.items():
+            gemini_tools.append(
+                {
+                    "function_declarations": [
+                        {
+                            "name": tool_name,
+                            "description": (
+                                tool_func.__doc__.split("\n")[1].strip()
+                                if tool_func.__doc__
+                                else f"Execute {tool_name}"
+                            ),
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The query parameter",
+                                    }
+                                },
+                                "required": ["query"],
+                            },
+                        }
+                    ]
+                }
+            )
+        return gemini_tools
+
+    def _run_gemini_inference(
+        self, interaction: Interaction, context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Run inference using Gemini API."""
+        from google.genai import types  # type: ignore
+
+        system_instruction = self.system_prompt
+        if context and context.strip():
+            system_instruction += f"\n\nContext: {context.strip()}"
+
+        # Prepare generation config
+        config_params = {
+            "system_instruction": system_instruction,
+            "temperature": 0.7,
+            "max_output_tokens": 2048,
+        }
+
+        # Add tools
+        if self.tools:
+            config_params["tools"] = self._get_gemini_tools()
+
+        config = types.GenerateContentConfig(**config_params)
+
+        response = self.gemini_client.models.generate_content(  # type: ignore
+            model="gemini-1.5-pro", contents=str(interaction.text), config=config
+        )
+
+        if not response.text:
+            raise RuntimeError("Gemini model generated no content")
+
+        try:
+            return json.loads(response.text)
+        except json.JSONDecodeError:
+            return {"content": response.text}
+
+    def process_command(self, interaction: Interaction, context: Optional[str] = None):
         """
         Process a command through the AI model and execute callbacks
 
         Args:
             interaction: The user interaction object
+            context: Optional context information
 
         Returns:
             Result of command processing
         """
-        logger.info(f"Processing command for network {self.network_id}: {interaction.text}")
-        response = self.model_manager.run_inference(interaction)
+        MiraLogger.info(f"Processing command for network {self.network_id}: {interaction.text}")
+        response = self._run_gemini_inference(interaction, context)
 
         return response
 
@@ -279,5 +392,5 @@ class CommandProcessor:
 
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
-        logger.info(f"Cleaning up CommandProcessor for network {self.network_id}")
+        MiraLogger.info(f"Cleaning up CommandProcessor for network {self.network_id}")
         # Add any cleanup logic here if needed

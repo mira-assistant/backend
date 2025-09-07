@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 import uuid
 
+from app.core.config import settings
 import app.db as db
 import app.models as models
 from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, HTTPException
@@ -120,7 +121,7 @@ async def register_interaction(
         wake_word_detection = command_processor.detect_wake_words_text(
             client_id=client_id,
             transcribed_text=transcription_result["text"],
-            audio_length=len(sentence_buf_raw) / (16000 * 2),
+            audio_length=len(sentence_buf_raw) / (settings.sample_rate * 2),
         )
 
         if wake_word_detection:

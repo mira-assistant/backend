@@ -1,237 +1,242 @@
-"""
-ML Model Manager
+# """
+# ML Model Manager - Simple and Clean Implementation
+# """
 
-This module manages all interactions with the LM Studio server for both command inference
-and action data extraction. It provides a unified interface for AI model communication
-with support for structured prompts, callback functions, and recursive execution.
+# import json
+# import logging
+# import os
+# from typing import Dict, List, Optional, Any, Callable
+# from enum import Enum
 
-Features:
-- Command inference with callback function support
-- Action data extraction for calendar entries, etc.
-- Structured prompt management as state variables
-- Recursive callback execution with context
-- Model management and availability checking
-- Configurable model and payload parameters
-"""
+# from app.models import Interaction
+# from openai import OpenAI
+# from google import genai
+# from openai.types import chat
 
-import inspect
-import json
-import logging
-from typing import Dict, List, Optional, Any, Callable
-from openai import OpenAI
-from openai.types import chat, shared_params
-from app.models import Interaction
+# logger = logging.getLogger(__name__)
 
 
-logger = logging.getLogger(__name__)
+# class ClientSystem(Enum):
+#     """Supported client systems."""
 
-LM_STUDIO_URL = "http://localhost:1234/v1"
-client = OpenAI(base_url=LM_STUDIO_URL, api_key="lm-studio")
-
-
-class MLModelManager:
-    """
-    Individual ML Model configuration with system prompt, endpoint, and inference capability
-    """
-
-    def __init__(
-        self,
-        model_name: str,
-        system_prompt: str,
-        response_format: Optional[dict] = None,
-        **config_options,
-    ):
-        """
-        Initialize ML Model
-
-        Args:
-            model_name: Name of the model to use for inference
-            system_prompt: Custom system prompt or uses default
-            response_format: Optional JSON schema for structured output
-            **config_options: Additional configuration options including:
-                - temperature: Sampling temperature (0.0-2.0), default 0.7
-                - max_tokens: Maximum number of tokens to generate
-                - top_k: Top-k sampling parameter
-                - top_p: Top-p sampling parameter
-                - repetition_penalty: Repetition penalty
-                - frequency_penalty: Frequency penalty
-                - presence_penalty: Presence penalty
-        """
-
-        available_models = get_available_models()
-
-        model_names = [model.get("id", "") for model in available_models]
-        model_states = [model.get("state", "") for model in available_models]
-
-        if model_name not in model_names or model_states[model_names.index(model_name)] != "loaded":
-            raise ValueError(f"Model '{model_name}' not available or loaded")
-
-        self.model = model_name
-        self.system_prompt = system_prompt
-        self.tools: list[chat.ChatCompletionToolParam] = []
-        self.callables: Dict[str, Callable] = {}
-        self.response_format: chat.completion_create_params.ResponseFormat | None = (
-                shared_params.ResponseFormatJSONSchema(
-                    json_schema=shared_params.response_format_json_schema.JSONSchema(
-                        name="Response Model", schema=response_format or {}
-                    ),
-                    type="json_schema",
-                )
-            ) if response_format is not None else None
+#     GEMINI = "gemini"
+#     OPENAI = "openai"
+#     LM_STUDIO = "lm_studio"
 
 
-        self.config = {
-            **config_options,
-        }
+# class MLModelManager:
+#     """Simple ML Model Manager with backend switching."""
 
-        logger.info(f"MLModelManager initialized with model: {model_name}")
+#     def __init__(
+#         self,
+#         model_name: str,
+#         client_system: ClientSystem,
+#         system_prompt: str = "You are a helpful AI assistant.",
+#         response_format: Optional[Dict[str, str]] = None,
+#         temperature: float = 0.7,
+#         max_tokens: int = 2048,
+#     ):
+#         self.model = model_name
+#         self.client_system = client_system
+#         self.system_prompt = system_prompt
+#         self.response_format = response_format
+#         self.temperature = temperature
+#         self.max_tokens = max_tokens
+#         self.tools = []
 
-    def register_tool(self, function: "Callable", description: str):
-        parameters: shared_params.FunctionParameters = {**inspect.signature(function).parameters}
+#         # Initialize client based on system
+#         self.client = self._initialize_client()
 
-        self.tools.append(
-            chat.ChatCompletionToolParam(
-                function=shared_params.FunctionDefinition(
-                    name=function.__name__,
-                    description=description,
-                    parameters=parameters,
-                ),
-                type="function",
-            )
-        )
+#         logger.info(
+#             f"MLModelManager initialized with {client_system.value} client, model: {self.model}"
+#         )
 
-        self.callables[function.__name__] = function
+#     def _initialize_client(self):
+#         """Initialize the appropriate client based on client_system."""
+#         if self.client_system == ClientSystem.GEMINI:
+#             api_key = os.getenv("GEMINI_API_KEY")
+#             if not api_key:
+#                 raise ValueError("GEMINI_API_KEY environment variable not set")
+#             return genai.Client(api_key=api_key)
 
-        logger.info(f"Registered tool: {function.__name__}")
+#         elif self.client_system == ClientSystem.OPENAI:
+#             api_key = os.getenv("OPENAI_API_KEY")
+#             if not api_key:
+#                 raise ValueError("OPENAI_API_KEY environment variable not set")
+#             return OpenAI(api_key=api_key)
 
-    def build_assistant_response(self, response) -> list[chat.ChatCompletionAssistantMessageParam]:
-        tool_calls = response.choices[0].message.tool_calls
+#         elif self.client_system == ClientSystem.LM_STUDIO:
+#             api_key = os.getenv("LM_STUDIO_API_KEY", "lm-studio")
+#             return OpenAI(base_url="http://localhost:1234/v1", api_key=api_key)
 
-        if not tool_calls:
-            return []
+#         else:
+#             raise ValueError(f"Unsupported client system: {self.client_system}")
 
-        assistant_tool_call_message = list[chat.ChatCompletionAssistantMessageParam]()
+#     def register_tool(self, function: Callable, description: str):
+#         """Register a tool function."""
+#         self.tools.append(
+#             {"function": function, "description": description, "name": function.__name__}
+#         )
 
-        assistant_tool_call_message.append(
-            chat.ChatCompletionAssistantMessageParam(
-                role="assistant",
-                tool_calls=(
-                    chat.ChatCompletionMessageToolCallParam(
-                        id=tool_call.id,
-                        type=tool_call.type,
-                        function=tool_call.function,
-                    )
-                    for tool_call in tool_calls
-                ),
-            )
-        )
+#     def run_inference(
+#         self, interaction: Interaction, context: Optional[str] = None
+#     ) -> Dict[str, Any]:
+#         """Run inference with the configured client system."""
+#         try:
+#             if self.client_system == ClientSystem.GEMINI:
+#                 return self._run_gemini_inference(interaction, context)
+#             else:
+#                 return self._run_openai_inference(interaction, context)
+#         except Exception as e:
+#             logger.error(f"Inference failed for {self.client_system.value}: {e}")
+#             raise
 
-        for tool_call in tool_calls:
-            arguments = (
-                json.loads(tool_call.function.arguments)
-                if tool_call.function.arguments.strip()
-                else {}
-            )
+#     def _run_gemini_inference(
+#         self, interaction: Interaction, context: Optional[str]
+#     ) -> Dict[str, Any]:
+#         """Run inference using Gemini API."""
+#         from google.genai import types
 
-            for name, tool in self.callables.items():
-                if name == tool_call.function.name:
-                    logger.info(f"Invoking tool: {name} with args: {arguments}")
-                    function_response = tool(**arguments)
-                    logger.info(f"Tool {name} response: {function_response}")
+#         gemini_client = self.client
 
-                    assistant_tool_call_message.append(
-                        chat.ChatCompletionAssistantMessageParam(
-                            role="assistant",
-                            name=name,
-                            content=function_response,
-                        )
-                    )
+#         system_instruction = self.system_prompt
+#         if context and context.strip():
+#             system_instruction += f"\n\nContext: {context.strip()}"
 
-        return assistant_tool_call_message
+#         # Prepare generation config
+#         config_params = {
+#             "system_instruction": system_instruction,
+#             "temperature": self.temperature,
+#             "max_output_tokens": self.max_tokens,
+#         }
 
-    def run_inference(
-        self, interaction: Interaction, context: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Run inference on the model
+#         # Add structured output if specified
+#         if self.response_format:
+#             config_params["response_mime_type"] = "application/json"
+#             # Create a simple JSON schema from response_format
+#             if isinstance(self.response_format, dict):
+#                 schema = {
+#                     "type": "object",
+#                     "properties": {
+#                         key: {"type": "string"} for key in self.response_format.keys()
+#                     }
+#                 }
+#                 config_params["response_json_schema"] = schema
 
-        Args:
-            interaction: User interaction text
-            context: Optional context information
+#         # Add tools if any are registered
+#         if self.tools:
+#             # Convert tools to Gemini format
+#             gemini_tools = []
+#             for tool in self.tools:
+#                 # For now, we'll create a simple function declaration
+#                 # In a full implementation, you'd convert the tool function to Gemini's format
+#                 gemini_tools.append({
+#                     "function_declarations": [{
+#                         "name": tool["name"],
+#                         "description": tool["description"],
+#                         "parameters": {
+#                             "type": "object",
+#                             "properties": {
+#                                 "query": {"type": "string", "description": "The query parameter"}
+#                             },
+#                             "required": ["query"]
+#                         }
+#                     }]
+#                 })
+#             config_params["tools"] = gemini_tools
 
-        Returns:
-            Dict: Response from the model
-        """
+#         config = types.GenerateContentConfig(**config_params)
 
-        messages: list[chat.ChatCompletionMessageParam] = list()
+#         response = gemini_client.models.generate_content(
+#             model=self.model,
+#             contents=str(interaction.text),
+#             config=config
+#         )
 
-        messages.append(
-            chat.ChatCompletionSystemMessageParam(
-                content=self.system_prompt,
-                role="system",
-            )
-        )
+#         if not response.text:
+#             raise RuntimeError(f"Gemini model {self.model} generated no content")
 
-        if context and context.strip():
-            messages.append(
-                chat.ChatCompletionAssistantMessageParam(
-                    content=f"Context: {context.strip()}", role="assistant", name="context_provider"
-                )
-            )
+#         try:
+#             return json.loads(response.text)
+#         except json.JSONDecodeError:
+#             return {"content": response.text}
 
-        messages.append(
-            chat.ChatCompletionUserMessageParam(
-                content=interaction.text,  # type: ignore
-                role="user",
-            )
-        )
+#     def _run_openai_inference(
+#         self, interaction: Interaction, context: Optional[str]
+#     ) -> Dict[str, Any]:
+#         """Run inference using OpenAI/LM Studio API."""
+#         client = self.client
 
-        api_params = {
-            "model": self.model,
-            "messages": messages,
-            "tools": self.tools,
-            "tool_choice": "auto",
-            **self.config,
-        }
+#         system_content = self.system_prompt
+#         if context and context.strip():
+#             system_content += f"\n\nContext: {context.strip()}"
 
-        if self.response_format is not None:
-            api_params["response_format"] = self.response_format
+#         messages = [
+#             chat.ChatCompletionSystemMessageParam(role="system", content=system_content),
+#             chat.ChatCompletionUserMessageParam(role="user", content=str(interaction.text)),
+#         ]
 
-        response = client.chat.completions.create(**api_params, timeout=60)
+#         # Add structured output if specified
+#         kwargs = {
+#             "model": self.model,
+#             "messages": messages,
+#             "temperature": self.temperature,
+#             "max_tokens": self.max_tokens,
+#         }
 
-        if response.choices[0].message.content is None:
-            raise RuntimeError(f"Model {self.model} generated no content")
+#         if self.response_format:
+#             kwargs["response_format"] = {"type": "json_object"}
 
-        assistant_message = self.build_assistant_response(response)
-        api_params["messages"] = messages.extend(assistant_message)
+#         response = client.chat.completions.create(**kwargs)
 
-        if assistant_message:
-            messages.extend(assistant_message)
-            response = client.chat.completions.create(
-                **api_params
-            )
+#         content = response.choices[0].message.content
+#         if not content:
+#             raise RuntimeError(f"Model {self.model} generated no content")
 
-        content = response.choices[0].message.content
-        if content:
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                raise  # Re-raise the JSONDecodeError
-        return response
+#         try:
+#             return json.loads(content)
+#         except json.JSONDecodeError:
+#             return {"content": content}
+
+#     def get_available_models(self) -> List[Dict[str, Any]]:
+#         """Get available models for the current client system."""
+#         try:
+#             if self.client_system == ClientSystem.GEMINI:
+#                 return self._get_gemini_models()
+#             else:
+#                 return self._get_openai_models()
+#         except Exception as e:
+#             logger.error(f"Failed to get available models: {e}")
+#             raise RuntimeError(f"Could not fetch available models: {e}")
+
+#     def _get_gemini_models(self) -> List[Dict[str, Any]]:
+#         """Get available Gemini models."""
+#         genai = self.client
+#         models = genai.list_models()  # type: ignore
+
+#         model_list = []
+#         for model in models:
+#             if "generateContent" in model.supported_generation_methods:
+#                 model_name = model.name or "unknown"
+#                 model_list.append(
+#                     {
+#                         "id": model_name.split("/")[-1],
+#                         "state": "loaded",
+#                         "name": model_name,
+#                     }
+#                 )
+#         return model_list
+
+#     def _get_openai_models(self) -> List[Dict[str, Any]]:
+#         """Get available OpenAI/LM Studio models."""
+#         client = self.client
+#         response = client.models.list()
+#         return response.model_dump()["data"]
 
 
-def get_available_models() -> List[Dict[str, Any]]:
-    """
-    Get list of available models from LM Studio server
-
-    Returns:
-        List[Dict]: List of available model information
-    """
-    try:
-        response = client.models.list()
-        data = response.model_dump()["data"]
-
-        return data
-    except Exception as e:
-        logger.error(f"Failed to get available models: {e}")
-        raise RuntimeError(f"Could not fetch available models: {e}")
+# # Backward compatibility - deprecated, use MLModelManager directly
+# def get_available_models() -> List[Dict[str, Any]]:
+#     """Get available models for the configured backend."""
+#     # Default to Gemini for backward compatibility
+#     temp_manager = MLModelManager(model_name="gemini-1.5-pro", client_system=ClientSystem.GEMINI)
+#     return temp_manager.get_available_models()

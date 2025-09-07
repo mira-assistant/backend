@@ -27,6 +27,9 @@ dist/
 build/
 *.egg-info/
 
+# Environment variables
+.env
+
 # backend specific
 *.db
 *.db-shm
