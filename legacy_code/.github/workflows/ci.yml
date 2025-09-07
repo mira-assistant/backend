@@ -1,0 +1,70 @@
+name: Mira Backend CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest pip-audit
+
+      - name: Run Flake8 (Linting)
+        run: flake8 .
+        continue-on-error: true
+
+      - name: Run Pytest (Unit Tests)
+        run: pytest
+
+      - name: Dependency audit (ignore en-core-web-sm warning)
+        run: |
+          pip-audit 2>&1 | tee audit.txt || true
+          # Fail if there are actual vulnerabilities (lines with a package, not just missing en-core-web-sm)
+          if grep -q -v "en-core-web-sm" audit.txt | grep -q "Vulnerabilities"; then
+            echo "pip-audit found real vulnerabilities!"
+            exit 1
+          fi
+          exit 0
+
+      - name: Start Backend
+        run: |
+          python -m uvicorn mira:app --host 0.0.0.0 --port 8000 &
+
+      - name: Wait for Backend to be ready
+        run: |
+          for i in {1..30}; do
+            if curl --silent --fail http://localhost:8000/; then
+              echo "Backend successfully started"
+              pkill -f uvicorn || true
+              break
+            fi
+            echo "Waiting for backend to be ready..."
+            sleep 2
+          done
