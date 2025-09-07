@@ -1,23 +1,24 @@
-from mira import (
-    status,
+from sqlalchemy.orm import Session
+from main import (
     context_processor,
     audio_scorer,
     wake_word_detector,
     command_processor,
     inference_processor,
     sentence_processor,
-    logger,
 )
-from db import get_db_session
+from db import get_db
 from models import Interaction, Person
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 import uuid
+
+from core.mira_logger import MiraLogger
 
 router = APIRouter(prefix="/interactions")
 
 
 @router.post("/register")
-async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...)):
+async def register_interaction(audio: UploadFile = File(...), client_id: str = Form(...), db: Session = Depends(get_db)):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
 
     if not status["enabled"]:
@@ -30,93 +31,82 @@ async def register_interaction(audio: UploadFile = File(...), client_id: str = F
 
     sentence_buf_raw = await audio.read()
 
-    db = get_db_session()
-
-    try:
-        if len(sentence_buf_raw) == 0:
-            raise HTTPException(
-                status_code=400, detail="Received empty audio data. Please provide valid audio."
-            )
-
-        logger.info(
-            f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
+    if len(sentence_buf_raw) == 0:
+        raise HTTPException(
+            status_code=400, detail="Received empty audio data. Please provide valid audio."
         )
 
-        best_stream_info = audio_scorer.get_best_stream()
-        audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
-        audio_scorer.update_stream_quality(client_id, audio_float)
+    MiraLogger.info(
+        f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
+    )
 
-        if not best_stream_info:
-            raise HTTPException(
-                status_code=404,
-                detail="No active audio streams found. Please ensure clients are registered.",
+    best_stream_info = audio_scorer.get_best_stream()
+    audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
+    audio_scorer.update_stream_quality(client_id, audio_float)
+
+    if not best_stream_info:
+        raise HTTPException(
+            status_code=404,
+            detail="No active audio streams found. Please ensure clients are registered.",
+        )
+
+    if best_stream_info["client_id"] != client_id:
+        MiraLogger.info(
+            f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
+        )
+
+        return {
+            "message": "Interaction was not registered due to better audio streams",
+        }
+
+    sentence_buf = bytearray(sentence_buf_raw)
+    transcription_result = sentence_processor.transcribe_interaction(sentence_buf, True)
+
+    try:
+        interaction = Interaction(
+            **transcription_result,
+        )
+
+        db.add(interaction)
+        db.commit()
+        db.refresh(interaction)
+
+        MiraLogger.info(f"Interaction saved to database with ID: {interaction.id}")
+        status["recent_interactions"].append(interaction.id)
+
+        speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
+
+        if not speaker:
+            raise HTTPException(status_code=404, detail="Speaker not found")
+
+        if speaker.index == 1:  # type: ignore
+            wake_word_detection = wake_word_detector.detect_wake_words_text(
+                client_id=client_id,
+                transcribed_text=transcription_result["text"],
+                audio_length=len(sentence_buf_raw) / (16000 * 2),
             )
 
-        if best_stream_info["client_id"] != client_id:
-            logger.info(
-                f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
-            )
-
-            return {
-                "message": "Interaction was not registered due to better audio streams",
-            }
-
-        sentence_buf = bytearray(sentence_buf_raw)
-        transcription_result = sentence_processor.transcribe_interaction(sentence_buf, True)
-
-        try:
-            interaction = Interaction(
-                **transcription_result,
-            )
-
-            db.add(interaction)
-            db.commit()
-            db.refresh(interaction)
-
-            logger.info(f"Interaction saved to database with ID: {interaction.id}")
-            status["recent_interactions"].append(interaction.id)
-
-            speaker = db.query(Person).filter_by(id=interaction.speaker_id).first()
-
-            if not speaker:
-                raise HTTPException(status_code=404, detail="Speaker not found")
-
-            if speaker.index == 1:  # type: ignore
-                wake_word_detection = wake_word_detector.detect_wake_words_text(
-                    client_id=client_id,
-                    transcribed_text=transcription_result["text"],
-                    audio_length=len(sentence_buf_raw) / (16000 * 2),
+            if wake_word_detection:
+                MiraLogger.info(
+                    f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
                 )
 
-                if wake_word_detection:
-                    logger.info(
-                        f"Wake word '{wake_word_detection.wake_word}' detected in audio from client {client_id}"
-                    )
-
-                    if wake_word_detection.callback:
-                        db.delete(interaction)
-                        db.commit()
-                        return None
-
-                    response = command_processor.process_command(
-                        interaction=interaction,
-                    )
-
+                if wake_word_detection.callback:
                     db.delete(interaction)
                     db.commit()
+                    return None
 
-                    if response:
-                        return {"message": response}
+                response = command_processor.process_command(
+                    interaction=interaction,
+                )
 
-            return interaction
+                db.delete(interaction)
+                db.commit()
 
-        except Exception as db_error:
-            logger.error(f"Database error: {db_error}", exc_info=True)
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
+                if response:
+                    return {"message": response}
 
-    finally:
-        db.close()
+        return interaction
 
 
 @router.get("/{interaction_id}")
@@ -133,7 +123,7 @@ def get_interaction(interaction_id: str):
 
         return interaction
     except Exception as e:
-        logger.error(f"Error fetching interaction: {e}")
+        MiraLogger.error(f"Error fetching interaction: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch interaction: {str(e)}")
 
 
@@ -162,7 +152,7 @@ def interaction_inference(interaction_id: str):
         return action
 
     except Exception as e:
-        logger.error(f"Error in inference: {e}")
+        MiraLogger.error(f"Error in inference: {e}")
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
 
     finally:
@@ -183,7 +173,7 @@ def get_interactions(limit: int = 0):
 
         return interactions
     except Exception as e:
-        logger.error(f"Error fetching interactions: {e}")
+        MiraLogger.error(f"Error fetching interactions: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch interactions: {str(e)}")
 
 
@@ -209,5 +199,5 @@ def delete_interaction(interaction_id: str):
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Error deleting interaction: {e}")
+        MiraLogger.error(f"Error deleting interaction: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete interaction: {str(e)}")
