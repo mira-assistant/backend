@@ -33,5 +33,10 @@ class Interaction(Base):
     topics = Column(JSON, nullable=True)
     sentiment = Column(Float, nullable=True)
 
+    # Foreign key to network
+    network_id = Column(UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False)
+
     person = relationship("Person", back_populates="interactions")
     conversation = relationship("Conversation", back_populates="interactions")
+    network = relationship("MiraNetwork", back_populates="interactions")
+    actions = relationship("Action", back_populates="interaction")

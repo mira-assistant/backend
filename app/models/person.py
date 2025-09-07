@@ -4,6 +4,8 @@ from sqlalchemy import (
     DateTime,
     Integer,
     JSON,
+    ForeignKey,
+    Table,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -11,6 +13,14 @@ from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime, timezone
 from db.base import Base
+
+# Association table for many-to-many relationship between Person and Conversation
+person_conversation_association = Table(
+    'person_conversation',
+    Base.metadata,
+    Column('person_id', UUID(as_uuid=True), ForeignKey('persons.id'), primary_key=True),
+    Column('conversation_id', UUID(as_uuid=True), ForeignKey('conversations.id'), primary_key=True)
+)
 
 
 class Person(Base):
@@ -25,6 +35,9 @@ class Person(Base):
     voice_embedding = Column(JSON, nullable=True)
     cluster_id = Column(Integer, nullable=True)
 
+    # Foreign key to network
+    network_id = Column(UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
@@ -33,3 +46,6 @@ class Person(Base):
     )
 
     interactions = relationship("Interaction", back_populates="person")
+    network = relationship("MiraNetwork", back_populates="persons")
+    conversations = relationship("Conversation", back_populates="persons", secondary=person_conversation_association)
+    actions = relationship("Action", back_populates="person")

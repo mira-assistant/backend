@@ -3,9 +3,10 @@ MiraNetwork model for network management.
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 import uuid
 
 from db.base import Base
@@ -31,6 +32,10 @@ class MiraNetwork(Base):
     interactions = relationship(
         "Interaction", back_populates="network", cascade="all, delete-orphan"
     )
+
+    persons = relationship("Person", back_populates="network")
+    conversations = relationship("Conversation", back_populates="network")
+    actions = relationship("Action", back_populates="network")
 
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
