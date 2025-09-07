@@ -5,8 +5,8 @@ Database session management.
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
-from core.config import settings
-from base import Base
+from app.core.config import settings
+from app.db.base import Base
 
 # Create engine
 engine = create_engine(

@@ -1,10 +1,17 @@
+"""
+Context Processor with Advanced NLP and Speaker Recognition
+
+This module provides context processing with advanced NLP features and speaker recognition.
+It now uses proper dependency injection and lifecycle management.
+"""
+
 from __future__ import annotations
 
 import re
 import json
 import logging
 from datetime import timezone, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
 
 import spacy
@@ -13,6 +20,7 @@ from sentence_transformers import SentenceTransformer
 
 from sqlalchemy import or_
 
+from db import get_db_session
 from models import (
     Person,
     Interaction,
@@ -70,20 +78,27 @@ class ContextProcessorConfig:
 class ContextProcessor:
     """
     Context processor with advanced NLP and speaker recognition features.
+    Now uses proper dependency injection and lifecycle management.
     """
 
-    def __init__(self):
-        """Initialize the context processor."""
-        self.current_conversation = Conversation()
+    def __init__(self, network_id: str, config: Dict[str, Any] = None):
+        """
+        Initialize the context processor for a specific network.
 
-        self.current_participants = set()
+        Args:
+            network_id: ID of the network this processor belongs to
+            config: Network-specific configuration
+        """
+        self.network_id = network_id
+        self.config = config or {}
+
+        # Initialize NLP models
+        self._init_nlp_components()
 
         logging.basicConfig(level=getattr(logging, ContextProcessorConfig.DebugConfig.LOG_LEVEL))
         self.logger = logging.getLogger(__name__)
 
-        self._init_nlp_components()
-
-        logging.info("ContextProcessor initialized")
+        logging.info(f"ContextProcessor initialized for network {network_id}")
 
     def _init_nlp_components(self):
         """Initialize NLP models as individual state variables."""
@@ -129,20 +144,16 @@ class ContextProcessor:
         except Exception as e:
             self.logger.error(f"NLP processing failed: {e}")
 
-    def _cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
+    @staticmethod
+    def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def detect_conversation_boundary(self, current_interaction: Interaction) -> bool:
+    def detect_conversation_boundary(self, current_interaction: Interaction, last_interaction: Optional[Interaction] = None) -> bool:
         """Conversation boundary detection using database queries."""
 
-        if (
-            self.current_conversation.interactions is None
-            or len(self.current_conversation.interactions) == 0
-        ):
+        if last_interaction is None:
             return True
-
-        last_interaction = self.current_conversation.interactions[-1]
 
         current_ts = current_interaction.timestamp
         last_ts = last_interaction.timestamp
@@ -177,14 +188,14 @@ class ContextProcessor:
 
         return False
 
-    def get_short_term_context(self, current_time) -> List[Interaction]:
+    def get_short_term_context(self, current_time, conversation_id: Optional[str] = None) -> List[Interaction]:
         """Short-term context retrieval from database."""
         session = get_db_session()
         try:
-            if self.current_conversation.id is not None:
+            if conversation_id is not None:
                 interactions = (
                     session.query(Interaction)
-                    .filter_by(conversation_id=self.current_conversation.id)
+                    .filter_by(conversation_id=conversation_id)
                     .order_by(Interaction.timestamp.desc())
                     .limit(
                         ContextProcessorConfig.ContextManagementParameters.SHORT_TERM_CONTEXT_MAX_RESULTS
@@ -251,8 +262,9 @@ class ContextProcessor:
         finally:
             session.close()
 
+    @staticmethod
     def _get_keyword_interactions_db(
-        self, keywords: List[str], session, max_results: int
+        keywords: List[str], session, max_results: int
     ) -> List[Interaction]:
         """Get interactions matching keywords from database."""
         if not keywords:
@@ -299,9 +311,9 @@ class ContextProcessor:
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [interaction for interaction, _ in similarities[:max_results]]
 
-    def build_context_prompt(self, interaction: Interaction) -> str:
+    def build_context_prompt(self, interaction: Interaction, conversation_id: Optional[str] = None) -> str:
         """Build context prompt with summarization using database."""
-        short_term = self.get_short_term_context(interaction.timestamp)
+        short_term = self.get_short_term_context(interaction.timestamp, conversation_id)
         if short_term and interaction.text in short_term[-1].text:
             short_term = short_term[:-1]
 
@@ -350,7 +362,8 @@ class ContextProcessor:
 
         return "".join(context_parts) if context_parts else ""
 
-    def _get_speaker_index(self, speaker_id):
+    @staticmethod
+    def _get_speaker_index(speaker_id):
         """Get speaker index from person ID."""
 
         session = get_db_session()
@@ -364,7 +377,8 @@ class ContextProcessor:
         finally:
             session.close()
 
-    def _summarize_context(self, interactions: List[Interaction]) -> str:
+    @staticmethod
+    def _summarize_context(interactions: List[Interaction]) -> str:
         """Summarize context interactions from database models."""
         if not interactions:
             return ""
@@ -399,74 +413,17 @@ class ContextProcessor:
 
         return summary or "Previous discussion about relevant topics."
 
-    def _extract_keywords(self, text) -> List[str]:
+    @staticmethod
+    def _extract_keywords(text) -> List[str]:
         """Keyword extraction with NLP features."""
         words = str(text).lower().split()
         stop_words = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "is",
-            "am",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "being",
-            "have",
-            "has",
-            "had",
-            "do",
-            "does",
-            "did",
-            "will",
-            "would",
-            "could",
-            "should",
-            "may",
-            "might",
-            "can",
-            "i",
-            "me",
-            "my",
-            "myself",
-            "you",
-            "your",
-            "yours",
-            "yourself",
-            "he",
-            "him",
-            "his",
-            "himself",
-            "she",
-            "her",
-            "hers",
-            "herself",
-            "it",
-            "its",
-            "itself",
-            "we",
-            "us",
-            "our",
-            "ours",
-            "ourselves",
-            "they",
-            "them",
-            "their",
-            "theirs",
-            "themselves",
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+            "is", "am", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+            "do", "does", "did", "will", "would", "could", "should", "may", "might", "can",
+            "i", "me", "my", "myself", "you", "your", "yours", "yourself", "he", "him", "his",
+            "himself", "she", "her", "hers", "herself", "it", "its", "itself", "we", "us",
+            "our", "ours", "ourselves", "they", "them", "their", "theirs", "themselves",
         }
 
         keywords = []
@@ -477,57 +434,15 @@ class ContextProcessor:
 
         return list(set(keywords))
 
-    def _classify_intent(self, text) -> bool:
+    @staticmethod
+    def _classify_intent(text) -> bool:
         """Intent classification with NLP features."""
         action_keywords = {
-            "contact": [
-                "call",
-                "text",
-                "message",
-                "email",
-                "tell",
-                "contact",
-                "reach out",
-            ],
-            "remind": [
-                "remind",
-                "remember",
-                "later",
-                "tomorrow",
-                "next week",
-                "schedule reminder",
-            ],
-            "schedule": [
-                "schedule",
-                "appointment",
-                "meeting",
-                "book",
-                "plan",
-                "event",
-                "calendar",
-                "let's",
-                "let us",
-                "we'll",
-                "we will",
-                "we're",
-                "we are",
-                "we can",
-                "we could",
-                "we should",
-                "we might",
-            ],
-            "generic": [
-                "yes",
-                "okay",
-                "sure",
-                "alright",
-                "sounds good",
-                "go ahead",
-                "do it",
-                "i'm",
-                "i'll",
-                "bet",
-            ],
+            "contact": ["call", "text", "message", "email", "tell", "contact", "reach out"],
+            "remind": ["remind", "remember", "later", "tomorrow", "next week", "schedule reminder"],
+            "schedule": ["schedule", "appointment", "meeting", "book", "plan", "event", "calendar",
+                        "let's", "let us", "we'll", "we will", "we're", "we are", "we can", "we could", "we should", "we might"],
+            "generic": ["yes", "okay", "sure", "alright", "sounds good", "go ahead", "do it", "i'm", "i'll", "bet"],
         }
 
         text_lower = str(text).lower()
@@ -536,22 +451,33 @@ class ContextProcessor:
             for keywords in action_keywords.values()
         )
 
-        if has_keywords:
-            return True
+        return has_keywords
 
-        return False
-
-    def build_context(self, interaction: Interaction) -> Tuple[str, bool]:
+    def build_context(self, interaction: Interaction, conversation_id: Optional[str] = None) -> Tuple[str, bool]:
         """Interaction processing with full feature integration using database-only approach."""
 
         session = get_db_session()
 
         try:
-            if self.detect_conversation_boundary(interaction):
-                self.current_conversation = Conversation(user_ids=[interaction.speaker_id])
+            # Get last interaction for boundary detection
+            last_interaction = None
+            if conversation_id:
+                last_interaction = (
+                    session.query(Interaction)
+                    .filter_by(conversation_id=conversation_id)
+                    .order_by(Interaction.timestamp.desc())
+                    .first()
+                )
+
+            if self.detect_conversation_boundary(interaction, last_interaction):
+                # Create new conversation if boundary detected
+                new_conversation = Conversation(user_ids=[interaction.speaker_id])
+                session.add(new_conversation)
+                session.commit()
+                conversation_id = str(new_conversation.id)
 
             self._process_nlp_features(interaction)
-            enhanced_prompt = self.build_context_prompt(interaction)
+            enhanced_prompt = self.build_context_prompt(interaction, conversation_id)
             has_intent = self._classify_intent(interaction.text)
 
             if ContextProcessorConfig.DebugConfig.DEBUG_MODE:
@@ -563,3 +489,8 @@ class ContextProcessor:
 
         finally:
             session.close()
+
+    def cleanup(self):
+        """Clean up resources when the processor is no longer needed."""
+        self.logger.info(f"Cleaning up ContextProcessor for network {self.network_id}")
+        # Add any cleanup logic here if needed

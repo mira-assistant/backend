@@ -1,14 +1,17 @@
 from sqlalchemy.orm import Session
 
-import db
-import models
+import app.db as db
+import app.models as models
 from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, HTTPException
 
-from core.mira_logger import MiraLogger
-from services.sentence_processor import SentenceProcessor
-from services.command_processor import CommandProcessor, WakeWordDetector
-from services.context_processor import ContextProcessor
-from services.inference_processor import InferenceProcessor
+from app.core.mira_logger import MiraLogger
+from app.services.service_factory import (
+    get_sentence_processor,
+    get_command_processor,
+    get_context_processor,
+    get_inference_processor,
+    get_multi_stream_processor,
+)
 
 router = APIRouter(prefix="/{network_id}/interactions")
 
@@ -43,27 +46,46 @@ async def register_interaction(
         f"Processing audio data: {len(sentence_buf_raw)} bytes from client: {client_id}"
     )
 
-    # best_stream_info = audio_scorer.get_best_stream()
-    # audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
-    # audio_scorer.update_stream_quality(client_id, audio_float)
+    # Get services for this network
+    sentence_processor = get_sentence_processor(network_id)
+    multi_stream_processor = get_multi_stream_processor(network_id)
 
-    # if not best_stream_info:
-    #     raise HTTPException(
-    #         status_code=404,
-    #         detail="No active audio streams found. Please ensure clients are registered.",
-    #     )
+    # Convert audio to float32 for stream quality analysis
+    audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
 
-    # if best_stream_info["client_id"] != client_id:
-    #     MiraLogger.info(
-    #         f"Interaction from {client_id} not registered - better stream available from {best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
-    #     )
+    # Update stream quality for this client
+    stream_metrics = multi_stream_processor.update_stream_quality(client_id, audio_float)
 
-    #     return {
-    #         "message": "Interaction was not registered due to better audio streams",
-    #     }
+    if stream_metrics:
+        MiraLogger.info(
+            f"Stream quality updated for {client_id}: SNR={stream_metrics.snr:.1f}dB, "
+            f"Clarity={stream_metrics.speech_clarity:.1f}, Score={stream_metrics.score:.1f}"
+        )
 
+    # Get the best available stream
+    best_stream_info = multi_stream_processor.get_best_stream()
+
+    # Check if there are any active streams
+    if not best_stream_info["client_id"]:
+        MiraLogger.warning(f"No active audio streams found for network {network_id}")
+    else:
+        # Check if this client has the best stream quality
+        if best_stream_info["client_id"] != client_id:
+            MiraLogger.info(
+                f"Interaction from {client_id} not registered - better stream available from "
+                f"{best_stream_info['client_id']} with score {best_stream_info['score']:.2f}"
+            )
+
+            return {
+                "message": "Interaction was not registered due to better audio streams",
+                "best_client_id": best_stream_info["client_id"],
+                "best_score": best_stream_info["score"],
+                "current_client_id": client_id,
+            }
+
+    # Process the audio for transcription and speaker identification
     sentence_buf = bytearray(sentence_buf_raw)
-    transcription_result = SentenceProcessor.transcribe_interaction(network_id, sentence_buf, True)
+    transcription_result = sentence_processor.transcribe_interaction(sentence_buf, True)
 
     interaction = models.Interaction(
         **transcription_result,
@@ -88,8 +110,8 @@ async def register_interaction(
         raise HTTPException(status_code=404, detail="Speaker not found")
 
     if speaker.index == 1:  # type: ignore
-        wake_word_detection = WakeWordDetector.detect_wake_words_text(
-            network_id=network_id,
+        command_processor = get_command_processor(network_id)
+        wake_word_detection = command_processor.detect_wake_words_text(
             client_id=client_id,
             transcribed_text=transcription_result["text"],
             audio_length=len(sentence_buf_raw) / (16000 * 2),
@@ -105,10 +127,7 @@ async def register_interaction(
                 db.commit()
                 return None
 
-            response = CommandProcessor.process_command(
-                interaction=interaction,
-                network_id=network_id,
-            )
+            response = command_processor.process_command(interaction)
 
             db.delete(interaction)
             db.commit()
@@ -184,11 +203,13 @@ def interaction_inference(
     if not interaction:
         raise HTTPException(status_code=404, detail="Interaction not found")
 
-    context, has_intent = ContextProcessor.build_context(interaction, network_id)
+    context_processor = get_context_processor(network_id)
+    context, has_intent = context_processor.build_context(interaction)
 
     if not has_intent:
         return {"message": "Intent not recognized, no inference performed."}
 
-    action = InferenceProcessor.extract_action(interaction=interaction, network_id=network_id, context=context)  # type: ignore
+    inference_processor = get_inference_processor(network_id)
+    action = inference_processor.extract_action(interaction=interaction, context=context)  # type: ignore
 
     return action

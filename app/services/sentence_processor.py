@@ -6,20 +6,14 @@ Supports multilingual speech recognition including English and Indian languages.
 Code-mixed speech (e.g., English + Hindi/Tamil/etc.) is automatically detected.
 Real-time audio denoising filters out white noise and background sounds.
 
-How it works
-------------
-• Captures 30 ms frames from the microphone.
-• Real-time audio denoising removes white noise and background sounds from audio.
-• Each sentence is transcribed by Whisper locally (no API) with automatic language detection.
-• Indian names and words are recognized alongside English through multilingual model.
-• The sentence audio is embedded with Resemblyzer.
-• A lightweight online clustering assignment labels sentences
-  as Speaker 1 or Speaker 2 by cosine similarity to running centroids.
+Now uses proper dependency injection and lifecycle management.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
+from typing import Dict, Any
 
 import numpy as np
 
@@ -38,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class SpeakerIdentificationState:
-    """State variables for advanced speaker identification moved from context_processor."""
+    """State variables for advanced speaker identification."""
 
     def __init__(self):
         self._speaker_embeddings: list[np.ndarray] = []
@@ -58,23 +52,37 @@ class SpeakerIdentificationState:
 
 
 class SentenceProcessor:
+    """Sentence processor for audio transcription and speaker identification with proper dependency injection"""
+
     SAMPLE_RATE = 16_000
 
-    def __init__(self):
+    def __init__(self, network_id: str, config: Dict[str, Any] = None):
         """
-        Initialize SentenceProcessor with Whisper ASR model and Resemblyzer voice encoder.
+        Initialize SentenceProcessor for a specific network.
+
+        Args:
+            network_id: ID of the network this processor belongs to
+            config: Network-specific configuration
         """
+        self.network_id = network_id
+        self.config = config or {}
+        self.sample_rate = config.get('sample_rate', self.SAMPLE_RATE)
+
+        # Initialize models
         self.asr_model = whisper.load_model("base")
         self.spk_encoder = VoiceEncoder()
         self._speaker_state = SpeakerIdentificationState()
-        logger.info("SentenceProcessor initialized")
 
-    def pcm_bytes_to_float32(self, pcm: bytes) -> np.ndarray:
+        logger.info(f"SentenceProcessor initialized for network {network_id}")
+
+    @staticmethod
+    def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
         """Convert 16-bit PCM to float32 in [-1,1]."""
         audio_int16 = np.frombuffer(pcm, dtype=np.int16)
         return audio_int16.astype(np.float32) / 32768.0
 
-    def butter_highpass(self, cutoff, fs, order=5):
+    @staticmethod
+    def butter_highpass(cutoff, fs, order=5):
         """Design a high-pass Butterworth filter."""
         nyquist = 0.5 * fs
         if cutoff <= 0 or cutoff >= nyquist:
@@ -88,9 +96,10 @@ class SentenceProcessor:
         b, a = result[:2]
         return b, a
 
-    def butter_highpass_filter(self, data, cutoff, fs, order=5):
+    @staticmethod
+    def butter_highpass_filter(data, cutoff, fs, order=5):
         """Apply a high-pass Butterworth filter to the data."""
-        b, a = self.butter_highpass(cutoff, fs, order=order)
+        b, a = SentenceProcessor.butter_highpass(cutoff, fs, order=order)
         y = lfilter(b, a, data)
         return y
 
@@ -100,25 +109,23 @@ class SentenceProcessor:
 
         Args:
             audio_data: Input audio signal as float32 array
-            sample_rate: Sample rate of the audio
 
         Returns:
             Denoised audio signal
         """
-
         try:
             audio_data = np.array(audio_data, dtype=np.float32)
-            filtered_audio = self.butter_highpass_filter(audio_data, 80, self.SAMPLE_RATE)
+            filtered_audio = self.butter_highpass_filter(audio_data, 80, self.sample_rate)
             filtered_audio = np.array(filtered_audio, dtype=np.float32)
 
             if len(filtered_audio) < 512:
                 return filtered_audio
 
-            if len(filtered_audio) > self.SAMPLE_RATE // 2:
-                noise_sample = filtered_audio[: self.SAMPLE_RATE // 2]
+            if len(filtered_audio) > self.sample_rate // 2:
+                noise_sample = filtered_audio[: self.sample_rate // 2]
                 denoised_audio = nr.reduce_noise(
                     y=filtered_audio,
-                    sr=self.SAMPLE_RATE,
+                    sr=self.sample_rate,
                     y_noise=noise_sample,
                     prop_decrease=0.8,
                     stationary=False,
@@ -128,7 +135,7 @@ class SentenceProcessor:
             else:
                 denoised_audio = nr.reduce_noise(
                     y=filtered_audio,
-                    sr=self.SAMPLE_RATE,
+                    sr=self.sample_rate,
                     prop_decrease=0.6,
                     stationary=True,
                     n_fft=min(256, len(filtered_audio)),
@@ -139,19 +146,19 @@ class SentenceProcessor:
 
         except Exception as e:
             logger.warning(f"Denoising failed: {e}")
-            filtered = self.butter_highpass_filter(audio_data, 80, self.SAMPLE_RATE)
+            filtered = self.butter_highpass_filter(audio_data, 80, self.sample_rate)
             filtered = np.array(filtered, dtype=np.float32)
             if isinstance(filtered, tuple):
                 filtered = filtered[0]
             return filtered
 
-    def cosine_sim(self, a: np.ndarray, b: np.ndarray) -> float:
+    @staticmethod
+    def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def _refresh_speaker_cache(self):
         """(Re)load all speaker embeddings, person_ids, interaction_ids from the database."""
-
         session = get_db_session()
         try:
             interactions = (
@@ -179,20 +186,15 @@ class SentenceProcessor:
         self._speaker_state._cluster_labels = self._speaker_state.dbscan.fit_predict(X).tolist()
         self._speaker_state._clusters_dirty = False
 
-    def assign_speaker(
-        self,
-        embedding: np.ndarray,
-    ):
+    def assign_speaker(self, embedding: np.ndarray):
         """
-        Assign a speaker using DBSCAN clustering over all embeddings (moved from context_processor).
+        Assign a speaker using DBSCAN clustering over all embeddings.
         Returns the Person.id of the most similar speaker (if above threshold) or creates a new one.
         Also updates clusters in the database.
 
         Args:
             embedding: The new voice embedding (np.ndarray)
-            interaction_id: The interaction UUID to use for the new embedding, if available
         """
-
         embedding = np.array(embedding, dtype=np.float32)
 
         session = get_db_session()
@@ -374,8 +376,8 @@ class SentenceProcessor:
 
         Args:
             sentence_buf: Audio buffer containing the sentence
+            assign_or_create_speaker: Whether to assign or create a speaker
         """
-
         audio_f32 = self.pcm_bytes_to_float32(bytes(sentence_buf))
         denoised_audio = self.denoise_audio(audio_f32)
 
@@ -406,3 +408,8 @@ class SentenceProcessor:
             interaction["speaker_id"] = speaker_id
 
         return interaction
+
+    def cleanup(self):
+        """Clean up resources when the processor is no longer needed."""
+        logger.info(f"Cleaning up SentenceProcessor for network {self.network_id}")
+        # Add any cleanup logic here if needed

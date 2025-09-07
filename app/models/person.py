@@ -5,22 +5,14 @@ from sqlalchemy import (
     Integer,
     JSON,
     ForeignKey,
-    Table,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 import uuid
 from datetime import datetime, timezone
-from db.base import Base
-
-# Association table for many-to-many relationship between Person and Conversation
-person_conversation_association = Table(
-    'person_conversation',
-    Base.metadata,
-    Column('person_id', UUID(as_uuid=True), ForeignKey('persons.id'), primary_key=True),
-    Column('conversation_id', UUID(as_uuid=True), ForeignKey('conversations.id'), primary_key=True)
-)
+from app.db.base import Base
+from .conversation import person_conversation_association
 
 
 class Person(Base):

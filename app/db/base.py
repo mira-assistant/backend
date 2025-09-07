@@ -12,5 +12,4 @@ class Base(DeclarativeBase):
 
 
 # Import all models to register them with SQLAlchemy
-from app.models.action import Action
-from app.models.interaction import Interaction
+from app.models import *

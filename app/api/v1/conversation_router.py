@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from db import get_db
-from models import Conversation
+from app.db import get_db
+from app.models import Conversation
 from fastapi import APIRouter, Depends, HTTPException, Path
 
 router = APIRouter(prefix="/{network_id}/conversations")

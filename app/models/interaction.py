@@ -11,7 +11,7 @@ from sqlalchemy.orm import relationship
 
 import uuid
 from datetime import datetime, timezone
-from db.base import Base
+from app.db.base import Base
 
 
 class Interaction(Base):

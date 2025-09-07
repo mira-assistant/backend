@@ -12,15 +12,15 @@ Features:
 - Configurable wake words and sensitivity settings
 - Integration with audio stream scorer for best stream selection
 - Thread-safe operation for concurrent audio processing
+- Network-isolated processing for multi-tenant support
+- Proper dependency injection and lifecycle management
 """
 
 import logging
-import threading
 from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import tzlocal
-from ml_model_manager import MLModelManager
+from services.ml_model_manager import MLModelManager
 from models import Interaction
 
 logger = logging.getLogger(__name__)
@@ -57,19 +57,29 @@ class WakeWordDetector:
     the audio stream scoring system.
     """
 
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, network_id: str, wake_words_config: List[Dict[str, any]] = None):
         """
-        Initialize the wake word detector.
+        Initialize the wake word detector for a specific network.
 
         Args:
-            sample_rate: Audio sample rate for processing
+            network_id: ID of the network this detector belongs to
+            wake_words_config: Configuration for wake words
         """
-        self.sample_rate = sample_rate
+        self.network_id = network_id
         self.wake_words: Dict[str, WakeWordConfig] = {}
         self.detection_callbacks: List[Callable[[WakeWordDetection], None]] = []
-        self._lock = threading.Lock()
 
-        logger.info("WakeWordDetector initialized")
+        # Load wake words from configuration
+        if wake_words_config:
+            for config in wake_words_config:
+                self.add_wake_word(
+                    word=config['word'],
+                    sensitivity=config.get('sensitivity', 0.7),
+                    min_confidence=config.get('min_confidence', 0.5),
+                    callback=config.get('callback')
+                )
+
+        logger.info(f"WakeWordDetector initialized for network {network_id}")
 
     def add_wake_word(
         self,
@@ -85,31 +95,33 @@ class WakeWordDetector:
             word: The wake word or phrase to detect
             sensitivity: Detection threshold (0.0-1.0)
             min_confidence: Minimum confidence required for detection
-            cooldown_seconds: Time to wait before detecting the same word again
+            callback: Optional callback function to execute on detection
 
         Returns:
             bool: True if wake word was added successfully
         """
-        with self._lock:
-            word_normalized = word.lower().strip()
+        word_normalized = word.lower().strip()
 
-            if not word_normalized:
-                logger.warning("Cannot add empty wake word")
-                return False
+        if not word_normalized:
+            logger.warning("Cannot add empty wake word")
+            return False
 
-            config = WakeWordConfig(
-                word=word_normalized,
-                sensitivity=max(0.0, min(1.0, sensitivity)),
-                min_confidence=max(0.0, min(1.0, min_confidence)),
-                callback=callback,
-            )
+        config = WakeWordConfig(
+            word=word_normalized,
+            sensitivity=max(0.0, min(1.0, sensitivity)),
+            min_confidence=max(0.0, min(1.0, min_confidence)),
+            callback=callback,
+        )
 
-            self.wake_words[word_normalized] = config
-            logger.info(f"Added wake word: '{word_normalized}' with sensitivity {sensitivity}")
-            return True
+        self.wake_words[word_normalized] = config
+        logger.info(f"Added wake word: '{word_normalized}' for network {self.network_id} with sensitivity {sensitivity}")
+        return True
 
     def detect_wake_words_text(
-        self, client_id: str, transcribed_text: str, audio_length: float = 0.0
+        self,
+        client_id: str,
+        transcribed_text: str,
+        audio_length: float = 0.0
     ) -> Optional[WakeWordDetection]:
         """
         Process transcribed text for wake word detection.
@@ -132,27 +144,25 @@ class WakeWordDetector:
             c for c in transcribed_text.lower().strip() if c.isalnum() or c.isspace()
         )
 
-        with self._lock:
-            for wake_word, config in self.wake_words.items():
+        for wake_word, config in self.wake_words.items():
+            confidence = self._calculate_text_confidence(wake_word, text_normalized)
 
-                confidence = self._calculate_text_confidence(wake_word, text_normalized)
-
-                effective_threshold = config.min_confidence + (1.0 - config.sensitivity) * (
-                    1.0 - config.min_confidence
+            effective_threshold = config.min_confidence + (1.0 - config.sensitivity) * (
+                1.0 - config.min_confidence
+            )
+            if confidence >= effective_threshold:
+                detection = WakeWordDetection(
+                    wake_word=wake_word,
+                    confidence=confidence,
+                    client_id=client_id,
+                    audio_snippet_length=audio_length,
+                    callback=True if config.callback is not None else False,
                 )
-                if confidence >= effective_threshold:
-                    detection = WakeWordDetection(
-                        wake_word=wake_word,
-                        confidence=confidence,
-                        client_id=client_id,
-                        audio_snippet_length=audio_length,
-                        callback=True if config.callback is not None else False,
-                    )
 
-                    if config.callback is not None:
-                        config.callback()
+                if config.callback is not None:
+                    config.callback()
 
-                    return detection
+                return detection
 
         return None
 
@@ -167,7 +177,6 @@ class WakeWordDetector:
         Returns:
             float: Confidence score (0.0-1.0)
         """
-
         if wake_word in text:
             return 1.0
 
@@ -199,59 +208,21 @@ class WakeWordDetector:
 
 
 class CommandProcessor:
-    """Main command processing workflow orchestrator"""
+    """Main command processing workflow orchestrator with proper dependency injection"""
 
-    def __init__(self):
+    def __init__(self, model_manager: MLModelManager, network_id: str):
         """
-        Initialize command processor
+        Initialize command processor with dependency injection.
 
         Args:
-            callback_registry: Optional callback registry, creates default if None
+            model_manager: Injected ML model manager
+            network_id: ID of the network this processor belongs to
         """
+        self.model_manager = model_manager
+        self.network_id = network_id
+        self.wake_word_detector = WakeWordDetector(network_id)
 
-        system_prompt = open("schemas/command_processing/system_prompt.txt", "r").read().strip()
-        # structured_response = json.load(
-        #     open("schemas/command_processing/structured_output.json", "r")
-        # )
-
-        self.model_manager = MLModelManager(
-            model_name="llama-2-7b-chat-hf-function-calling-v3",
-            system_prompt=system_prompt,
-            # structured_response=structured_response,
-        )
-
-        self.load_model_tools()
-
-        logger.info("CommandProcessor initialized")
-
-    def load_model_tools(self):
-        """
-        Load model tools for the AI model manager.
-        This method can be extended to load additional tools as needed.
-        """
-
-        def get_weather(location: str = "current location") -> str:
-            """Get weather information (placeholder implementation)"""
-            # This is a placeholder implementation
-            # In a real system, this would integrate with a weather API
-            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
-
-        def get_time() -> str:
-            """Get current time in user's timezone (auto-detected)"""
-            local_tz = tzlocal.get_localzone()
-            current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
-            return f"The current time is {current_time}"
-
-        # def disable_mira() -> str:
-        #     """Disable the Mira assistant service"""
-        #     from api.v1.service_router import disable_service
-
-            # disable_service()
-            # return "Mira assistant has been disabled."
-
-        self.model_manager.register_tool(get_weather, "Fetch Weather Information")
-        self.model_manager.register_tool(get_time, "Fetch Current Time")
-        # self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
+        logger.info(f"CommandProcessor initialized for network {network_id}")
 
     def process_command(self, interaction: Interaction):
         """
@@ -259,15 +230,56 @@ class CommandProcessor:
 
         Args:
             interaction: The user interaction object
-            client_id: ID of the client that triggered the command
 
         Returns:
             Result of command processing
         """
-
-        logger.info(f"Processing command: {interaction.text}")
-        response = self.model_manager.run_inference(
-            interaction,
-        )
+        logger.info(f"Processing command for network {self.network_id}: {interaction.text}")
+        response = self.model_manager.run_inference(interaction)
 
         return response
+
+    def add_wake_word(
+        self,
+        word: str,
+        sensitivity: float = 0.7,
+        min_confidence: float = 0.5,
+        callback: Optional[Callable] = None,
+    ) -> bool:
+        """
+        Add a wake word to the detector.
+
+        Args:
+            word: The wake word or phrase to detect
+            sensitivity: Detection threshold (0.0-1.0)
+            min_confidence: Minimum confidence required for detection
+            callback: Optional callback function to execute on detection
+
+        Returns:
+            bool: True if wake word was added successfully
+        """
+        return self.wake_word_detector.add_wake_word(word, sensitivity, min_confidence, callback)
+
+    def detect_wake_words_text(
+        self,
+        client_id: str,
+        transcribed_text: str,
+        audio_length: float = 0.0
+    ) -> Optional[WakeWordDetection]:
+        """
+        Detect wake words in transcribed text.
+
+        Args:
+            client_id: ID of the client that provided the audio
+            transcribed_text: The text transcribed from audio
+            audio_length: Length of the original audio snippet in seconds
+
+        Returns:
+            WakeWordDetection: Detection result if wake word found, None otherwise
+        """
+        return self.wake_word_detector.detect_wake_words_text(client_id, transcribed_text, audio_length)
+
+    def cleanup(self):
+        """Clean up resources when the processor is no longer needed."""
+        logger.info(f"Cleaning up CommandProcessor for network {self.network_id}")
+        # Add any cleanup logic here if needed

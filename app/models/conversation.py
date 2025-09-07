@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 import uuid
-from db.base import Base
+from app.db.base import Base
 
 # Association table for many-to-many relationship between Person and Conversation
 person_conversation_association = Table(

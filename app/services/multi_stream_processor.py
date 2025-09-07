@@ -11,6 +11,7 @@ The scoring system evaluates streams based on:
 
 The system is designed for real-time operation and can dynamically select
 the best audio stream for optimal recording quality.
+Now uses proper dependency injection and lifecycle management.
 """
 
 import logging
@@ -55,16 +56,20 @@ class MultiStreamProcessor:
 
     This class provides real-time scoring of multiple audio streams based on
     signal quality metrics and dynamically selects the best performing stream.
+    Now uses proper dependency injection and lifecycle management.
     """
 
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, network_id: str, config: Dict[str, any] = None):
         """
-        Initialize the audio stream scorer.
+        Initialize the audio stream scorer for a specific network.
 
         Args:
-            sample_rate: Audio sample rate for processing
+            network_id: ID of the network this processor belongs to
+            config: Network-specific configuration
         """
-        self.sample_rate = sample_rate
+        self.network_id = network_id
+        self.config = config or {}
+        self.sample_rate = config.get('sample_rate', 16000)
         self.clients: Dict[str, ClientStreamInfo] = {}
         self._lock = threading.Lock()
 
@@ -76,6 +81,8 @@ class MultiStreamProcessor:
             "location": 0.15,
             "rssi": 0.15,
         }
+
+        logger.info(f"MultiStreamProcessor initialized for network {network_id}")
 
     def register_client(self, client_id: str) -> bool:
         """
@@ -89,11 +96,11 @@ class MultiStreamProcessor:
         """
         with self._lock:
             if client_id in self.clients:
-                logger.warning(f"Client {client_id} already registered, updating info")
+                logger.warning(f"Client {client_id} already registered for network {self.network_id}, updating info")
 
             self.clients[client_id] = ClientStreamInfo(client_id=client_id)
 
-            logger.info(f"Registered client {client_id} for stream scoring")
+            logger.info(f"Registered client {client_id} for stream scoring in network {self.network_id}")
             return True
 
     def deregister_client(self, client_id: str) -> bool:
@@ -108,12 +115,12 @@ class MultiStreamProcessor:
         """
         with self._lock:
             if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not found for deregistration")
+                logger.warning(f"Client {client_id} not found for deregistration in network {self.network_id}")
                 return False
 
             del self.clients[client_id]
 
-            logger.info(f"Deregistered client {client_id}")
+            logger.info(f"Deregistered client {client_id} from network {self.network_id}")
             return True
 
     def _calculate_snr(self, audio_data) -> float:
@@ -126,7 +133,6 @@ class MultiStreamProcessor:
         Returns:
             float: SNR in dB
         """
-
         if len(audio_data) == 0:
             return 0.0
 
@@ -168,7 +174,6 @@ class MultiStreamProcessor:
         Returns:
             float: Speech clarity score (0-100)
         """
-
         if len(audio_data) == 0:
             return 0.0
 
@@ -222,7 +227,7 @@ class MultiStreamProcessor:
         """
         with self._lock:
             if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not registered for quality updates")
+                logger.warning(f"Client {client_id} not registered for quality updates in network {self.network_id}")
                 return None
 
             client_info = self.clients[client_id]
@@ -249,7 +254,7 @@ class MultiStreamProcessor:
             client_info.last_update = datetime.now(timezone.utc)
 
             logger.debug(
-                f"Updated quality for {client_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}"
+                f"Updated quality for {client_id} in network {self.network_id}: SNR={snr:.1f}dB, Clarity={speech_clarity:.1f}"
             )
             return metrics
 
@@ -365,7 +370,7 @@ class MultiStreamProcessor:
                     del self.clients[client_id]
 
                     removed_clients.append(client_id)
-                    logger.info(f"Removed inactive client {client_id}")
+                    logger.info(f"Removed inactive client {client_id} from network {self.network_id}")
 
             return removed_clients
 
@@ -382,11 +387,11 @@ class MultiStreamProcessor:
         """
         with self._lock:
             if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not found for location update")
+                logger.warning(f"Client {client_id} not found for location update in network {self.network_id}")
                 return False
 
             self.clients[client_id].quality_metrics.location = location
-            logger.info(f"Set location for {client_id}: {location}")
+            logger.info(f"Set location for {client_id} in network {self.network_id}: {location}")
             return True
 
     def set_phone_rssi(self, client_id: str, rssi: float) -> bool:
@@ -402,9 +407,16 @@ class MultiStreamProcessor:
         """
         with self._lock:
             if client_id not in self.clients:
-                logger.warning(f"Client {client_id} not found for RSSI update")
+                logger.warning(f"Client {client_id} not found for RSSI update in network {self.network_id}")
                 return False
 
             self.clients[client_id].quality_metrics.rssi = rssi
-            logger.info(f"Set RSSI for {client_id}: {rssi} dBm")
+            logger.info(f"Set RSSI for {client_id} in network {self.network_id}: {rssi} dBm")
             return True
+
+    def cleanup(self):
+        """Clean up resources when the processor is no longer needed."""
+        logger.info(f"Cleaning up MultiStreamProcessor for network {self.network_id}")
+        # Clean up any resources if needed
+        with self._lock:
+            self.clients.clear()

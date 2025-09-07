@@ -11,15 +11,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import app.api.v1 as v1
-import app.api.v2 as v2
+# import app.api.v2 as v2
+
+# Get FastAPI logger configured with our custom formatter
+fastapi_logger = MiraLogger.get_fastapi_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    MiraLogger.info("Starting Mira Backend API...")
+    fastapi_logger.info("Starting Mira Backend API...")
     yield
-    MiraLogger.info("Shutting down Mira Backend API...")
+    fastapi_logger.info("Shutting down Mira Backend API...")
 
 
 app = FastAPI(
@@ -33,7 +36,7 @@ app = FastAPI(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for better error responses."""
-    MiraLogger.exception("Unhandled exception")
+    fastapi_logger.exception("Unhandled exception")
     return JSONResponse(
         status_code=500,
         content={
@@ -57,11 +60,11 @@ app.include_router(v1.streams_router, prefix="/api/v1")
 app.include_router(v1.interaction_router, prefix="/api/v1")
 app.include_router(v1.service_router, prefix="/api/v1")
 
-app.include_router(v2.conversation_router, prefix="/api/v2")
-app.include_router(v2.persons_router, prefix="/api/v2")
-app.include_router(v2.streams_router, prefix="/api/v2")
-app.include_router(v2.interaction_router, prefix="/api/v2")
-app.include_router(v2.service_router, prefix="/api/v2")
+# app.include_router(v2.conversation_router, prefix="/api/v2")
+# app.include_router(v2.persons_router, prefix="/api/v2")
+# app.include_router(v2.streams_router, prefix="/api/v2")
+# app.include_router(v2.interaction_router, prefix="/api/v2")
+# app.include_router(v2.service_router, prefix="/api/v2")
 
 
 @app.get("/")
@@ -72,5 +75,5 @@ def root():
         "version": settings.app_version,
         "status": "running",
         "stable": "v1",
-        "beta": "v2",
+        # "beta": "v2",
     }

@@ -20,7 +20,7 @@ import logging
 from typing import Dict, List, Optional, Any, Callable
 from openai import OpenAI
 from openai.types import chat, shared_params
-from models import Interaction
+from app.models import Interaction
 
 
 logger = logging.getLogger(__name__)

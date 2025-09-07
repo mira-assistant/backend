@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import uuid
 
-from db.base import Base
+from app.db.base import Base
 
 
 class MiraNetwork(Base):

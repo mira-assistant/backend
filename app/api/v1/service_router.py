@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-import db
-import models
+import app.db as db
+import app.models as models
 
 router = APIRouter(prefix="/{network_id}/service")
 

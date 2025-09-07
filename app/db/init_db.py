@@ -2,7 +2,7 @@
 Database initialization utilities.
 """
 
-from session import create_tables, SessionLocal
+from app.db.session import create_tables, SessionLocal
 
 
 def init_db() -> None:

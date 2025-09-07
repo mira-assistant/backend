@@ -1,26 +1,30 @@
-import json
+"""
+Inference Processor for Action Data Extraction
+
+This module provides action data extraction using AI models with proper dependency injection
+and lifecycle management.
+"""
+
 import logging
-from ml_model_manager import MLModelManager
+from services.ml_model_manager import MLModelManager
 from models import Action, Interaction
 
 
 class InferenceProcessor:
+    """Inference processor for action data extraction with proper dependency injection"""
 
-    def __init__(self):
+    def __init__(self, model_manager: MLModelManager, network_id: str):
         """
-        Initialize the inference processor.
-        This class is responsible for managing the ML model and processing prompts.
+        Initialize the inference processor with dependency injection.
+
+        Args:
+            model_manager: Injected ML model manager
+            network_id: ID of the network this processor belongs to
         """
+        self.model_manager = model_manager
+        self.network_id = network_id
 
-        system_prompt = open("schemas/action_processing/system_prompt.txt", "r").read().strip()
-        structured_response = json.load(
-            open("schemas/action_processing/structured_output.json", "r")
-        )
-        self.model_manager = MLModelManager(
-            "tiiuae-falcon-40b-instruct", system_prompt, structured_response
-        )
-
-        logging.info("InferenceProcessor initialized")
+        logging.info(f"InferenceProcessor initialized for network {network_id}")
 
     def extract_action(self, interaction: Interaction, context=None) -> Action:
         """
@@ -35,9 +39,11 @@ class InferenceProcessor:
         Returns:
             Action: Extracted action model
         """
-
         response = self.model_manager.run_inference(interaction, context)
-
         result = Action(**response)
-
         return result
+
+    def cleanup(self):
+        """Clean up resources when the processor is no longer needed."""
+        logging.info(f"Cleaning up InferenceProcessor for network {self.network_id}")
+        # Add any cleanup logic here if needed
