@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+import uuid
 
 import app.db as db
 import app.models as models
@@ -25,7 +26,12 @@ async def register_interaction(
 ):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    try:
+        network_uuid = uuid.UUID(network_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -101,7 +107,7 @@ async def register_interaction(
 
     speaker = (
         db.query(models.Person)
-        .filter(models.Person.network_id == network_id)
+        .filter(models.Person.network_id == network_uuid)
         .filter(models.Person.id == interaction.speaker_id)
         .first()
     )
@@ -145,10 +151,17 @@ def get_interaction(
     db: Session = Depends(db.get_db),
 ):
     """Get a specific interaction by ID."""
+
+    try:
+        network_uuid = uuid.UUID(network_id)
+        interaction_uuid = uuid.UUID(interaction_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
     interaction = (
         db.query(models.Interaction)
-        .filter(models.Interaction.network_id == network_id)
-        .filter(models.Interaction.id == interaction_id)
+        .filter(models.Interaction.network_id == network_uuid)
+        .filter(models.Interaction.id == interaction_uuid)
         .first()
     )
 
@@ -165,10 +178,17 @@ def delete_interaction(
     db: Session = Depends(db.get_db),
 ):
     """Delete a specific interaction from the database."""
+
+    try:
+        network_uuid = uuid.UUID(network_id)
+        interaction_uuid = uuid.UUID(interaction_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
     interaction = (
         db.query(models.Interaction)
-        .filter(models.Interaction.network_id == network_id)
-        .filter(models.Interaction.id == interaction_id)
+        .filter(models.Interaction.network_id == network_uuid)
+        .filter(models.Interaction.id == interaction_uuid)
         .first()
     )
 
@@ -189,14 +209,20 @@ def interaction_inference(
 ):
     """Inference endpoint with database-backed context integration."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    try:
+        network_uuid = uuid.UUID(network_id)
+        interaction_uuid = uuid.UUID(interaction_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
     interaction = (
         db.query(models.Interaction)
-        .filter(models.Interaction.network_id == network_id)
-        .filter(models.Interaction.id == interaction_id)
+        .filter(models.Interaction.network_id == network_uuid)
+        .filter(models.Interaction.id == interaction_uuid)
         .first()
     )
 

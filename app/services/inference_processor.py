@@ -6,8 +6,8 @@ and lifecycle management.
 """
 
 import logging
-from services.ml_model_manager import MLModelManager
-from models import Action, Interaction
+from app.services.ml_model_manager import MLModelManager
+from app.models import Action, Interaction
 
 
 class InferenceProcessor:

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
+import uuid
 
 import app.db as db
 import app.models as models
@@ -16,7 +17,7 @@ def get_best_stream(
 ):
     """Get the currently selected best audio stream."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -36,7 +37,7 @@ def get_all_stream_scores(
 ):
     """Get quality scores for all active streams."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -65,7 +66,7 @@ def get_client_stream_info(
 ):
     """Get detailed stream information about a specific client."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -99,7 +100,7 @@ def update_phone_location(
 ):
     """Update GPS-based location data for phone tracking."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -145,7 +146,7 @@ def update_phone_rssi(
 ):
     """Update RSSI-based proximity data for phone tracking to specific client."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 

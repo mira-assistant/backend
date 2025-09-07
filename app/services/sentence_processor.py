@@ -22,8 +22,8 @@ from resemblyzer import VoiceEncoder
 import noisereduce as nr
 from scipy.signal import butter, lfilter
 
-from db import get_db_session
-from models import Person, Interaction
+from app.db import get_db_session
+from app.models import Person, Interaction
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 import uuid

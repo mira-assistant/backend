@@ -17,11 +17,11 @@ Features:
 """
 
 import logging
-from typing import Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from services.ml_model_manager import MLModelManager
-from models import Interaction
+from app.services.ml_model_manager import MLModelManager
+from app.models import Interaction
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class WakeWordDetector:
     the audio stream scoring system.
     """
 
-    def __init__(self, network_id: str, wake_words_config: List[Dict[str, any]] = None):
+    def __init__(self, network_id: str, wake_words_config: List[Dict[str, Any]] | None = None):
         """
         Initialize the wake word detector for a specific network.
 
@@ -73,10 +73,10 @@ class WakeWordDetector:
         if wake_words_config:
             for config in wake_words_config:
                 self.add_wake_word(
-                    word=config['word'],
-                    sensitivity=config.get('sensitivity', 0.7),
-                    min_confidence=config.get('min_confidence', 0.5),
-                    callback=config.get('callback')
+                    word=config["word"],
+                    sensitivity=config.get("sensitivity", 0.7),
+                    min_confidence=config.get("min_confidence", 0.5),
+                    callback=config.get("callback"),
                 )
 
         logger.info(f"WakeWordDetector initialized for network {network_id}")
@@ -114,14 +114,13 @@ class WakeWordDetector:
         )
 
         self.wake_words[word_normalized] = config
-        logger.info(f"Added wake word: '{word_normalized}' for network {self.network_id} with sensitivity {sensitivity}")
+        logger.info(
+            f"Added wake word: '{word_normalized}' for network {self.network_id} with sensitivity {sensitivity}"
+        )
         return True
 
     def detect_wake_words_text(
-        self,
-        client_id: str,
-        transcribed_text: str,
-        audio_length: float = 0.0
+        self, client_id: str, transcribed_text: str, audio_length: float = 0.0
     ) -> Optional[WakeWordDetection]:
         """
         Process transcribed text for wake word detection.
@@ -261,10 +260,7 @@ class CommandProcessor:
         return self.wake_word_detector.add_wake_word(word, sensitivity, min_confidence, callback)
 
     def detect_wake_words_text(
-        self,
-        client_id: str,
-        transcribed_text: str,
-        audio_length: float = 0.0
+        self, client_id: str, transcribed_text: str, audio_length: float = 0.0
     ) -> Optional[WakeWordDetection]:
         """
         Detect wake words in transcribed text.
@@ -277,7 +273,9 @@ class CommandProcessor:
         Returns:
             WakeWordDetection: Detection result if wake word found, None otherwise
         """
-        return self.wake_word_detector.detect_wake_words_text(client_id, transcribed_text, audio_length)
+        return self.wake_word_detector.detect_wake_words_text(
+            client_id, transcribed_text, audio_length
+        )
 
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""

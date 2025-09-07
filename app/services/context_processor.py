@@ -20,8 +20,8 @@ from sentence_transformers import SentenceTransformer
 
 from sqlalchemy import or_
 
-from db import get_db_session
-from models import (
+from app.db import get_db_session
+from app.models import (
     Person,
     Interaction,
     Conversation,
@@ -81,7 +81,7 @@ class ContextProcessor:
     Now uses proper dependency injection and lifecycle management.
     """
 
-    def __init__(self, network_id: str, config: Dict[str, Any] = None):
+    def __init__(self, network_id: str, config: Dict[str, Any] | None = None):
         """
         Initialize the context processor for a specific network.
 
@@ -149,7 +149,9 @@ class ContextProcessor:
         """Cosine similarity between two vectors."""
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def detect_conversation_boundary(self, current_interaction: Interaction, last_interaction: Optional[Interaction] = None) -> bool:
+    def detect_conversation_boundary(
+        self, current_interaction: Interaction, last_interaction: Optional[Interaction] = None
+    ) -> bool:
         """Conversation boundary detection using database queries."""
 
         if last_interaction is None:
@@ -168,14 +170,14 @@ class ContextProcessor:
             return True
 
         if (
-            current_interaction.speaker_id != last_interaction.speaker_id
+            current_interaction.speaker_id != last_interaction.speaker_id  # type: ignore
             and time_gap
             > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD / 2
         ):
             return True
 
         current_doc = self.spacy_model(current_interaction.text)  # type: ignore
-        last_doc = self.spacy_model(last_interaction.text)
+        last_doc = self.spacy_model(last_interaction.text)  # type: ignore
 
         try:
             topic_similarity = current_doc.similarity(last_doc)
@@ -188,7 +190,9 @@ class ContextProcessor:
 
         return False
 
-    def get_short_term_context(self, current_time, conversation_id: Optional[str] = None) -> List[Interaction]:
+    def get_short_term_context(
+        self, current_time, conversation_id: Optional[str] = None
+    ) -> List[Interaction]:
         """Short-term context retrieval from database."""
         session = get_db_session()
         try:
@@ -311,7 +315,9 @@ class ContextProcessor:
         similarities.sort(key=lambda x: x[1], reverse=True)
         return [interaction for interaction, _ in similarities[:max_results]]
 
-    def build_context_prompt(self, interaction: Interaction, conversation_id: Optional[str] = None) -> str:
+    def build_context_prompt(
+        self, interaction: Interaction, conversation_id: Optional[str] = None
+    ) -> str:
         """Build context prompt with summarization using database."""
         short_term = self.get_short_term_context(interaction.timestamp, conversation_id)
         if short_term and interaction.text in short_term[-1].text:
@@ -418,12 +424,70 @@ class ContextProcessor:
         """Keyword extraction with NLP features."""
         words = str(text).lower().split()
         stop_words = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
-            "is", "am", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-            "do", "does", "did", "will", "would", "could", "should", "may", "might", "can",
-            "i", "me", "my", "myself", "you", "your", "yours", "yourself", "he", "him", "his",
-            "himself", "she", "her", "hers", "herself", "it", "its", "itself", "we", "us",
-            "our", "ours", "ourselves", "they", "them", "their", "theirs", "themselves",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "am",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "i",
+            "me",
+            "my",
+            "myself",
+            "you",
+            "your",
+            "yours",
+            "yourself",
+            "he",
+            "him",
+            "his",
+            "himself",
+            "she",
+            "her",
+            "hers",
+            "herself",
+            "it",
+            "its",
+            "itself",
+            "we",
+            "us",
+            "our",
+            "ours",
+            "ourselves",
+            "they",
+            "them",
+            "their",
+            "theirs",
+            "themselves",
         }
 
         keywords = []
@@ -440,9 +504,37 @@ class ContextProcessor:
         action_keywords = {
             "contact": ["call", "text", "message", "email", "tell", "contact", "reach out"],
             "remind": ["remind", "remember", "later", "tomorrow", "next week", "schedule reminder"],
-            "schedule": ["schedule", "appointment", "meeting", "book", "plan", "event", "calendar",
-                        "let's", "let us", "we'll", "we will", "we're", "we are", "we can", "we could", "we should", "we might"],
-            "generic": ["yes", "okay", "sure", "alright", "sounds good", "go ahead", "do it", "i'm", "i'll", "bet"],
+            "schedule": [
+                "schedule",
+                "appointment",
+                "meeting",
+                "book",
+                "plan",
+                "event",
+                "calendar",
+                "let's",
+                "let us",
+                "we'll",
+                "we will",
+                "we're",
+                "we are",
+                "we can",
+                "we could",
+                "we should",
+                "we might",
+            ],
+            "generic": [
+                "yes",
+                "okay",
+                "sure",
+                "alright",
+                "sounds good",
+                "go ahead",
+                "do it",
+                "i'm",
+                "i'll",
+                "bet",
+            ],
         }
 
         text_lower = str(text).lower()
@@ -453,7 +545,9 @@ class ContextProcessor:
 
         return has_keywords
 
-    def build_context(self, interaction: Interaction, conversation_id: Optional[str] = None) -> Tuple[str, bool]:
+    def build_context(
+        self, interaction: Interaction, conversation_id: Optional[str] = None
+    ) -> Tuple[str, bool]:
         """Interaction processing with full feature integration using database-only approach."""
 
         session = get_db_session()

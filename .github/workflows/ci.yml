@@ -34,14 +34,36 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 pytest pip-audit
+          pip install flake8 pip-audit
+
+      - name: Setup Test Database
+        run: |
+          # Create test database using Alembic
+          alembic upgrade head
 
       - name: Run Flake8 (Linting)
         run: flake8 .
         continue-on-error: true
 
-      - name: Run Pytest (Unit Tests)
-        run: pytest
+      - name: Run Unit Tests
+        run: |
+          pytest app/tests/unit/ -v --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Run Integration Tests
+        run: |
+          pytest app/tests/integration/ -v --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Run All Tests with Coverage
+        run: |
+          pytest app/tests/ -v --cov=app --cov-report=xml --cov-report=html:htmlcov --cov-report=term-missing --cov-fail-under=80
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
 
       - name: Dependency audit (ignore en-core-web-sm warning)
         run: |

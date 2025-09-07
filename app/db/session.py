@@ -33,3 +33,11 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_db_session() -> Session:
+    """
+    Get a database session directly (not a generator).
+    Use this for non-FastAPI contexts.
+    """
+    return SessionLocal()

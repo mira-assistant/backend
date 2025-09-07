@@ -4,6 +4,7 @@ import app.models as models
 from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, HTTPException
 from app.core.mira_logger import MiraLogger
 from app.services.service_factory import get_sentence_processor
+import uuid
 
 router = APIRouter(prefix="/{network_id}/persons")
 
@@ -16,10 +17,16 @@ def get_person(
 ):
     """Get a specific person by ID within a specific network."""
 
+    try:
+        network_uuid = uuid.UUID(network_id)
+        person_uuid = uuid.UUID(person_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
     person = (
         db.query(models.Person)
-        .filter(models.Person.network_id == network_id)
-        .filter(models.Person.id == person_id)
+        .filter(models.Person.network_id == network_uuid)
+        .filter(models.Person.id == person_uuid)
         .first()
     )
 
@@ -41,10 +48,17 @@ async def update_person(
     """Update a person's information, including training their voice embedding."""
 
     try:
+        # Validate UUIDs
+        try:
+            network_uuid = uuid.UUID(network_id)
+            person_uuid = uuid.UUID(person_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid UUID format")
+
         # Find the person in the network
         person = (
             db.query(models.Person)
-            .filter(models.Person.id == person_id, models.Person.network_id == network_id)
+            .filter(models.Person.id == person_uuid, models.Person.network_id == network_uuid)
             .first()
         )
 
@@ -115,7 +129,12 @@ def get_all_persons(
 ):
     """Get all persons in a specific network."""
 
-    persons = db.query(models.Person).filter(models.Person.network_id == network_id).all()
+    try:
+        network_uuid = uuid.UUID(network_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
+    persons = db.query(models.Person).filter(models.Person.network_id == network_uuid).all()
 
     return {
         "network_id": network_id,
@@ -143,10 +162,17 @@ def delete_person(
     """Delete a person from the network."""
 
     try:
+        # Validate UUIDs
+        try:
+            network_uuid = uuid.UUID(network_id)
+            person_uuid = uuid.UUID(person_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid UUID format")
+
         # Find the person in the network
         person = (
             db.query(models.Person)
-            .filter(models.Person.id == person_id, models.Person.network_id == network_id)
+            .filter(models.Person.id == person_uuid, models.Person.network_id == network_uuid)
             .first()
         )
 

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Conversation
 from fastapi import APIRouter, Depends, HTTPException, Path
+import uuid
 
 router = APIRouter(prefix="/{network_id}/conversations")
 
@@ -14,10 +15,16 @@ def get_conversation(
 ):
     """Get a conversation by ID."""
 
+    try:
+        network_uuid = uuid.UUID(network_id)
+        conversation_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID format")
+
     conversation = (
         db.query(Conversation)
-        .filter(Conversation.network_id == network_id)
-        .filter(Conversation.id == conversation_id)
+        .filter(Conversation.network_id == network_uuid)
+        .filter(Conversation.id == conversation_uuid)
         .first()
     )
 

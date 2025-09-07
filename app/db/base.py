@@ -11,5 +11,4 @@ class Base(DeclarativeBase):
     pass
 
 
-# Import all models to register them with SQLAlchemy
-from app.models import *
+# Models will be imported when needed to avoid circular imports
