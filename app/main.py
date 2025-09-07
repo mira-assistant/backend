@@ -51,17 +51,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(v1.conversation_router, prefix="/api/v1/conversations")
-app.include_router(v1.persons_router, prefix="/api/v1/persons")
-app.include_router(v1.streams_router, prefix="/api/v1/streams")
-app.include_router(v1.interaction_router, prefix="/api/v1/interactions")
-app.include_router(v1.service_router, prefix="/api/v1/services")
+app.include_router(v1.conversation_router, prefix="/api/v1")
+app.include_router(v1.persons_router, prefix="/api/v1")
+app.include_router(v1.streams_router, prefix="/api/v1")
+app.include_router(v1.interaction_router, prefix="/api/v1")
+app.include_router(v1.service_router, prefix="/api/v1")
 
-app.include_router(v2.conversation_router, prefix="/api/v2/conversations")
-app.include_router(v2.persons_router, prefix="/api/v2/persons")
-app.include_router(v2.streams_router, prefix="/api/v2/streams")
-app.include_router(v2.interaction_router, prefix="/api/v2/interactions")
-app.include_router(v2.service_router, prefix="/api/v2/services")
+app.include_router(v2.conversation_router, prefix="/api/v2")
+app.include_router(v2.persons_router, prefix="/api/v2")
+app.include_router(v2.streams_router, prefix="/api/v2")
+app.include_router(v2.interaction_router, prefix="/api/v2")
+app.include_router(v2.service_router, prefix="/api/v2")
 
 
 @app.get("/")

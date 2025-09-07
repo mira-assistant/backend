@@ -18,7 +18,6 @@ from models import (
     Interaction,
     Conversation,
 )
-from db import get_db_session
 
 from typing import Literal
 

@@ -242,16 +242,16 @@ class CommandProcessor:
             current_time = datetime.now(local_tz).strftime("%I:%M %p %Z")
             return f"The current time is {current_time}"
 
-        def disable_mira() -> str:
-            """Disable the Mira assistant service"""
-            from routers.service_router import disable_service
+        # def disable_mira() -> str:
+        #     """Disable the Mira assistant service"""
+        #     from api.v1.service_router import disable_service
 
-            disable_service()
-            return "Mira assistant has been disabled."
+            # disable_service()
+            # return "Mira assistant has been disabled."
 
         self.model_manager.register_tool(get_weather, "Fetch Weather Information")
         self.model_manager.register_tool(get_time, "Fetch Current Time")
-        self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
+        # self.model_manager.register_tool(disable_mira, "Disable the Mira Assistant")
 
     def process_command(self, interaction: Interaction):
         """

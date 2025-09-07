@@ -1,74 +1,91 @@
-from mira import (
-    status,
-    audio_scorer,
-    logger,
-)
-from fastapi import HTTPException, Request, APIRouter
+from fastapi import Depends, HTTPException, Request, APIRouter, Path
 from datetime import datetime, timezone
 
-router = APIRouter(prefix="/service")
+from sqlalchemy.orm import Session
+
+import db
+import models
+
+router = APIRouter(prefix="/{network_id}/service")
 
 
 @router.post("/client/register/{client_id}")
-def register_client(client_id: str, request: Request):
+def register_client(
+    request: Request,
+    network_id: str = Path(..., description="The ID of the network"),
+    client_id: str = Path(..., description="The ID of the client"),
+    db: Session = Depends(db.get_db),
+):
     """Register a client and initialize stream scoring."""
 
     client_ip = request.client.host if request.client else "unknown"
     connection_start_time = datetime.now(timezone.utc)
 
-    status["connected_clients"][client_id] = {
-        "ip": client_ip,
-        "connection_start_time": connection_start_time,
-        "connection_uptime": 0.0,
-    }
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
 
-    success = audio_scorer.register_client(client_id=client_id)
+    if not network:
+        raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
 
-    if success:
-        logger.info(f"Client {client_id} registered for stream scoring from IP {client_ip}")
+    network.connected_clients.append(
+        {
+            client_id: {
+                "ip": client_ip,
+                "connection_start_time": connection_start_time,
+            }
+        }
+    )
 
-    return {"message": f"{client_id} registered successfully", "stream_scoring_enabled": success}
+    db.commit()
+
+    return {"message": f"{client_id} registered successfully"}
 
 
 @router.delete("/client/deregister/{client_id}")
-def deregister_client(client_id: str):
+def deregister_client(
+    network_id: str = Path(..., description="The ID of the network"),
+    client_id: str = Path(..., description="The ID of the client"),
+    db: Session = Depends(db.get_db),
+):
     """Deregister a client and remove from stream scoring."""
-    if client_id in status["connected_clients"]:
-        del status["connected_clients"][client_id]
-    else:
-        print("Client already deregistered or not found:", client_id)
 
-    success = audio_scorer.deregister_client(client_id)
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
 
-    if len(status["connected_clients"]) == 0:
-        disable_service()
-        logger.info("All clients deregistered, service disabled")
+    if not network:
+        raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
 
-    if client_id not in status["connected_clients"] and not success:
-        return {"message": f"{client_id} already deregistered or not found"}
+    network.connected_clients.pop(client_id)
+    db.commit()
 
-    return {"message": f"{client_id} deregistered successfully", "stream_scoring_removed": success}
-
-
-@router.get("/{client_id}")
-def get_client_info(client_id: str):
-    """Get detailed information about a specific client."""
-
-    client_dict = status["connected_clients"].get(client_id)
-
-    if not client_dict:
-        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
-
-    return client_dict
+    return {"message": f"{client_id} deregistered successfully"}
 
 
 @router.patch("/enable")
-def enable_service():
-    status["enabled"] = True
+def enable_service(
+    network_id: str = Path(..., description="The ID of the network"),
+    db: Session = Depends(db.get_db),
+):
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+
+    if not network:
+        raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
+
+    network.service_enabled = True
+    db.commit()
+
     return {"message": "Service enabled successfully"}
 
 
 @router.patch("/disable")
-def disable_service():
-    status["enabled"] = False
+def disable_service(
+    network_id: str = Path(..., description="The ID of the network"),
+    db: Session = Depends(db.get_db),
+):
+    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_id).first()
+
+    if not network:
+        raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
+
+    network.service_enabled = False
+    db.commit()
+
     return {"message": "Service disabled successfully"}
