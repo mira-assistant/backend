@@ -67,7 +67,7 @@ class SentenceProcessor:
         self.sample_rate = settings.sample_rate
 
         # Initialize models
-        self.asr_model = WhisperModel("base", device="cpu", compute_type="int8")
+        self.asr_model = WhisperModel("small", device="cpu", compute_type="int8")
         self.spk_encoder = VoiceEncoder()
         self._speaker_state = SpeakerIdentificationState()
 
