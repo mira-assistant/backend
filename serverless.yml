@@ -1,0 +1,346 @@
+service: mira-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.11
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 1024
+  timeout: 30
+  environment:
+    # Database
+    DATABASE_URL: ${env:DATABASE_URL}
+
+    # LLM Backend Configuration
+    LLM_BACKEND: ${env:LLM_BACKEND, 'bedrock'}
+
+    # AWS Bedrock (if using Bedrock)
+    AWS_REGION: 'us-east-1'
+    BEDROCK_MODEL_ID: 'anthropic.claude-3-sonnet-20240229-v1:0'
+
+    # API Keys (if using external APIs)
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY, ''}
+    ANTHROPIC_API_KEY: ${env:ANTHROPIC_API_KEY, ''}
+    GEMINI_API_KEY: ${env:GEMINI_API_KEY, ''}
+
+    # Application Settings (from config.py)
+    APP_NAME: 'Mira Backend'
+    APP_VERSION: '5.0.0'
+    DEBUG: 'false'
+    LOG_LEVEL: 'INFO'
+
+    # CORS
+    CORS_ORIGINS: '*'
+
+    # Audio Processing (from constants.py)
+    SAMPLE_RATE: '16000'
+
+  iam:
+    role:
+      statements:
+        # Bedrock permissions
+        - Effect: Allow
+          Action:
+            - bedrock:InvokeModel
+            - bedrock:InvokeModelWithResponseStream
+          Resource: '*'
+        # Secrets Manager permissions (if using secrets)
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:mira-backend-${self:provider.stage}/*
+        # RDS permissions
+        - Effect: Allow
+          Action:
+            - rds:DescribeDBInstances
+            - rds:Connect
+          Resource: '*'
+        # CloudWatch Logs
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: '*'
+        # VPC Network Access
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+            - ec2:AttachNetworkInterface
+            - ec2:DetachNetworkInterface
+            - ec2:DescribeVpcs
+            - ec2:DescribeSubnets
+            - ec2:DescribeSecurityGroups
+          Resource: '*'
+
+functions:
+  api:
+    handler: lambda_handler.lambda_handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: '*'
+      - httpApi:
+          path: /
+          method: '*'
+    layers:
+      - arn:aws:lambda:${self:provider.region}:336392948345:layer:AWSSDKPandas-Python311:1
+    vpc:
+      securityGroupIds:
+        - !Ref MiraLambdaSecurityGroup
+      subnetIds:
+        - !Ref MiraPrivateSubnet1
+        - !Ref MiraPrivateSubnet2
+    environment:
+      # Override any function-specific environment variables here
+      FUNCTION_NAME: ${self:service}-${self:provider.stage}-api
+      # Database URL will be set after RDS is created
+      DATABASE_URL: !Sub 'postgresql://mira_user:${env:DB_PASSWORD, MiraDB123!}@${MiraDatabase.Endpoint.Address}:5432/mira_db'
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    fileName: requirements.txt
+    dockerizePip: true
+    slim: true
+    strip: false
+    noDeps: false
+    layer:
+      name: ${self:service}-${self:provider.stage}-deps
+      description: Python dependencies for Mira Backend
+      compatibleRuntimes:
+        - python3.11
+      retain: false
+
+package:
+  patterns:
+    - '!.git/**'
+    - '!.env*'
+    - '!tests/**'
+    - '!htmlcov/**'
+    - '!coverage.xml'
+    - '!pytest.ini'
+    - '!Makefile'
+    - '!docker/**'
+    - '!plans/**'
+    - '!mira.db'
+    - '!venv/**'
+    - '!__pycache__/**'
+    - '!*.pyc'
+    - '!.pytest_cache/**'
+
+resources:
+  Resources:
+    # VPC for Lambda and RDS
+    MiraVPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: 10.0.0.0/16
+        EnableDnsHostnames: true
+        EnableDnsSupport: true
+        Tags:
+          - Key: Name
+            Value: mira-vpc-${self:provider.stage}
+
+    # Internet Gateway
+    MiraInternetGateway:
+      Type: AWS::EC2::InternetGateway
+      Properties:
+        Tags:
+          - Key: Name
+            Value: mira-igw-${self:provider.stage}
+
+    # Attach Internet Gateway to VPC
+    MiraInternetGatewayAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        InternetGatewayId: !Ref MiraInternetGateway
+        VpcId: !Ref MiraVPC
+
+    # Public Subnet 1
+    MiraPublicSubnet1:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref MiraVPC
+        AvailabilityZone: ${self:provider.region}a
+        CidrBlock: 10.0.1.0/24
+        MapPublicIpOnLaunch: true
+        Tags:
+          - Key: Name
+            Value: mira-public-subnet-1-${self:provider.stage}
+
+    # Public Subnet 2
+    MiraPublicSubnet2:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref MiraVPC
+        AvailabilityZone: ${self:provider.region}b
+        CidrBlock: 10.0.2.0/24
+        MapPublicIpOnLaunch: true
+        Tags:
+          - Key: Name
+            Value: mira-public-subnet-2-${self:provider.stage}
+
+    # Private Subnet 1
+    MiraPrivateSubnet1:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref MiraVPC
+        AvailabilityZone: ${self:provider.region}a
+        CidrBlock: 10.0.3.0/24
+        Tags:
+          - Key: Name
+            Value: mira-private-subnet-1-${self:provider.stage}
+
+    # Private Subnet 2
+    MiraPrivateSubnet2:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref MiraVPC
+        AvailabilityZone: ${self:provider.region}b
+        CidrBlock: 10.0.4.0/24
+        Tags:
+          - Key: Name
+            Value: mira-private-subnet-2-${self:provider.stage}
+
+    # Route Table for Public Subnets
+    MiraPublicRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref MiraVPC
+        Tags:
+          - Key: Name
+            Value: mira-public-rt-${self:provider.stage}
+
+    # Route for Internet Gateway
+    MiraPublicRoute:
+      Type: AWS::EC2::Route
+      DependsOn: MiraInternetGatewayAttachment
+      Properties:
+        RouteTableId: !Ref MiraPublicRouteTable
+        DestinationCidrBlock: 0.0.0.0/0
+        GatewayId: !Ref MiraInternetGateway
+
+    # Associate Public Subnets with Route Table
+    MiraPublicSubnet1RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref MiraPublicRouteTable
+        SubnetId: !Ref MiraPublicSubnet1
+
+    MiraPublicSubnet2RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref MiraPublicRouteTable
+        SubnetId: !Ref MiraPublicSubnet2
+
+    # DB Subnet Group
+    MiraDBSubnetGroup:
+      Type: AWS::RDS::DBSubnetGroup
+      Properties:
+        DBSubnetGroupDescription: Subnet group for Mira database
+        SubnetIds:
+          - !Ref MiraPrivateSubnet1
+          - !Ref MiraPrivateSubnet2
+        Tags:
+          - Key: Name
+            Value: mira-db-subnet-group-${self:provider.stage}
+
+    # Security Group for RDS
+    MiraDatabaseSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security group for Mira database
+        VpcId: !Ref MiraVPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 5432
+            ToPort: 5432
+            SourceSecurityGroupId: !Ref MiraLambdaSecurityGroup
+        Tags:
+          - Key: Name
+            Value: mira-db-sg-${self:provider.stage}
+
+    # Security Group for Lambda
+    MiraLambdaSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security group for Mira Lambda function
+        VpcId: !Ref MiraVPC
+        SecurityGroupEgress:
+          - IpProtocol: -1
+            CidrIp: 0.0.0.0/0
+        Tags:
+          - Key: Name
+            Value: mira-lambda-sg-${self:provider.stage}
+
+    # RDS Database
+    MiraDatabase:
+      Type: AWS::RDS::DBInstance
+      Properties:
+        DBInstanceIdentifier: mira-db-${self:provider.stage}
+        DBInstanceClass: db.t3.micro
+        Engine: postgres
+        EngineVersion: '15.4'
+        MasterUsername: mira_user
+        MasterUserPassword: ${env:DB_PASSWORD, 'MiraDB123!'}
+        AllocatedStorage: 20
+        StorageType: gp2
+        PubliclyAccessible: false
+        VPCSecurityGroups:
+          - !Ref MiraDatabaseSecurityGroup
+        DBSubnetGroupName: !Ref MiraDBSubnetGroup
+        BackupRetentionPeriod: 7
+        MultiAZ: false
+        StorageEncrypted: true
+        DeletionProtection: false
+        Tags:
+          - Key: Name
+            Value: mira-db-${self:provider.stage}
+          - Key: Environment
+            Value: ${self:provider.stage}
+
+  Outputs:
+    ApiGatewayRestApiId:
+      Value:
+        Ref: HttpApi
+      Export:
+        Name: ${self:service}-${self:provider.stage}-restApiId
+    ApiGatewayRestApiRootResourceId:
+      Value:
+        Fn::GetAtt:
+          - HttpApi
+          - RootResourceId
+      Export:
+        Name: ${self:service}-${self:provider.stage}-rootResourceId
+    LambdaFunctionQualifiedArn:
+      Value:
+        Ref: ApiLambdaFunction
+      Export:
+        Name: ${self:service}-${self:provider.stage}-lambdaArn
+    DatabaseEndpoint:
+      Value:
+        Fn::GetAtt:
+          - MiraDatabase
+          - Endpoint.Address
+      Export:
+        Name: ${self:service}-${self:provider.stage}-dbEndpoint
+    DatabasePort:
+      Value:
+        Fn::GetAtt:
+          - MiraDatabase
+          - Endpoint.Port
+      Export:
+        Name: ${self:service}-${self:provider.stage}-dbPort
+    VPCId:
+      Value:
+        Ref: MiraVPC
+      Export:
+        Name: ${self:service}-${self:provider.stage}-vpcId

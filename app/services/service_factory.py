@@ -10,7 +10,7 @@ from typing import Any, Dict
 # MLModelManager no longer needed - using direct Gemini integration
 from app.services.service_registry import service_registry
 from app.core.mira_logger import MiraLogger
-from app.core.config import settings
+from app.core.constants import SAMPLE_RATE
 
 
 class ServiceFactory:
@@ -90,7 +90,7 @@ class ServiceFactory:
                 {"word": "mira", "sensitivity": 0.7, "min_confidence": 0.5},
                 {"word": "hey mira", "sensitivity": 0.8, "min_confidence": 0.6},
             ],
-            "sample_rate": settings.sample_rate,
+            "sample_rate": SAMPLE_RATE,
             "max_clients": 10,
         }
 

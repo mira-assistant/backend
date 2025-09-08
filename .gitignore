@@ -30,7 +30,13 @@ build/
 # Environment variables
 .env
 
+# Coverage files
+.coverage
+htmlcov/
+coverage.xml
+
 # backend specific
 *.db
 *.db-shm
 *.db-wal
+node_modules

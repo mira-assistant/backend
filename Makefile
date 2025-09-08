@@ -32,6 +32,7 @@ clean: ## Clean up temporary files
 	rm -rf .pytest_cache/
 	rm -rf htmlcov/
 	rm -rf .coverage
+	rm -rf .serverless/
 
 docker-build: ## Build Docker image
 	docker build -t mira-backend .
@@ -47,6 +48,15 @@ db-init: ## Initialize database
 
 db-migrate: ## Run database migrations
 	alembic upgrade head
+
+db-migrate-aws: ## Run database migrations on AWS RDS
+	./scripts/migrate-db.sh
+
+deploy: ## Deploy to AWS Lambda
+	./scripts/deploy.sh
+
+setup-aws: ## Setup AWS Lambda environment
+	./scripts/setup-lambda.sh
 
 db-reset: ## Reset database
 	python -c "from app.db.init_db import reset_db; reset_db()"

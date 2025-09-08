@@ -37,12 +37,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO")
 
-    # Audio Processing
-    sample_rate: int = Field(default=16000)
-
-    # Context Processing
-    conversation_gap_threshold: int = Field(default=300)
-    context_similarity_threshold: float = Field(default=0.7)
+    # Audio Processing (moved to constants.py)
+    # sample_rate, conversation_gap_threshold, context_similarity_threshold
 
     # API Keys
     gemini_api_key: str = Field(default="")

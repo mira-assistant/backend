@@ -21,7 +21,7 @@ import threading
 import numpy as np
 from scipy import signal
 from app.core.mira_logger import MiraLogger
-from app.core.config import settings
+from app.core.constants import SAMPLE_RATE
 
 
 @dataclass
@@ -67,7 +67,7 @@ class MultiStreamProcessor:
         """
         self.network_id = network_id
         self.config = config or {}
-        self.sample_rate = settings.sample_rate
+        self.sample_rate = SAMPLE_RATE
         self.clients: Dict[str, ClientStreamInfo] = {}
         self._lock = threading.Lock()
 

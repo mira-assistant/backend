@@ -26,7 +26,7 @@ from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 import uuid
 from app.core.mira_logger import MiraLogger
-from app.core.config import settings
+from app.core.constants import SAMPLE_RATE, CONTEXT_SIMILARITY_THRESHOLD
 
 # MiraLogger is used directly via class methods
 
@@ -40,7 +40,7 @@ class SpeakerIdentificationState:
         self._cluster_labels: list[int] = []
         self._clusters_dirty: bool = True
 
-        self.SPEAKER_SIMILARITY_THRESHOLD: float = 0.7
+        self.SPEAKER_SIMILARITY_THRESHOLD: float = CONTEXT_SIMILARITY_THRESHOLD
         self.DBSCAN_EPS: float = 0.9
         self.DBSCAN_MIN_SAMPLES: int = 2
 
@@ -64,7 +64,7 @@ class SentenceProcessor:
         """
         self.network_id = network_id
         self.config = config or {} if config else {}
-        self.sample_rate = settings.sample_rate
+        self.sample_rate = SAMPLE_RATE
 
         # Initialize models
         self.asr_model = WhisperModel("small", device="cpu", compute_type="int8")
