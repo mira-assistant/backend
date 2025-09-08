@@ -55,10 +55,10 @@ jobs:
           docker run -d --name mira-test -p 8000:8000 mira-backend
 
           # Wait for container to be healthy
-          timeout 30s bash -c 'while ! curl -s http://localhost:8000/health; do sleep 1; done'
+          timeout 30s bash -c 'while ! curl -s http://localhost:8000/; do sleep 1; done'
 
           # Run basic health check
-          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:8000/ || exit 1
 
           # Cleanup
           docker stop mira-test
