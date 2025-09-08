@@ -82,7 +82,14 @@ class TestMainApp:
         """Test that the root endpoint exists."""
         # Get all registered routes
         routes = [str(route) for route in app.routes]
-        assert "/" in [route.split(" ")[1] for route in routes]
+        # Extract path from route string (format: Route(path='/path', ...))
+        paths = []
+        for route in routes:
+            if "path='" in route:
+                start = route.find("path='") + 6
+                end = route.find("'", start)
+                paths.append(route[start:end])
+        assert "/" in paths
 
     def test_api_versioning(self):
         """Test that API versioning is properly set up."""
