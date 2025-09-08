@@ -10,12 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Import models to register them with SQLAlchemy
-# import app.models  # noqa: F401
-
 import app.api.v1 as v1
-
-# import app.api.v2 as v2
+import app.api.v2 as v2
 
 # Get FastAPI logger configured with our custom formatter
 fastapi_logger = MiraLogger.get_fastapi_logger()
@@ -64,11 +60,11 @@ app.include_router(v1.streams_router, prefix="/api/v1")
 app.include_router(v1.interaction_router, prefix="/api/v1")
 app.include_router(v1.service_router, prefix="/api/v1")
 
-# app.include_router(v2.conversation_router, prefix="/api/v2")
-# app.include_router(v2.persons_router, prefix="/api/v2")
-# app.include_router(v2.streams_router, prefix="/api/v2")
-# app.include_router(v2.interaction_router, prefix="/api/v2")
-# app.include_router(v2.service_router, prefix="/api/v2")
+app.include_router(v2.conversation_router, prefix="/api/v2")
+app.include_router(v2.persons_router, prefix="/api/v2")
+app.include_router(v2.streams_router, prefix="/api/v2")
+app.include_router(v2.interaction_router, prefix="/api/v2")
+app.include_router(v2.service_router, prefix="/api/v2")
 
 
 @app.get("/")
@@ -79,5 +75,5 @@ def root():
         "version": settings.app_version,
         "status": "running",
         "stable": "v1",
-        # "beta": "v2",
+        "beta": "v2",
     }

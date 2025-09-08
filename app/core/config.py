@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Mira Backend"
-    app_version: str = "4.3.0"
+    app_version: str = "5.0.0"
     debug: bool = False
 
     # Database

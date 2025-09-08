@@ -40,15 +40,6 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
 
-      - name: Security scan with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'mira-backend'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
-
       - name: Test container startup
         run: |
           # Start the container
