@@ -132,9 +132,8 @@ class TestDatabaseSession:
         """Test that database transactions work correctly."""
         Base.metadata.create_all(bind=test_engine)
 
-        # Create a session
-        db_gen = get_db()
-        session = next(db_gen)
+        # Create a session using the test session factory
+        session = test_session_factory()
 
         try:
             # Test that we can perform operations
@@ -150,19 +149,14 @@ class TestDatabaseSession:
             assert saved_network.name == "Test Network"  # type: ignore
 
         finally:
-            # Close the generator
-            try:
-                next(db_gen)
-            except StopIteration:
-                pass
+            session.close()
 
     def test_database_rollback(self, test_session_factory, test_engine):
         """Test that database rollback works correctly."""
         Base.metadata.create_all(bind=test_engine)
 
-        # Create a session
-        db_gen = get_db()
-        session = next(db_gen)
+        # Create a session using the test session factory
+        session = test_session_factory()
 
         try:
             from app.models import MiraNetwork
@@ -186,11 +180,7 @@ class TestDatabaseSession:
             assert len(saved_networks) == 0
 
         finally:
-            # Close the generator
-            try:
-                next(db_gen)
-            except StopIteration:
-                pass
+            session.close()
 
     def test_database_error_handling(self, test_session_factory, test_engine):
         """Test that database errors are handled correctly."""
