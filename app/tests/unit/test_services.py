@@ -21,16 +21,17 @@ class TestServiceFactory:
     """Test cases for ServiceFactory class."""
 
     @patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"})
-    @patch("app.services.command_processor.genai.Client")
+    @patch("app.services.command_processor.CommandProcessor")
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.service_factory.ServiceFactory._load_default_system_prompt")
-    def test_create_command_processor(self, mock_load_prompt, mock_load_config, mock_genai_client):
+    def test_create_command_processor(self, mock_load_prompt, mock_load_config, mock_processor_class):
         """Test creating a CommandProcessor with direct Gemini integration."""
         # Setup mocks
         mock_config = {"system_prompt": "test prompt"}
         mock_load_config.return_value = mock_config
         mock_load_prompt.return_value = "test prompt"
-        mock_genai_client.return_value = Mock()
+        mock_processor_instance = Mock()
+        mock_processor_class.return_value = mock_processor_instance
 
         # Test
         processor = ServiceFactory.create_command_processor("test-network")
@@ -38,9 +39,11 @@ class TestServiceFactory:
         # Assertions
         mock_load_config.assert_called_once_with("test-network")
         mock_load_prompt.assert_called_once()
-        assert processor is not None
-        assert processor.network_id == "test-network"
-        assert processor.system_prompt == "test prompt"
+        mock_processor_class.assert_called_once_with(
+            network_id="test-network",
+            system_prompt="test prompt"
+        )
+        assert processor == mock_processor_instance
 
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.context_processor.ContextProcessor")
@@ -61,12 +64,12 @@ class TestServiceFactory:
         assert processor == mock_processor_instance
 
     @patch.dict("os.environ", {"GEMINI_API_KEY": "test_key"})
-    @patch("app.services.inference_processor.genai.Client")
+    @patch("app.services.inference_processor.InferenceProcessor")
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.service_factory.ServiceFactory._load_action_system_prompt")
     @patch("app.services.service_factory.ServiceFactory._load_action_response_format")
     def test_create_inference_processor(
-        self, mock_load_format, mock_load_prompt, mock_load_config, mock_genai_client
+        self, mock_load_format, mock_load_prompt, mock_load_config, mock_processor_class
     ):
         """Test creating an InferenceProcessor with direct Gemini integration."""
         # Setup mocks
@@ -74,7 +77,8 @@ class TestServiceFactory:
         mock_load_config.return_value = mock_config
         mock_load_prompt.return_value = "test prompt"
         mock_load_format.return_value = {"test": "format"}
-        mock_genai_client.return_value = Mock()
+        mock_processor_instance = Mock()
+        mock_processor_class.return_value = mock_processor_instance
 
         # Test
         processor = ServiceFactory.create_inference_processor("test-network")
@@ -83,10 +87,12 @@ class TestServiceFactory:
         mock_load_config.assert_called_once_with("test-network")
         mock_load_prompt.assert_called_once()
         mock_load_format.assert_called_once()
-        assert processor is not None
-        assert processor.network_id == "test-network"
-        assert processor.system_prompt == "test prompt"
-        assert processor.response_format == {"test": "format"}
+        mock_processor_class.assert_called_once_with(
+            network_id="test-network",
+            system_prompt="test prompt",
+            response_format={"test": "format"}
+        )
+        assert processor == mock_processor_instance
 
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.multi_stream_processor.MultiStreamProcessor")
