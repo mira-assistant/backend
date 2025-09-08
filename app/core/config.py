@@ -36,9 +36,15 @@ class Settings(BaseSettings):
     conversation_gap_threshold: int = Field(default=300)
     context_similarity_threshold: float = Field(default=0.7)
 
+    # API Keys
+    gemini_api_key: str = Field(default="")
+    lm_studio_api_key: str = Field(default="")
+    openai_api_key: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Allow extra fields from environment
 
 
 # Global settings instance

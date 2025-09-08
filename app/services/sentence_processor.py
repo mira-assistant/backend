@@ -15,7 +15,7 @@ from typing import Dict, Any
 
 import numpy as np
 
-import whisper
+from faster_whisper import WhisperModel
 from resemblyzer import VoiceEncoder
 import noisereduce as nr
 from scipy.signal import butter, lfilter

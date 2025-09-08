@@ -12,7 +12,6 @@ from google import genai
 from app.models import Action, Interaction
 from app.core.mira_logger import MiraLogger
 
-
 class InferenceProcessor:
     """Inference processor for action data extraction with direct Gemini integration"""
 

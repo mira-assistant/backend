@@ -10,7 +10,7 @@ The CI/CD pipeline is defined in `.github/workflows/backend-ci.yml` and includes
 
 ### Test Job
 - **Triggers**: Push to main/develop branches, PRs to main/develop
-- **Matrix Strategy**: Tests on Python 3.10 and 3.11
+- **Matrix Strategy**: Tests on Python 3.11
 - **Steps**:
   1. Checkout code
   2. Set up Python environment
@@ -33,7 +33,7 @@ The CI/CD pipeline is defined in `.github/workflows/backend-ci.yml` and includes
 ## Local Development
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.11
 - pip
 - Docker (optional)
 
@@ -71,7 +71,7 @@ make dev
 
 ### Dockerfile
 The `Dockerfile` creates a production-ready image with:
-- Python 3.10 slim base image
+- Python 3.11 slim base image
 - System dependencies for ML libraries
 - Non-root user for security
 - Health check endpoint

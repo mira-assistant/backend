@@ -19,8 +19,8 @@ demo_*.py
 Thumbs.db
 
 # Dependencies
-venv/
-env/
+.venv/
+.env/
 
 # Build artifacts
 dist/
