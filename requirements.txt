@@ -20,6 +20,7 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.10.0
     # via
+    #   google-genai
     #   httpx
     #   openai
     #   starlette
@@ -111,36 +112,10 @@ fsspec[http]==2025.3.0
     #   datasets
     #   huggingface-hub
     #   torch
-google-ai-generativelanguage==0.6.15
-    # via google-generativeai
-google-api-core[grpc]==2.25.1
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-python-client
-    #   google-generativeai
-google-api-python-client==2.181.0
-    # via google-generativeai
 google-auth==2.40.3
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-core
-    #   google-api-python-client
-    #   google-auth-httplib2
-    #   google-generativeai
-google-auth-httplib2==0.2.0
-    # via google-api-python-client
-google-generativeai==0.8.5
+    # via google-genai
+google-genai==1.33.0
     # via -r requirements.in
-googleapis-common-protos==1.70.0
-    # via
-    #   google-api-core
-    #   grpcio-status
-grpcio==1.74.0
-    # via
-    #   google-api-core
-    #   grpcio-status
-grpcio-status==1.71.2
-    # via google-api-core
 h11==0.16.0
     # via
     #   httpcore
@@ -149,15 +124,12 @@ hf-xet==1.1.9
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
-httplib2==0.30.0
-    # via
-    #   google-api-python-client
-    #   google-auth-httplib2
 httptools==0.6.4
     # via uvicorn
 httpx==0.28.1
     # via
     #   -r requirements.in
+    #   google-genai
     #   openai
 huggingface-hub==0.34.4
     # via
@@ -299,19 +271,8 @@ propcache==0.3.2
     # via
     #   aiohttp
     #   yarl
-proto-plus==1.26.1
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-core
 protobuf==5.29.5
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-core
-    #   google-generativeai
-    #   googleapis-common-protos
-    #   grpcio-status
-    #   onnxruntime
-    #   proto-plus
+    # via onnxruntime
 psutil==7.0.0
     # via
     #   accelerate
@@ -331,7 +292,7 @@ pydantic==2.11.7
     #   -r requirements.in
     #   confection
     #   fastapi
-    #   google-generativeai
+    #   google-genai
     #   openai
     #   pydantic-settings
     #   spacy
@@ -348,9 +309,7 @@ pygments==2.19.2
     #   pytest
     #   rich
 pyparsing==3.2.3
-    # via
-    #   httplib2
-    #   matplotlib
+    # via matplotlib
 pytest==8.4.2
     # via
     #   -r requirements.in
@@ -390,7 +349,7 @@ requests==2.32.5
     # via
     #   codecov
     #   datasets
-    #   google-api-core
+    #   google-genai
     #   huggingface-hub
     #   spacy
     #   transformers
@@ -450,6 +409,8 @@ sympy==1.14.0
     # via
     #   onnxruntime
     #   torch
+tenacity==9.1.2
+    # via google-genai
 thinc==8.3.4
     # via
     #   -r requirements.in
@@ -470,7 +431,6 @@ tqdm==4.67.1
     # via
     #   datasets
     #   faster-whisper
-    #   google-generativeai
     #   huggingface-hub
     #   noisereduce
     #   openai
@@ -495,7 +455,7 @@ typing-extensions==4.15.0
     #   alembic
     #   anyio
     #   fastapi
-    #   google-generativeai
+    #   google-genai
     #   huggingface-hub
     #   openai
     #   optype
@@ -515,8 +475,6 @@ tzdata==2025.2
     # via pandas
 tzlocal==5.3.1
     # via -r requirements.in
-uritemplate==4.2.0
-    # via google-api-python-client
 urllib3==2.5.0
     # via
     #   requests
@@ -535,7 +493,9 @@ watchfiles==1.1.0
 weasel==0.4.1
     # via spacy
 websockets==15.0.1
-    # via uvicorn
+    # via
+    #   google-genai
+    #   uvicorn
 wrapt==1.17.3
     # via smart-open
 xxhash==3.5.0

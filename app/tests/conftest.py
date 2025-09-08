@@ -12,13 +12,13 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 import uuid
 
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
 from app.db.base import Base
 from app.main import app
 from app.db import get_db
+
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 @pytest.fixture(scope="session")
