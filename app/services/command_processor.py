@@ -176,25 +176,36 @@ class WakeWordDetector:
         text_words = text.split()
 
         if len(wake_words) == 1:
-            for word in text_words:
-                if wake_word in word or word in wake_word:
-                    return 0.8
-                if len(word) >= 3 and len(wake_word) >= 3:
-                    common_chars = len(set(wake_word) & set(word))
-                    similarity = common_chars / max(len(wake_word), len(word))
-                    if similarity > 0.6:
-                        return 0.6
+            return self._calculate_single_word_confidence(wake_word, text_words)
         else:
-            matches = 0
-            for wake_word_part in wake_words:
-                for text_word in text_words:
-                    if wake_word_part in text_word or text_word in wake_word_part:
-                        matches += 1
-                        break
+            return self._calculate_multi_word_confidence(wake_words, text_words)
 
-            if matches > 0:
-                confidence = matches / len(wake_words)
-                return min(0.9, confidence)
+    def _calculate_single_word_confidence(self, wake_word: str, text_words: list[str]) -> float:
+        """Calculate confidence for single word wake word detection."""
+        for word in text_words:
+            if wake_word in word or word in wake_word:
+                return 0.8
+            if len(word) >= 3 and len(wake_word) >= 3:
+                common_chars = len(set(wake_word) & set(word))
+                similarity = common_chars / max(len(wake_word), len(word))
+                if similarity > 0.6:
+                    return 0.6
+        return 0.0
+
+    def _calculate_multi_word_confidence(
+        self, wake_words: list[str], text_words: list[str]
+    ) -> float:
+        """Calculate confidence for multi-word wake word detection."""
+        matches = 0
+        for wake_word_part in wake_words:
+            for text_word in text_words:
+                if wake_word_part in text_word or text_word in wake_word_part:
+                    matches += 1
+                    break
+
+        if matches > 0:
+            confidence = matches / len(wake_words)
+            return min(0.9, confidence)
 
         return 0.0
 
@@ -202,9 +213,7 @@ class WakeWordDetector:
 class CommandProcessor:
     """Main command processing workflow orchestrator with direct Gemini integration"""
 
-    def __init__(
-        self, network_id: str, system_prompt: str = "You are a helpful AI assistant."
-    ):
+    def __init__(self, network_id: str, system_prompt: str = "You are a helpful AI assistant."):
         """
         Initialize command processor with direct Gemini integration.
 
@@ -246,9 +255,7 @@ class CommandProcessor:
             Returns:
                 Weather information string
             """
-            return (
-                f"The weather in {location} is partly cloudy with a temperature of 72°F"
-            )
+            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
 
         def get_time() -> str:
             """Get current time in user's timezone (auto-detected).
@@ -353,9 +360,7 @@ class CommandProcessor:
         Returns:
             Result of command processing
         """
-        MiraLogger.info(
-            f"Processing command for network {self.network_id}: {interaction.text}"
-        )
+        MiraLogger.info(f"Processing command for network {self.network_id}: {interaction.text}")
         response = self._run_gemini_inference(interaction, context)
 
         return response
@@ -379,9 +384,7 @@ class CommandProcessor:
         Returns:
             bool: True if wake word was added successfully
         """
-        return self.wake_word_detector.add_wake_word(
-            word, sensitivity, min_confidence, callback
-        )
+        return self.wake_word_detector.add_wake_word(word, sensitivity, min_confidence, callback)
 
     def detect_wake_words_text(
         self, client_id: str, transcribed_text: str, audio_length: float = 0.0
