@@ -23,7 +23,7 @@ jobs:
       - name: Build and test backend
         run: |
           # Build the Docker image
-          docker build -t mira-backend -f Dockerfile .
+          docker build -t mira-backend -f docker/Dockerfile.dev .
 
           # Run linting and tests in container
           docker run --rm mira-backend flake8 .

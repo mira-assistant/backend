@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -11,18 +12,23 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download spaCy model
 RUN python -m spacy download en_core_web_sm
 
+# Copy application code
 COPY . .
 
-# Run as non-root
+# Create non-root user and set permissions
 RUN useradd --create-home app && chown -R app:app /app
 USER app
 
+# Expose port
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Default command (can be overridden)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
