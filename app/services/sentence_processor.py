@@ -67,7 +67,7 @@ class SentenceProcessor:
         self.sample_rate = settings.sample_rate
 
         # Initialize models
-        self.asr_model = whisper.load_model("base")
+        self.asr_model = WhisperModel("base", device="cpu", compute_type="int8")
         self.spk_encoder = VoiceEncoder()
         self._speaker_state = SpeakerIdentificationState()
 
@@ -382,13 +382,14 @@ class SentenceProcessor:
         if np.isnan(denoised_audio).any() or np.isinf(denoised_audio).any():
             raise ValueError("Audio contains NaN or Inf values")
 
-        result = self.asr_model.transcribe(denoised_audio)
+        segments, info = self.asr_model.transcribe(denoised_audio, beam_size=5)
 
-        text = str(
-            " ".join(result["text"]).strip()
-            if isinstance(result["text"], list)
-            else result["text"].strip()
-        )
+        # Extract text from segments
+        text_parts = []
+        for segment in segments:
+            text_parts.append(segment.text.strip())
+
+        text = " ".join(text_parts).strip()
 
         if not text:
             raise ValueError("Transcription failed")
