@@ -25,7 +25,7 @@ sentence-transformers>=2.2.0
 torch>=2.0.0
 
 # Voice processing (using alternatives that don't require numba)
-# resemblyzer  # Commented out - requires numba which doesn't support Python 3.12
+resemblyzer>=0.1.0
 
 # HTTP and API
 httpx>=0.25.0
