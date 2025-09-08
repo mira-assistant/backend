@@ -4,7 +4,7 @@ Unit tests for database models.
 
 import pytest
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Person, Conversation, Interaction, MiraNetwork, Action

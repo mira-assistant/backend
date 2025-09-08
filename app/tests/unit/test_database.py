@@ -4,10 +4,9 @@ Unit tests for database functionality.
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.session import create_tables, get_db, SessionLocal
+from app.db.session import get_db, SessionLocal
 from app.db.base import Base
 from app.core.config import settings
 

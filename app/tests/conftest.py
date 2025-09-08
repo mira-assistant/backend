@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
+import uuid
 
 import sys
 
@@ -98,7 +99,6 @@ async def async_client(db_session: Session) -> AsyncGenerator[AsyncClient, None]
 @pytest.fixture
 def sample_network_id() -> str:
     """Generate a sample network ID for testing."""
-    import uuid
 
     return str(uuid.uuid4())
 
@@ -106,7 +106,6 @@ def sample_network_id() -> str:
 @pytest.fixture
 def sample_person_id() -> str:
     """Generate a sample person ID for testing."""
-    import uuid
 
     return str(uuid.uuid4())
 
@@ -114,7 +113,6 @@ def sample_person_id() -> str:
 @pytest.fixture
 def sample_conversation_id() -> str:
     """Generate a sample conversation ID for testing."""
-    import uuid
 
     return str(uuid.uuid4())
 
@@ -122,7 +120,6 @@ def sample_conversation_id() -> str:
 @pytest.fixture
 def sample_interaction_id() -> str:
     """Generate a sample interaction ID for testing."""
-    import uuid
 
     return str(uuid.uuid4())
 
@@ -130,7 +127,6 @@ def sample_interaction_id() -> str:
 @pytest.fixture
 def sample_action_id() -> str:
     """Generate a sample action ID for testing."""
-    import uuid
 
     return str(uuid.uuid4())
 

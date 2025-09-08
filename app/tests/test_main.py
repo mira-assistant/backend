@@ -37,6 +37,7 @@ class TestMainApp:
         assert len(app.user_middleware) > 0
         # Check that at least one middleware is present (CORS should be there)
         middleware_info = [str(middleware) for middleware in app.user_middleware]
+        assert middleware_info is not None
         # CORS middleware should be present
         assert any(
             "cors" in str(middleware).lower() or "CORSMiddleware" in str(middleware)
