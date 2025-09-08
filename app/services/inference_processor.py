@@ -6,11 +6,11 @@ and lifecycle management.
 """
 
 import json
-import os
 from typing import Optional
 from google import genai
 from app.models import Action, Interaction
 from app.core.mira_logger import MiraLogger
+from app.core.config import settings
 
 
 class InferenceProcessor:
@@ -39,8 +39,8 @@ class InferenceProcessor:
         MiraLogger.info(f"InferenceProcessor initialized for network {network_id}")
 
     def _initialize_gemini_client(self):
-        """Initialize Gemini client with API key from environment."""
-        api_key = os.getenv("GEMINI_API_KEY")
+        """Initialize Gemini client with API key from settings."""
+        api_key = settings.gemini_api_key
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
         return genai.Client(api_key=api_key)

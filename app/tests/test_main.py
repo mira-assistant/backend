@@ -12,7 +12,7 @@ class TestMainApp:
         """Test that the FastAPI app is created correctly."""
         assert app is not None
         assert app.title == "Mira Backend"
-        assert app.version == "4.3.0"
+        assert app.version == "5.0.0"
         assert app.description == "Mira AI Assistant Backend API"
 
     def test_app_routes_registration(self):
@@ -99,9 +99,9 @@ class TestMainApp:
         v1_routes = [route for route in routes if "/api/v1" in route]
         assert len(v1_routes) > 0
 
-        # Check that v2 routes are commented out (not registered)
+        # Check that v2 routes are also registered (beta version)
         v2_routes = [route for route in routes if "/api/v2" in route]
-        assert len(v2_routes) == 0
+        assert len(v2_routes) > 0
 
     def test_middleware_order(self):
         """Test that middleware is in the correct order."""
@@ -117,7 +117,7 @@ class TestMainApp:
     def test_app_metadata(self):
         """Test that app metadata is correctly set."""
         assert app.title == "Mira Backend"
-        assert app.version == "4.3.0"
+        assert app.version == "5.0.0"
         assert app.description == "Mira AI Assistant Backend API"
         assert app.openapi_url == "/openapi.json"
         assert app.docs_url == "/docs"

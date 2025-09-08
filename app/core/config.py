@@ -2,9 +2,9 @@
 Application configuration using Pydantic BaseSettings.
 """
 
-from typing import List
+from typing import List, Union
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -23,7 +23,16 @@ class Settings(BaseSettings):
     bedrock_model_id: str = Field(default="anthropic.claude-3-sonnet-20240229-v1:0")
 
     # CORS
-    cors_origins: List[str] = Field(default=["*"])
+    cors_origins: Union[str, List[str]] = Field(default=["*"])
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from string or list."""
+        if isinstance(v, str):
+            # If it's a single string, wrap it in a list
+            return [v]
+        return v
 
     # Logging
     log_level: str = Field(default="INFO")

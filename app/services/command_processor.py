@@ -17,13 +17,14 @@ Features:
 """
 
 import json
-import os
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from google import genai
+from google.genai import types
 from app.models import Interaction
 from app.core.mira_logger import MiraLogger
+from app.core.config import settings
 
 
 @dataclass
@@ -220,8 +221,8 @@ class CommandProcessor:
         MiraLogger.info(f"CommandProcessor initialized for network {network_id}")
 
     def _initialize_gemini_client(self):
-        """Initialize Gemini client with API key from environment."""
-        api_key = os.getenv("GEMINI_API_KEY")
+        """Initialize Gemini client with API key from settings."""
+        api_key = settings.gemini_api_key
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
         return genai.Client(api_key=api_key)
@@ -304,7 +305,6 @@ class CommandProcessor:
         self, interaction: Interaction, context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Run inference using Gemini API."""
-        from google.genai import types  # type: ignore
 
         system_instruction = self.system_prompt
         if context and context.strip():
