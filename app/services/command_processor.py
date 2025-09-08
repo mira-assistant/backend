@@ -17,14 +17,16 @@ Features:
 """
 
 import json
-from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
+
 from google import genai
 from google.genai import types
-from app.models import Interaction
-from app.core.mira_logger import MiraLogger
+
 from app.core.config import settings
+from app.core.mira_logger import MiraLogger
+from app.models import Interaction
 
 
 @dataclass
@@ -200,7 +202,9 @@ class WakeWordDetector:
 class CommandProcessor:
     """Main command processing workflow orchestrator with direct Gemini integration"""
 
-    def __init__(self, network_id: str, system_prompt: str = "You are a helpful AI assistant."):
+    def __init__(
+        self, network_id: str, system_prompt: str = "You are a helpful AI assistant."
+    ):
         """
         Initialize command processor with direct Gemini integration.
 
@@ -229,8 +233,9 @@ class CommandProcessor:
 
     def _register_tools(self):
         """Register tools for the command processor."""
-        import tzlocal
         from datetime import datetime
+
+        import tzlocal
 
         def get_weather(location: str = "current location") -> str:
             """Get weather information for a specific location.
@@ -241,7 +246,9 @@ class CommandProcessor:
             Returns:
                 Weather information string
             """
-            return f"The weather in {location} is partly cloudy with a temperature of 72°F"
+            return (
+                f"The weather in {location} is partly cloudy with a temperature of 72°F"
+            )
 
         def get_time() -> str:
             """Get current time in user's timezone (auto-detected).
@@ -346,7 +353,9 @@ class CommandProcessor:
         Returns:
             Result of command processing
         """
-        MiraLogger.info(f"Processing command for network {self.network_id}: {interaction.text}")
+        MiraLogger.info(
+            f"Processing command for network {self.network_id}: {interaction.text}"
+        )
         response = self._run_gemini_inference(interaction, context)
 
         return response
@@ -370,7 +379,9 @@ class CommandProcessor:
         Returns:
             bool: True if wake word was added successfully
         """
-        return self.wake_word_detector.add_wake_word(word, sensitivity, min_confidence, callback)
+        return self.wake_word_detector.add_wake_word(
+            word, sensitivity, min_confidence, callback
+        )
 
     def detect_wake_words_text(
         self, client_id: str, transcribed_text: str, audio_length: float = 0.0

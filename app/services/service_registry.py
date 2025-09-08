@@ -6,9 +6,10 @@ across multiple networks with proper lifecycle management and cleanup.
 """
 
 import threading
-from datetime import datetime, timezone
-from typing import Callable, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict
+
 from app.core.mira_logger import MiraLogger
 
 
@@ -49,7 +50,9 @@ class ServiceRegistry:
 
         MiraLogger.info(f"ServiceRegistry initialized with max_networks={max_networks}")
 
-    def get_service(self, network_id: str, service_name: str, service_factory: Callable) -> Any:
+    def get_service(
+        self, network_id: str, service_name: str, service_factory: Callable
+    ) -> Any:
         """
         Get or create a service for a specific network.
 

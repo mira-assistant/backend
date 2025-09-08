@@ -7,27 +7,24 @@ It now uses proper dependency injection and lifecycle management.
 
 from __future__ import annotations
 
-import re
 import json
-from datetime import timezone, timedelta
-from typing import List, Optional, Tuple, Dict, Any
+import re
+from datetime import timedelta, timezone
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
 import numpy as np
-
 import spacy
-from transformers.pipelines import pipeline
 from sentence_transformers import SentenceTransformer
-
 from sqlalchemy import or_
+from transformers.pipelines import pipeline
 
+from app.core.mira_logger import MiraLogger
 from app.db import get_db_session
 from app.models import (
-    Person,
-    Interaction,
     Conversation,
+    Interaction,
+    Person,
 )
-from app.core.mira_logger import MiraLogger
-
-from typing import Literal
 
 
 class ContextProcessorConfig:
@@ -148,7 +145,9 @@ class ContextProcessor:
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def detect_conversation_boundary(
-        self, current_interaction: Interaction, last_interaction: Optional[Interaction] = None
+        self,
+        current_interaction: Interaction,
+        last_interaction: Optional[Interaction] = None,
     ) -> bool:
         """Conversation boundary detection using database queries."""
 
@@ -164,13 +163,17 @@ class ContextProcessor:
             last_ts = last_ts.replace(tzinfo=timezone.utc)
 
         time_gap = (current_ts - last_ts).total_seconds()
-        if time_gap > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD:
+        if (
+            time_gap
+            > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD
+        ):
             return True
 
         if (
             current_interaction.speaker_id != last_interaction.speaker_id  # type: ignore
             and time_gap
-            > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD / 2
+            > ContextProcessorConfig.ContextManagementParameters.CONVERSATION_GAP_THRESHOLD
+            / 2
         ):
             return True
 
@@ -183,7 +186,10 @@ class ContextProcessor:
             MiraLogger.debug(f"spaCy similarity failed: {e}")
             topic_similarity = 1.0
 
-        if topic_similarity < ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
+        if (
+            topic_similarity
+            < ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD
+        ):
             return True
 
         return False
@@ -242,7 +248,9 @@ class ContextProcessor:
             relevant_interactions = []
 
             if keywords:
-                keyword_results = self._get_keyword_interactions_db(keywords, session, max_results)
+                keyword_results = self._get_keyword_interactions_db(
+                    keywords, session, max_results
+                )
                 relevant_interactions.extend(keyword_results)
 
             if current_interaction and current_interaction.text_embedding is not None:
@@ -305,7 +313,10 @@ class ContextProcessor:
             try:
                 interaction_embedding = np.array(interaction.text_embedding)
                 similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
-                if similarity >= ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD:
+                if (
+                    similarity
+                    >= ContextProcessorConfig.NLPConfig.CONTEXT_SIMILARITY_THRESHOLD
+                ):
                     similarities.append((interaction, similarity))
             except Exception as e:
                 MiraLogger.debug(f"Error computing similarity: {e}")
@@ -327,7 +338,9 @@ class ContextProcessor:
         session = get_db_session()
         try:
             current_interaction = (
-                session.query(Interaction).order_by(Interaction.timestamp.desc()).first()
+                session.query(Interaction)
+                .order_by(Interaction.timestamp.desc())
+                .first()
             )
         finally:
             session.close()
@@ -340,8 +353,12 @@ class ContextProcessor:
         if short_term:
             context_parts.append("Current conversation:")
             for interaction in short_term:
-                speaker_info = f"Person {self._get_speaker_index(interaction.speaker_id)}"
-                if interaction.entities is not None and isinstance(interaction.entities, list):
+                speaker_info = (
+                    f"Person {self._get_speaker_index(interaction.speaker_id)}"
+                )
+                if interaction.entities is not None and isinstance(
+                    interaction.entities, list
+                ):
                     entity_text = ", ".join(
                         [
                             str(e.get("text", ""))
@@ -361,8 +378,12 @@ class ContextProcessor:
                 context_parts.append("\n\nRelevant historical context:")
                 for interaction in long_term:
                     timestamp_str = interaction.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                    speaker_info = f"Person {self._get_speaker_index(interaction.speaker_id)}"
-                    context_parts.append(f"\n- {timestamp_str} {speaker_info}: {interaction.text}")
+                    speaker_info = (
+                        f"Person {self._get_speaker_index(interaction.speaker_id)}"
+                    )
+                    context_parts.append(
+                        f"\n- {timestamp_str} {speaker_info}: {interaction.text}"
+                    )
 
         return "".join(context_parts) if context_parts else ""
 
@@ -409,9 +430,14 @@ class ContextProcessor:
 
         summary = ". ".join(important_sentences[:3])
 
-        if len(summary) > ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH:
+        if (
+            len(summary)
+            > ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH
+        ):
             summary = (
-                summary[: ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH]
+                summary[
+                    : ContextProcessorConfig.ContextManagementParameters.SUMMARY_MAX_LENGTH
+                ]
                 + "..."
             )
 
@@ -500,8 +526,23 @@ class ContextProcessor:
     def _classify_intent(text) -> bool:
         """Intent classification with NLP features."""
         action_keywords = {
-            "contact": ["call", "text", "message", "email", "tell", "contact", "reach out"],
-            "remind": ["remind", "remember", "later", "tomorrow", "next week", "schedule reminder"],
+            "contact": [
+                "call",
+                "text",
+                "message",
+                "email",
+                "tell",
+                "contact",
+                "reach out",
+            ],
+            "remind": [
+                "remind",
+                "remember",
+                "later",
+                "tomorrow",
+                "next week",
+                "schedule reminder",
+            ],
             "schedule": [
                 "schedule",
                 "appointment",

@@ -1,16 +1,17 @@
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import (
-    Column,
-    String,
-    DateTime,
-    ForeignKey,
     JSON,
+    Column,
+    DateTime,
     Float,
+    ForeignKey,
+    String,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-import uuid
-from datetime import datetime, timezone
 from app.db.base import Base
 
 
@@ -23,7 +24,9 @@ class Interaction(Base):
 
     text = Column(String, nullable=False)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True)
+    conversation_id = Column(
+        UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True
+    )
 
     voice_embedding = Column(JSON, nullable=True)
     speaker_id = Column(UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True)
@@ -34,7 +37,9 @@ class Interaction(Base):
     sentiment = Column(Float, nullable=True)
 
     # Foreign key to network
-    network_id = Column(UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False)
+    network_id = Column(
+        UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False
+    )
 
     person = relationship("Person", back_populates="interactions")
     conversation = relationship("Conversation", back_populates="interactions")

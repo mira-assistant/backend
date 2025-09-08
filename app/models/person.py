@@ -1,17 +1,19 @@
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import (
-    Column,
-    String,
-    DateTime,
-    Integer,
     JSON,
+    Column,
+    DateTime,
     ForeignKey,
+    Integer,
+    String,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-import uuid
-from datetime import datetime, timezone
 from app.db.base import Base
+
 from .conversation import person_conversation_association
 
 
@@ -28,7 +30,9 @@ class Person(Base):
     cluster_id = Column(Integer, nullable=True)
 
     # Foreign key to network
-    network_id = Column(UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False)
+    network_id = Column(
+        UUID(as_uuid=True), ForeignKey("mira_networks.id"), nullable=False
+    )
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
@@ -39,5 +43,9 @@ class Person(Base):
 
     interactions = relationship("Interaction", back_populates="person")
     network = relationship("MiraNetwork", back_populates="persons")
-    conversations = relationship("Conversation", back_populates="persons", secondary=person_conversation_association)
+    conversations = relationship(
+        "Conversation",
+        back_populates="persons",
+        secondary=person_conversation_association,
+    )
     actions = relationship("Action", back_populates="person")

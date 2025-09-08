@@ -1,10 +1,12 @@
+import uuid
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, UploadFile
 from sqlalchemy.orm import Session
+
 import app.db as db
 import app.models as models
-from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, HTTPException
 from app.core.mira_logger import MiraLogger
 from app.services.service_factory import get_sentence_processor
-import uuid
 
 router = APIRouter(prefix="/{network_id}/persons")
 
@@ -41,7 +43,9 @@ async def update_person(
     person_id: str = Path(..., description="The ID of the person to update"),
     network_id: str = Path(..., description="The ID of the network"),
     name: str = Form(None, description="The new name for the person"),
-    audio: UploadFile = File(None, description="Audio file for voice embedding training"),
+    audio: UploadFile = File(
+        None, description="Audio file for voice embedding training"
+    ),
     expected_text: str = Form(None, description="Expected text spoken in the audio"),
     db: Session = Depends(db.get_db),
 ):
@@ -58,12 +62,17 @@ async def update_person(
         # Find the person in the network
         person = (
             db.query(models.Person)
-            .filter(models.Person.id == person_uuid, models.Person.network_id == network_uuid)
+            .filter(
+                models.Person.id == person_uuid,
+                models.Person.network_id == network_uuid,
+            )
             .first()
         )
 
         if not person:
-            raise HTTPException(status_code=404, detail="Person not found in this network")
+            raise HTTPException(
+                status_code=404, detail="Person not found in this network"
+            )
 
         # Update name if provided
         if name:
@@ -75,7 +84,8 @@ async def update_person(
             audio_data = await audio.read()
             if len(audio_data) == 0:
                 raise HTTPException(
-                    status_code=400, detail="Received empty audio data. Please provide valid audio."
+                    status_code=400,
+                    detail="Received empty audio data. Please provide valid audio.",
                 )
 
             MiraLogger.info(
@@ -90,7 +100,9 @@ async def update_person(
 
             # Update the voice embedding using the sentence processor
             sentence_processor.update_voice_embedding(
-                person_id=person_id, audio_buffer=audio_bytearray, expected_text=expected_text
+                person_id=person_id,
+                audio_buffer=audio_bytearray,
+                expected_text=expected_text,
             )
 
             MiraLogger.info(
@@ -119,7 +131,9 @@ async def update_person(
     except Exception as e:
         MiraLogger.error(f"Error updating person {person_id}: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to update person: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update person: {str(e)}"
+        )
 
 
 @router.get("/")
@@ -134,7 +148,9 @@ def get_all_persons(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID format")
 
-    persons = db.query(models.Person).filter(models.Person.network_id == network_uuid).all()
+    persons = (
+        db.query(models.Person).filter(models.Person.network_id == network_uuid).all()
+    )
 
     return {
         "network_id": network_id,
@@ -145,7 +161,7 @@ def get_all_persons(
                 "index": person.index,
                 "has_voice_embedding": person.voice_embedding is not None,
                 "cluster_id": person.cluster_id,
-                "created_at": person.created_at.isoformat() if person.created_at else None,
+                "created_at": person.created_at.isoformat() if person.created_at else None,  # type: ignore
             }
             for person in persons
         ],
@@ -172,12 +188,17 @@ def delete_person(
         # Find the person in the network
         person = (
             db.query(models.Person)
-            .filter(models.Person.id == person_uuid, models.Person.network_id == network_uuid)
+            .filter(
+                models.Person.id == person_uuid,
+                models.Person.network_id == network_uuid,
+            )
             .first()
         )
 
         if not person:
-            raise HTTPException(status_code=404, detail="Person not found in this network")
+            raise HTTPException(
+                status_code=404, detail="Person not found in this network"
+            )
 
         # Delete the person
         db.delete(person)
@@ -197,4 +218,6 @@ def delete_person(
     except Exception as e:
         MiraLogger.error(f"Error deleting person {person_id}: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete person: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete person: {str(e)}"
+        )

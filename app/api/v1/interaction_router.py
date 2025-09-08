@@ -1,19 +1,18 @@
-from sqlalchemy.orm import Session
 import uuid
 
-from app.core.config import settings
-from app.core.constants import SAMPLE_RATE
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, UploadFile
+from sqlalchemy.orm import Session
+
 import app.db as db
 import app.models as models
-from fastapi import APIRouter, Depends, Path, UploadFile, File, Form, HTTPException
-
+from app.core.constants import SAMPLE_RATE
 from app.core.mira_logger import MiraLogger
 from app.services.service_factory import (
-    get_sentence_processor,
     get_command_processor,
     get_context_processor,
     get_inference_processor,
     get_multi_stream_processor,
+    get_sentence_processor,
 )
 
 router = APIRouter(prefix="/{network_id}/interactions")
@@ -23,7 +22,9 @@ router = APIRouter(prefix="/{network_id}/interactions")
 async def register_interaction(
     network_id: str = Path(..., description="The ID of the network"),
     audio: UploadFile = File(..., description="The audio file to register"),
-    client_id: str = Form(..., description="The ID of the client that recorded the interaction"),
+    client_id: str = Form(
+        ..., description="The ID of the client that recorded the interaction"
+    ),
     db: Session = Depends(db.get_db),
 ):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
@@ -33,7 +34,11 @@ async def register_interaction(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID format")
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == network_uuid)
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -47,7 +52,8 @@ async def register_interaction(
 
     if len(sentence_buf_raw) == 0:
         raise HTTPException(
-            status_code=400, detail="Received empty audio data. Please provide valid audio."
+            status_code=400,
+            detail="Received empty audio data. Please provide valid audio.",
         )
 
     MiraLogger.info(
@@ -62,7 +68,9 @@ async def register_interaction(
     audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
 
     # Update stream quality for this client
-    stream_metrics = multi_stream_processor.update_stream_quality(client_id, audio_float)
+    stream_metrics = multi_stream_processor.update_stream_quality(
+        client_id, audio_float
+    )
 
     if stream_metrics:
         MiraLogger.info(
@@ -217,7 +225,11 @@ def interaction_inference(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID format")
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == network_uuid)
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 

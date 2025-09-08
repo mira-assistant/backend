@@ -2,7 +2,8 @@
 Unit tests for service classes.
 """
 
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, mock_open, patch
+
 from app.services.service_factory import (
     ServiceFactory,
     get_command_processor,
@@ -24,7 +25,9 @@ class TestServiceFactory:
     @patch("app.services.command_processor.CommandProcessor")
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.service_factory.ServiceFactory._load_default_system_prompt")
-    def test_create_command_processor(self, mock_load_prompt, mock_load_config, mock_processor_class):
+    def test_create_command_processor(
+        self, mock_load_prompt, mock_load_config, mock_processor_class
+    ):
         """Test creating a CommandProcessor with direct Gemini integration."""
         # Setup mocks
         mock_config = {"system_prompt": "test prompt"}
@@ -40,8 +43,7 @@ class TestServiceFactory:
         mock_load_config.assert_called_once_with("test-network")
         mock_load_prompt.assert_called_once()
         mock_processor_class.assert_called_once_with(
-            network_id="test-network",
-            system_prompt="test prompt"
+            network_id="test-network", system_prompt="test prompt"
         )
         assert processor == mock_processor_instance
 
@@ -73,7 +75,10 @@ class TestServiceFactory:
     ):
         """Test creating an InferenceProcessor with direct Gemini integration."""
         # Setup mocks
-        mock_config = {"system_prompt": "test prompt", "response_format": {"test": "format"}}
+        mock_config = {
+            "system_prompt": "test prompt",
+            "response_format": {"test": "format"},
+        }
         mock_load_config.return_value = mock_config
         mock_load_prompt.return_value = "test prompt"
         mock_load_format.return_value = {"test": "format"}
@@ -90,13 +95,15 @@ class TestServiceFactory:
         mock_processor_class.assert_called_once_with(
             network_id="test-network",
             system_prompt="test prompt",
-            response_format={"test": "format"}
+            response_format={"test": "format"},
         )
         assert processor == mock_processor_instance
 
     @patch("app.services.service_factory.ServiceFactory._load_network_config")
     @patch("app.services.multi_stream_processor.MultiStreamProcessor")
-    def test_create_multi_stream_processor(self, mock_processor_class, mock_load_config):
+    def test_create_multi_stream_processor(
+        self, mock_processor_class, mock_load_config
+    ):
         """Test creating a MultiStreamProcessor."""
         # Setup mocks
         mock_config = {"test": "config"}
@@ -195,10 +202,14 @@ class TestServiceRegistry:
         mock_service = Mock()
         mock_factory.return_value = mock_service
 
-        result = service_registry.get_service("test-network", "test-service", mock_factory)
+        result = service_registry.get_service(
+            "test-network", "test-service", mock_factory
+        )
 
         assert result == mock_service
-        assert service_registry._services["test-network"]["test-service"] == mock_service
+        assert (
+            service_registry._services["test-network"]["test-service"] == mock_service
+        )
         mock_factory.assert_called_once_with("test-network")
 
     def test_get_service_existing_service(self):
@@ -212,7 +223,9 @@ class TestServiceRegistry:
         from datetime import datetime, timezone
 
         service_registry._configs["test-network"] = Mock()
-        service_registry._configs["test-network"].last_accessed = datetime.now(timezone.utc)
+        service_registry._configs["test-network"].last_accessed = datetime.now(
+            timezone.utc
+        )
         service_registry._configs["test-network"].ttl_seconds = 3600
 
         mock_service = Mock()
@@ -220,7 +233,9 @@ class TestServiceRegistry:
 
         mock_factory = Mock()
 
-        result = service_registry.get_service("test-network", "test-service", mock_factory)
+        result = service_registry.get_service(
+            "test-network", "test-service", mock_factory
+        )
 
         assert result == mock_service
         mock_factory.assert_not_called()
@@ -263,6 +278,8 @@ class TestServiceFactoryConvenienceFunctions:
         result = get_sentence_processor("test-network")
 
         mock_get_service.assert_called_once_with(
-            "test-network", "sentence_processor", ServiceFactory.create_sentence_processor
+            "test-network",
+            "sentence_processor",
+            ServiceFactory.create_sentence_processor,
         )
         assert result == mock_service

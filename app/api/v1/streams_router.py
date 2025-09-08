@@ -1,6 +1,7 @@
-from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, Path, Body
 import uuid
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from sqlalchemy.orm import Session
 
 import app.db as db
 import app.models as models
@@ -17,7 +18,11 @@ def get_best_stream(
 ):
     """Get the currently selected best audio stream."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -37,7 +42,11 @@ def get_all_stream_scores(
 ):
     """Get quality scores for all active streams."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -55,7 +64,9 @@ def get_all_stream_scores(
 
     except Exception as e:
         MiraLogger.error(f"Error getting stream scores: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get stream scores: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stream scores: {str(e)}"
+        )
 
 
 @router.get("/{client_id}/info")
@@ -66,17 +77,25 @@ def get_client_stream_info(
 ):
     """Get detailed stream information about a specific client."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
     if client_id not in network.connected_clients:
-        raise HTTPException(status_code=404, detail=f"Client {client_id} not found in network")
+        raise HTTPException(
+            status_code=404, detail=f"Client {client_id} not found in network"
+        )
 
     try:
         multi_stream_processor = get_multi_stream_processor(network_id)
         client_info = multi_stream_processor.get_client_info(client_id)
-        current_score = multi_stream_processor.get_all_stream_scores().get(client_id, 0.0)
+        current_score = multi_stream_processor.get_all_stream_scores().get(
+            client_id, 0.0
+        )
         best_stream = multi_stream_processor.get_best_stream()
         is_best_stream = best_stream and best_stream.get("client_id") == client_id
 
@@ -89,7 +108,9 @@ def get_client_stream_info(
         }
     except Exception as e:
         MiraLogger.error(f"Error getting client stream info: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get client stream info: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get client stream info: {str(e)}"
+        )
 
 
 @router.post("/phone/location")
@@ -100,7 +121,11 @@ def update_phone_location(
 ):
     """Update GPS-based location data for phone tracking."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -116,7 +141,9 @@ def update_phone_location(
         required_fields = ["latitude", "longitude"]
         for field in required_fields:
             if field not in location:
-                raise HTTPException(status_code=400, detail=f"location.{field} is required")
+                raise HTTPException(
+                    status_code=400, detail=f"location.{field} is required"
+                )
 
         multi_stream_processor = get_multi_stream_processor(network_id)
         success = multi_stream_processor.set_phone_location(client_id, location)
@@ -135,7 +162,9 @@ def update_phone_location(
         raise
     except Exception as e:
         MiraLogger.error(f"Error updating phone location: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update phone location: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update phone location: {str(e)}"
+        )
 
 
 @router.post("/phone/rssi")
@@ -146,7 +175,11 @@ def update_phone_rssi(
 ):
     """Update RSSI-based proximity data for phone tracking to specific client."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -170,7 +203,9 @@ def update_phone_rssi(
                 status_code=404, detail=f"Target client {target_client_id} not found"
             )
 
-        MiraLogger.info(f"Updated RSSI from {phone_client_id} to {target_client_id}: {rssi} dBm")
+        MiraLogger.info(
+            f"Updated RSSI from {phone_client_id} to {target_client_id}: {rssi} dBm"
+        )
 
         return {
             "message": f"RSSI updated successfully from {phone_client_id} to {target_client_id}",
@@ -181,4 +216,6 @@ def update_phone_rssi(
         raise
     except Exception as e:
         MiraLogger.error(f"Error updating phone RSSI: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update phone RSSI: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update phone RSSI: {str(e)}"
+        )

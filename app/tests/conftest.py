@@ -2,23 +2,23 @@
 Pytest configuration and shared fixtures for Mira Backend tests.
 """
 
-import pytest
-import tempfile
 import os
-from typing import Generator, AsyncGenerator
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+import sys
+import tempfile
+import uuid
+from typing import AsyncGenerator, Generator
+
+import pytest
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
-import uuid
-
-import sys
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from app.db import get_db  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.main import app  # noqa: E402
-from app.db import get_db  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -33,7 +33,9 @@ def test_db_url() -> str:
 @pytest.fixture(scope="session")
 def test_engine(test_db_url: str):
     """Create a test database engine."""
-    engine = create_engine(test_db_url, connect_args={"check_same_thread": False}, echo=False)
+    engine = create_engine(
+        test_db_url, connect_args={"check_same_thread": False}, echo=False
+    )
     return engine
 
 

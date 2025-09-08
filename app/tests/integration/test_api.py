@@ -3,10 +3,11 @@ Integration tests for API endpoints.
 """
 
 import uuid
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Person, Conversation, MiraNetwork
+from app.models import Conversation, MiraNetwork, Person
 
 
 class TestRootEndpoint:
@@ -44,7 +45,9 @@ class TestConversationEndpoints:
         db_session.refresh(network)
 
         conversation = Conversation(
-            topic_summary="Test Topic", context_summary="Test Context", network_id=network.id
+            topic_summary="Test Topic",
+            context_summary="Test Context",
+            network_id=network.id,
         )
 
         db_session.add(conversation)
@@ -71,7 +74,9 @@ class TestConversationEndpoints:
 
         fake_conversation_id = str(uuid.uuid4())
 
-        response = client.get(f"/api/v1/{network.id}/conversations/{fake_conversation_id}")
+        response = client.get(
+            f"/api/v1/{network.id}/conversations/{fake_conversation_id}"
+        )
 
         assert response.status_code == 404
         data = response.json()
@@ -92,7 +97,9 @@ class TestConversationEndpoints:
 
         fake_network_id = str(uuid.uuid4())
 
-        response = client.get(f"/api/v1/{fake_network_id}/conversations/{conversation.id}")
+        response = client.get(
+            f"/api/v1/{fake_network_id}/conversations/{conversation.id}"
+        )
 
         assert response.status_code == 404
         data = response.json()
@@ -109,7 +116,9 @@ class TestConversationEndpoints:
 class TestPersonEndpoints:
     """Test cases for person endpoints."""
 
-    def test_get_person_success(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_person_success(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting a person successfully."""
         # Create a network and person
         network = MiraNetwork(name="Test Network")
@@ -140,7 +149,9 @@ class TestPersonEndpoints:
         assert data["cluster_id"] == 1
         assert data["network_id"] == str(network.id)
 
-    def test_get_person_not_found(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_person_not_found(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting a non-existent person."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -220,7 +231,8 @@ class TestPersonEndpoints:
 
         # Test the endpoint
         response = client.post(
-            f"/api/v1/{network.id}/persons/{person.id}/update", data={"name": "New Name"}
+            f"/api/v1/{network.id}/persons/{person.id}/update",
+            data={"name": "New Name"},
         )
 
         assert response.status_code == 200
@@ -241,7 +253,8 @@ class TestPersonEndpoints:
         fake_person_id = str(uuid.uuid4())
 
         response = client.post(
-            f"/api/v1/{network.id}/persons/{fake_person_id}/update", data={"name": "New Name"}
+            f"/api/v1/{network.id}/persons/{fake_person_id}/update",
+            data={"name": "New Name"},
         )
 
         assert response.status_code == 404

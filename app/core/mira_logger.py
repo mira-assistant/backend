@@ -5,6 +5,7 @@ Centralized logging configuration and wrapper for logging library.
 import logging
 import sys
 from typing import Optional
+
 from app.core.config import settings
 
 
@@ -67,7 +68,9 @@ class MiraLogger:
 
         # Configure FastAPI logger to use our custom formatter
         fastapi_logger = logging.getLogger("fastapi")
-        if not any(isinstance(h, logging.StreamHandler) for h in fastapi_logger.handlers):
+        if not any(
+            isinstance(h, logging.StreamHandler) for h in fastapi_logger.handlers
+        ):
             handler = logging.StreamHandler(sys.stdout)
             handler.setFormatter(ColoredFormatter("%(levelname)s:     %(message)s"))
             fastapi_logger.addHandler(handler)

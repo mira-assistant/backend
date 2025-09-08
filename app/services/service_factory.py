@@ -7,10 +7,11 @@ with proper dependency injection and configuration.
 
 from typing import Any, Dict
 
+from app.core.constants import SAMPLE_RATE
+from app.core.mira_logger import MiraLogger
+
 # MLModelManager no longer needed - using direct Gemini integration
 from app.services.service_registry import service_registry
-from app.core.mira_logger import MiraLogger
-from app.core.constants import SAMPLE_RATE
 
 
 class ServiceFactory:
@@ -27,7 +28,9 @@ class ServiceFactory:
         # Create command processor with direct Gemini integration
         return CommandProcessor(
             network_id=network_id,
-            system_prompt=config.get("system_prompt", ServiceFactory._load_default_system_prompt()),
+            system_prompt=config.get(
+                "system_prompt", ServiceFactory._load_default_system_prompt()
+            ),
         )
 
     @staticmethod
@@ -51,7 +54,9 @@ class ServiceFactory:
         # Create inference processor with direct Gemini integration
         return InferenceProcessor(
             network_id=network_id,
-            system_prompt=config.get("system_prompt", ServiceFactory._load_action_system_prompt()),
+            system_prompt=config.get(
+                "system_prompt", ServiceFactory._load_action_system_prompt()
+            ),
             response_format=config.get(
                 "response_format", ServiceFactory._load_action_response_format()
             ),
@@ -101,7 +106,9 @@ class ServiceFactory:
             with open("schemas/command_processing/system_prompt.txt", "r") as f:
                 return f.read().strip()
         except FileNotFoundError:
-            MiraLogger.warning("Command processing system prompt not found, using default")
+            MiraLogger.warning(
+                "Command processing system prompt not found, using default"
+            )
             return "You are a helpful AI assistant."
 
     @staticmethod
@@ -111,7 +118,9 @@ class ServiceFactory:
             with open("schemas/action_processing/system_prompt.txt", "r") as f:
                 return f.read().strip()
         except FileNotFoundError:
-            MiraLogger.warning("Action processing system prompt not found, using default")
+            MiraLogger.warning(
+                "Action processing system prompt not found, using default"
+            )
             return "You are a helpful AI assistant for action processing."
 
     @staticmethod
@@ -123,7 +132,9 @@ class ServiceFactory:
             with open("schemas/action_processing/structured_output.json", "r") as f:
                 return json.load(f)
         except FileNotFoundError:
-            MiraLogger.warning("Action processing response format not found, using default")
+            MiraLogger.warning(
+                "Action processing response format not found, using default"
+            )
             return {}
 
 
@@ -155,7 +166,9 @@ def get_inference_processor(network_id: str):
 def get_multi_stream_processor(network_id: str):
     """Get a MultiStreamProcessor for the specified network."""
     return service_registry.get_service(
-        network_id, "multi_stream_processor", ServiceFactory.create_multi_stream_processor
+        network_id,
+        "multi_stream_processor",
+        ServiceFactory.create_multi_stream_processor,
     )
 
 

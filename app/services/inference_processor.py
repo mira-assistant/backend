@@ -7,10 +7,12 @@ and lifecycle management.
 
 import json
 from typing import Optional
+
 from google import genai
-from app.models import Action, Interaction
-from app.core.mira_logger import MiraLogger
+
 from app.core.config import settings
+from app.core.mira_logger import MiraLogger
+from app.models import Action, Interaction
 
 
 class InferenceProcessor:
@@ -67,7 +69,9 @@ class InferenceProcessor:
             config_params["response_mime_type"] = "application/json"
             schema = {
                 "type": "object",
-                "properties": {key: {"type": "string"} for key in self.response_format.keys()},
+                "properties": {
+                    key: {"type": "string"} for key in self.response_format.keys()
+                },
             }
             config_params["response_json_schema"] = schema
 
@@ -85,7 +89,9 @@ class InferenceProcessor:
         except json.JSONDecodeError:
             return {"content": response.text}
 
-    def extract_action(self, interaction: Interaction, context: Optional[str] = None) -> Action:
+    def extract_action(
+        self, interaction: Interaction, context: Optional[str] = None
+    ) -> Action:
         """
         Extract action data using Gemini API with structured output.
 

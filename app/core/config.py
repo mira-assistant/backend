@@ -3,8 +3,9 @@ Application configuration using Pydantic BaseSettings.
 """
 
 from typing import List, Union
-from pydantic_settings import BaseSettings
+
 from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -36,9 +37,6 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = Field(default="INFO")
-
-    # Audio Processing (moved to constants.py)
-    # sample_rate, conversation_gap_threshold, context_similarity_threshold
 
     # API Keys
     gemini_api_key: str = Field(default="")

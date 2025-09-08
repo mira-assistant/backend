@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.session import get_db, SessionLocal
-from app.db.base import Base
 from app.core.config import settings
+from app.db.base import Base
+from app.db.session import SessionLocal, get_db
 
 
 class TestDatabaseSession:
@@ -24,7 +24,9 @@ class TestDatabaseSession:
 
         # Check that tables exist
         with test_engine.connect() as conn:
-            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            result = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )
             table_names = [row[0] for row in result]
 
             # Check for our model tables
@@ -119,7 +121,9 @@ class TestDatabaseSession:
         """Test that SQLite connection args are set correctly."""
         # This test is specific to SQLite
         if "sqlite" in settings.database_url:
-            engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+            engine = create_engine(
+                settings.database_url, connect_args={"check_same_thread": False}
+            )
 
             # Should be able to connect
             with engine.connect() as conn:
@@ -144,7 +148,9 @@ class TestDatabaseSession:
             session.commit()
 
             # Verify the data was saved
-            saved_network = session.query(MiraNetwork).filter_by(name="Test Network").first()
+            saved_network = (
+                session.query(MiraNetwork).filter_by(name="Test Network").first()
+            )
             assert saved_network is not None
             assert saved_network.name == "Test Network"  # type: ignore
 
@@ -159,10 +165,10 @@ class TestDatabaseSession:
         session = test_session_factory()
 
         try:
-            from app.models import MiraNetwork
-
             # Add a network with a unique name
             import uuid
+
+            from app.models import MiraNetwork
 
             unique_name = f"Test Network {uuid.uuid4()}"
             network = MiraNetwork(name=unique_name)
@@ -175,7 +181,9 @@ class TestDatabaseSession:
             from sqlalchemy import select
 
             saved_networks = (
-                session.execute(select(MiraNetwork).filter_by(name=unique_name)).scalars().all()
+                session.execute(select(MiraNetwork).filter_by(name=unique_name))
+                .scalars()
+                .all()
             )
             assert len(saved_networks) == 0
 

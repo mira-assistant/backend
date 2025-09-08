@@ -8,8 +8,8 @@ This package contains all the service classes and utilities for the Mira AI Assi
 from .command_processor import CommandProcessor
 from .context_processor import ContextProcessor
 from .inference_processor import InferenceProcessor
-from .sentence_processor import SentenceProcessor
 from .multi_stream_processor import MultiStreamProcessor
+from .sentence_processor import SentenceProcessor
 from .service_factory import (
     ServiceFactory,
     get_command_processor,

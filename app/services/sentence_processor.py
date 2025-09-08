@@ -11,22 +11,21 @@ Now uses proper dependency injection and lifecycle management.
 
 from __future__ import annotations
 
-from typing import Dict, Any
+import uuid
+from typing import Any, Dict
 
+import noisereduce as nr
 import numpy as np
-
 from faster_whisper import WhisperModel
 from resemblyzer import VoiceEncoder
-import noisereduce as nr
 from scipy.signal import butter, lfilter
-
-from app.db import get_db_session
-from app.models import Person, Interaction
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
-import uuid
+
+from app.core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
 from app.core.mira_logger import MiraLogger
-from app.core.constants import SAMPLE_RATE, CONTEXT_SIMILARITY_THRESHOLD
+from app.db import get_db_session
+from app.models import Interaction, Person
 
 # MiraLogger is used directly via class methods
 
@@ -90,7 +89,9 @@ class SentenceProcessor:
         normal_cutoff = cutoff / nyquist
         result = butter(order, normal_cutoff, btype="high", analog=False)
         if result is None:
-            raise ValueError("Butterworth filter design failed; check cutoff frequency.")
+            raise ValueError(
+                "Butterworth filter design failed; check cutoff frequency."
+            )
         b, a = result[:2]
         return b, a
 
@@ -113,7 +114,9 @@ class SentenceProcessor:
         """
         try:
             audio_data = np.array(audio_data, dtype=np.float32)
-            filtered_audio = self.butter_highpass_filter(audio_data, 80, self.sample_rate)
+            filtered_audio = self.butter_highpass_filter(
+                audio_data, 80, self.sample_rate
+            )
             filtered_audio = np.array(filtered_audio, dtype=np.float32)
 
             if len(filtered_audio) < 512:
@@ -161,7 +164,10 @@ class SentenceProcessor:
         try:
             interactions = (
                 session.query(Interaction)
-                .filter(Interaction.voice_embedding.isnot(None), Interaction.speaker_id.isnot(None))
+                .filter(
+                    Interaction.voice_embedding.isnot(None),
+                    Interaction.speaker_id.isnot(None),
+                )
                 .all()
             )
             self._speaker_state._speaker_embeddings = [
@@ -181,7 +187,9 @@ class SentenceProcessor:
             self._speaker_state._cluster_labels = []
             return
         X = np.stack(self._speaker_state._speaker_embeddings)
-        self._speaker_state._cluster_labels = self._speaker_state.dbscan.fit_predict(X).tolist()
+        self._speaker_state._cluster_labels = self._speaker_state.dbscan.fit_predict(
+            X
+        ).tolist()
         self._speaker_state._clusters_dirty = False
 
     def assign_speaker(self, embedding: np.ndarray):
@@ -225,12 +233,14 @@ class SentenceProcessor:
             self._speaker_state._clusters_dirty = True
 
         if new_label == -1:
-            new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
-                0
-            ] + 1
+            new_index = (
+                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+            )[0] + 1
             new_person = Person(
                 voice_embedding=(
-                    embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
+                    embedding.tolist()
+                    if isinstance(embedding, np.ndarray)
+                    else embedding
                 ),
                 index=new_index,
             )
@@ -241,11 +251,13 @@ class SentenceProcessor:
             self._update_db_clusters(session, labels[:-1] + [-1])
             return new_person.id
 
-        cluster_indices = [i for i, label in enumerate(labels[:-1]) if label == new_label]
+        cluster_indices = [
+            i for i, label in enumerate(labels[:-1]) if label == new_label
+        ]
         if not cluster_indices:
-            new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
-                0
-            ] + 1
+            new_index = (
+                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+            )[0] + 1
             new_person = Person(
                 voice_embedding=embedding.tolist(),
                 index=new_index,
@@ -260,16 +272,19 @@ class SentenceProcessor:
         similarities = []
         for idx in cluster_indices:
             emb = all_embeddings[idx]
-            sim = float(np.dot(embedding, emb) / (np.linalg.norm(embedding) * np.linalg.norm(emb)))
+            sim = float(
+                np.dot(embedding, emb)
+                / (np.linalg.norm(embedding) * np.linalg.norm(emb))
+            )
             similarities.append((idx, sim))
         best_idx, best_sim = max(similarities, key=lambda x: x[1])
 
         MiraLogger.info(f"Best speaker similarity: {best_sim}")
 
         if best_sim < self._speaker_state.SPEAKER_SIMILARITY_THRESHOLD:
-            new_index = (session.query(Person.index).order_by(Person.index.desc()).first() or [0])[
-                0
-            ] + 1
+            new_index = (
+                session.query(Person.index).order_by(Person.index.desc()).first() or [0]
+            )[0] + 1
             new_person = Person(
                 voice_embedding=embedding.tolist(),
                 index=new_index,
@@ -309,18 +324,27 @@ class SentenceProcessor:
         """
         session = get_db_session()
 
-        interaction = self.transcribe_interaction(audio_buffer, assign_or_create_speaker=False)
+        interaction = self.transcribe_interaction(
+            audio_buffer, assign_or_create_speaker=False
+        )
 
         transcribed_text = interaction.get("text", "")
-        if not transcribed_text or expected_text.lower() not in transcribed_text.lower():
+        if (
+            not transcribed_text
+            or expected_text.lower() not in transcribed_text.lower()
+        ):
             MiraLogger.info(
                 f"Transcribed text '{transcribed_text}' does not match expected '{expected_text}'"
             )
 
-        denoised_audio = self.denoise_audio(self.pcm_bytes_to_float32(bytes(audio_buffer)))
+        denoised_audio = self.denoise_audio(
+            self.pcm_bytes_to_float32(bytes(audio_buffer))
+        )
         embedding_result = self.spk_encoder.embed_utterance(denoised_audio)
         new_embedding = (
-            embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+            embedding_result[0]
+            if isinstance(embedding_result, tuple)
+            else embedding_result
         )
         new_embedding = np.array(new_embedding, dtype=np.float32)
 
@@ -400,7 +424,9 @@ class SentenceProcessor:
         if assign_or_create_speaker:
             embedding_result = self.spk_encoder.embed_utterance(denoised_audio)
             embedding = (
-                embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+                embedding_result[0]
+                if isinstance(embedding_result, tuple)
+                else embedding_result
             )
             speaker_id = self.assign_speaker(embedding)
             interaction["voice_embedding"] = embedding.tolist()

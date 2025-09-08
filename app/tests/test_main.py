@@ -56,8 +56,9 @@ class TestMainApp:
     def test_lifespan_startup(self):
         """Test application startup in lifespan manager."""
         # Test that the lifespan function exists and can be called
-        from app.main import lifespan
         import asyncio
+
+        from app.main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):
@@ -69,8 +70,9 @@ class TestMainApp:
     def test_lifespan_shutdown(self):
         """Test application shutdown in lifespan manager."""
         # Test that the lifespan function exists and can be called
-        from app.main import lifespan
         import asyncio
+
+        from app.main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):

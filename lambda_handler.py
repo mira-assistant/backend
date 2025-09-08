@@ -2,7 +2,6 @@
 AWS Lambda handler for Mira Backend FastAPI application.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,6 +13,7 @@ from app.main import app
 
 # Create the Lambda handler
 handler = Mangum(app, lifespan="off")
+
 
 # Optional: Add custom middleware for Lambda-specific logging
 def lambda_handler(event, context):

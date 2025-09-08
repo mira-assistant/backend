@@ -14,14 +14,16 @@ the best audio stream for optimal recording quality.
 Now uses proper dependency injection and lifecycle management.
 """
 
-from typing import Any, Dict, List, Optional
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 from scipy import signal
-from app.core.mira_logger import MiraLogger
+
 from app.core.constants import SAMPLE_RATE
+from app.core.mira_logger import MiraLogger
 
 
 @dataclass
@@ -124,7 +126,9 @@ class MultiStreamProcessor:
 
             del self.clients[client_id]
 
-            MiraLogger.info(f"Deregistered client {client_id} from network {self.network_id}")
+            MiraLogger.info(
+                f"Deregistered client {client_id} from network {self.network_id}"
+            )
             return True
 
     def _calculate_snr(self, audio_data) -> float:
@@ -183,9 +187,15 @@ class MultiStreamProcessor:
 
         # Calculate power spectral density
         # Use smaller nperseg for short audio clips
-        nperseg = min(1024, len(audio_data) // 4) if len(audio_data) > 256 else len(audio_data) // 2
+        nperseg = (
+            min(1024, len(audio_data) // 4)
+            if len(audio_data) > 256
+            else len(audio_data) // 2
+        )
         nperseg = max(nperseg, 64)  # Minimum window size
-        nperseg = min(nperseg, len(audio_data))  # Ensure nperseg does not exceed audio length
+        nperseg = min(
+            nperseg, len(audio_data)
+        )  # Ensure nperseg does not exceed audio length
 
         freqs, psd = signal.welch(audio_data, fs=self.sample_rate, nperseg=nperseg)
 
@@ -218,7 +228,9 @@ class MultiStreamProcessor:
         clarity_score = (speech_ratio * 0.7 + clarity_factor * 0.3) * 100
         return min(100.0, max(0.0, float(clarity_score)))
 
-    def update_stream_quality(self, client_id: str, audio_data) -> Optional[StreamQualityMetrics]:
+    def update_stream_quality(
+        self, client_id: str, audio_data
+    ) -> Optional[StreamQualityMetrics]:
         """
         Update quality metrics for a client's audio stream.
 
@@ -277,21 +289,27 @@ class MultiStreamProcessor:
         # Normalize individual metrics to 0-100 scale
         snr_score = min(100.0, (metrics.snr / 30.0) * 100)  # Assume 30dB is excellent
         clarity_score = metrics.speech_clarity  # Already 0-100
-        volume_score = min(100.0, metrics.volume_level * 1000)  # Scale volume appropriately
+        volume_score = min(
+            100.0, metrics.volume_level * 1000
+        )  # Scale volume appropriately
 
         # Location score (will be 100 if no location info)
         location_score = 100.0
         if metrics.location is not None:
             # Simple scoring based on location accuracy - better accuracy = higher score
             accuracy = metrics.location.get("accuracy", 100.0)  # meters
-            location_score = max(0.0, 100.0 - (accuracy / 10.0))  # Better accuracy = higher score
+            location_score = max(
+                0.0, 100.0 - (accuracy / 10.0)
+            )  # Better accuracy = higher score
 
         # RSSI score (will be 100 if no RSSI info)
         rssi_score = 100.0
         if metrics.rssi is not None:
             # Higher RSSI (less negative) = better signal = higher score
             # Typical RSSI range: -30 (excellent) to -90 (poor)
-            rssi_normalized = max(-90.0, min(-30.0, metrics.rssi))  # Clamp to typical range
+            rssi_normalized = max(
+                -90.0, min(-30.0, metrics.rssi)
+            )  # Clamp to typical range
             rssi_score = ((rssi_normalized + 90.0) / 60.0) * 100.0  # Convert to 0-100
 
         # Calculate weighted score
@@ -425,12 +443,16 @@ class MultiStreamProcessor:
                 return False
 
             self.clients[client_id].quality_metrics.rssi = rssi
-            MiraLogger.info(f"Set RSSI for {client_id} in network {self.network_id}: {rssi} dBm")
+            MiraLogger.info(
+                f"Set RSSI for {client_id} in network {self.network_id}: {rssi} dBm"
+            )
             return True
 
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
-        MiraLogger.info(f"Cleaning up MultiStreamProcessor for network {self.network_id}")
+        MiraLogger.info(
+            f"Cleaning up MultiStreamProcessor for network {self.network_id}"
+        )
         # Clean up any resources if needed
         with self._lock:
             self.clients.clear()

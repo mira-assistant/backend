@@ -2,9 +2,11 @@
 Database session management.
 """
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
 from app.core.config import settings
 from app.db.base import Base
 
@@ -12,7 +14,9 @@ from app.db.base import Base
 engine = create_engine(
     settings.database_url,
     echo=settings.debug,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    connect_args=(
+        {"check_same_thread": False} if "sqlite" in settings.database_url else {}
+    ),
 )
 
 # Create session factory

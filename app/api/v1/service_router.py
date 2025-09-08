@@ -1,7 +1,7 @@
-from fastapi import Depends, HTTPException, Request, APIRouter, Path
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
 import app.db as db
@@ -22,12 +22,16 @@ def register_client(
     client_ip = request.client.host if request.client else "unknown"
     connection_start_time = datetime.now(timezone.utc)
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
 
     if not network:
         raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
 
-    network.connected_clients[client_id] = {
+    network.connected_clients[client_id] = {  # type: ignore
         "ip": client_ip,
         "connection_start_time": connection_start_time,
     }
@@ -45,7 +49,11 @@ def deregister_client(
 ):
     """Deregister a client and remove from stream scoring."""
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
 
     if not network:
         raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
@@ -61,12 +69,16 @@ def enable_service(
     network_id: str = Path(..., description="The ID of the network"),
     db: Session = Depends(db.get_db),
 ):
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
 
     if not network:
         raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
 
-    network.service_enabled = True
+    network.service_enabled = True  # type: ignore
     db.commit()
 
     return {"message": "Service enabled successfully"}
@@ -77,12 +89,16 @@ def disable_service(
     network_id: str = Path(..., description="The ID of the network"),
     db: Session = Depends(db.get_db),
 ):
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == uuid.UUID(network_id)).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == uuid.UUID(network_id))
+        .first()
+    )
 
     if not network:
         raise HTTPException(status_code=404, detail=f"Network {network_id} not found")
 
-    network.service_enabled = False
+    network.service_enabled = False  # type: ignore
     db.commit()
 
     return {"message": "Service disabled successfully"}

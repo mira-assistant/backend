@@ -2,12 +2,13 @@
 Unit tests for database models.
 """
 
-import pytest
 import uuid
 from datetime import datetime
+
+import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Person, Conversation, Interaction, MiraNetwork, Action
+from app.models import Action, Conversation, Interaction, MiraNetwork, Person
 from app.models.conversation import person_conversation_association
 
 
@@ -17,7 +18,9 @@ class TestMiraNetwork:
     def test_create_network(self, db_session):
         """Test creating a MiraNetwork instance."""
         network = MiraNetwork(
-            name="Test Network", service_enabled=True, network_settings={"test": "value"}
+            name="Test Network",
+            service_enabled=True,
+            network_settings={"test": "value"},
         )
 
         db_session.add(network)
@@ -85,9 +88,13 @@ class TestPerson:
 
     def test_person_unique_index(self, db_session, sample_network_id):
         """Test that person index must be unique."""
-        person1 = Person(name="John Doe", index=1, network_id=uuid.UUID(sample_network_id))
+        person1 = Person(
+            name="John Doe", index=1, network_id=uuid.UUID(sample_network_id)
+        )
         person2 = Person(
-            name="Jane Doe", index=1, network_id=uuid.UUID(sample_network_id)  # Same index
+            name="Jane Doe",
+            index=1,
+            network_id=uuid.UUID(sample_network_id),  # Same index
         )
 
         db_session.add(person1)
@@ -249,7 +256,9 @@ class TestInteraction:
 
     def test_interaction_optional_fields(self, db_session, sample_network_id):
         """Test creating interaction with minimal required fields."""
-        interaction = Interaction(text="Hello!", network_id=uuid.UUID(sample_network_id))
+        interaction = Interaction(
+            text="Hello!", network_id=uuid.UUID(sample_network_id)
+        )
 
         db_session.add(interaction)
         db_session.commit()
@@ -342,7 +351,9 @@ class TestAction:
     def test_action_optional_fields(self, db_session, sample_network_id):
         """Test creating action with minimal required fields."""
         action = Action(
-            user_id=uuid.uuid4(), action_type="test_action", network_id=uuid.UUID(sample_network_id)
+            user_id=uuid.uuid4(),
+            action_type="test_action",
+            network_id=uuid.UUID(sample_network_id),
         )
 
         db_session.add(action)

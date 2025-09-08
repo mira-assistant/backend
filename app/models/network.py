@@ -2,11 +2,12 @@
 MiraNetwork model for network management.
 """
 
-from sqlalchemy import Column, String, DateTime, Boolean, JSON
-from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.db.base import Base
 
@@ -23,7 +24,9 @@ class MiraNetwork(Base):
     service_enabled = Column(Boolean, default=False)
 
     # Network settings
-    network_settings = Column(JSON, default={})  # Changed from settings to network_settings
+    network_settings = Column(
+        JSON, default={}
+    )  # Changed from settings to network_settings
 
     # Relationships
     connected_clients = Column(JSON, default={})
