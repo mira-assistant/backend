@@ -83,9 +83,7 @@ class MiraLogger:
         cls._default_logger.propagate = False
 
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            ColoredFormatter("%(levelname)s:     %(message)s")
-        )
+        handler.setFormatter(ColoredFormatter("%(levelname)s:     %(message)s"))
         cls._default_logger.addHandler(handler)
 
     # Static methods for direct class usage

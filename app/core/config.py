@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(default="sqlite:///./mira.db")
 
-
     # AWS Bedrock Configuration (for production)
     aws_region: str = Field(default="us-east-1")
     bedrock_model_id: str = Field(default="anthropic.claude-3-sonnet-20240229-v1:0")

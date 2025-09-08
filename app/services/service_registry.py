@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, Any
 from dataclasses import dataclass
 from app.core.mira_logger import MiraLogger
+
+
 @dataclass
 class ServiceConfig:
     """Configuration for a service within a network"""

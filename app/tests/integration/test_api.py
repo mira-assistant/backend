@@ -2,12 +2,11 @@
 Integration tests for API endpoints.
 """
 
-import pytest
 import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Person, Conversation, Interaction, MiraNetwork, Action
+from app.models import Person, Conversation, MiraNetwork
 
 
 class TestRootEndpoint:
@@ -34,7 +33,9 @@ class TestRootEndpoint:
 class TestConversationEndpoints:
     """Test cases for conversation endpoints."""
 
-    def test_get_conversation_success(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_conversation_success(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting a conversation successfully."""
         # Create a network and conversation
         network = MiraNetwork(name="Test Network")
@@ -43,9 +44,7 @@ class TestConversationEndpoints:
         db_session.refresh(network)
 
         conversation = Conversation(
-            topic_summary="Test Topic",
-            context_summary="Test Context",
-            network_id=network.id
+            topic_summary="Test Topic", context_summary="Test Context", network_id=network.id
         )
 
         db_session.add(conversation)
@@ -61,7 +60,9 @@ class TestConversationEndpoints:
         assert data["context_summary"] == "Test Context"
         assert data["network_id"] == str(network.id)
 
-    def test_get_conversation_not_found(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_conversation_not_found(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting a non-existent conversation."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -76,7 +77,9 @@ class TestConversationEndpoints:
         data = response.json()
         assert data["detail"] == "Conversation not found"
 
-    def test_get_conversation_invalid_network(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_conversation_invalid_network(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting a conversation with invalid network ID."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -119,7 +122,7 @@ class TestPersonEndpoints:
             index=1,
             voice_embedding=[0.1, 0.2, 0.3],
             cluster_id=1,
-            network_id=network.id
+            network_id=network.id,
         )
 
         db_session.add(person)
@@ -152,7 +155,9 @@ class TestPersonEndpoints:
         data = response.json()
         assert data["detail"] == "Person not found in this network"
 
-    def test_get_all_persons_success(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_all_persons_success(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting all persons in a network."""
         # Create a network and multiple persons
         network = MiraNetwork(name="Test Network")
@@ -181,7 +186,9 @@ class TestPersonEndpoints:
         assert str(person1.id) in person_ids
         assert str(person2.id) in person_ids
 
-    def test_get_all_persons_empty(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_get_all_persons_empty(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test getting all persons when network has no persons."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -196,7 +203,9 @@ class TestPersonEndpoints:
         assert data["total_count"] == 0
         assert data["persons"] == []
 
-    def test_update_person_name_only(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_update_person_name_only(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test updating a person's name only."""
         # Create a network and person
         network = MiraNetwork(name="Test Network")
@@ -211,8 +220,7 @@ class TestPersonEndpoints:
 
         # Test the endpoint
         response = client.post(
-            f"/api/v1/{network.id}/persons/{person.id}/update",
-            data={"name": "New Name"}
+            f"/api/v1/{network.id}/persons/{person.id}/update", data={"name": "New Name"}
         )
 
         assert response.status_code == 200
@@ -221,7 +229,9 @@ class TestPersonEndpoints:
         assert data["person"]["name"] == "New Name"
         assert data["person"]["id"] == str(person.id)
 
-    def test_update_person_not_found(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_update_person_not_found(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test updating a non-existent person."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -231,15 +241,16 @@ class TestPersonEndpoints:
         fake_person_id = str(uuid.uuid4())
 
         response = client.post(
-            f"/api/v1/{network.id}/persons/{fake_person_id}/update",
-            data={"name": "New Name"}
+            f"/api/v1/{network.id}/persons/{fake_person_id}/update", data={"name": "New Name"}
         )
 
         assert response.status_code == 404
         data = response.json()
         assert data["detail"] == "Person not found in this network"
 
-    def test_delete_person_success(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_delete_person_success(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test deleting a person successfully."""
         # Create a network and person
         network = MiraNetwork(name="Test Network")
@@ -266,7 +277,9 @@ class TestPersonEndpoints:
         deleted_person = db_session.query(Person).filter(Person.id == person.id).first()
         assert deleted_person is None
 
-    def test_delete_person_not_found(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_delete_person_not_found(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test deleting a non-existent person."""
         network = MiraNetwork(name="Test Network")
         db_session.add(network)
@@ -297,8 +310,8 @@ class TestErrorHandling:
         # Send malformed JSON
         response = client.post(
             f"/api/v1/{sample_network_id}/persons/{uuid.uuid4()}/update",
-            data="invalid json",
-            headers={"Content-Type": "application/json"}
+            json="invalid json",
+            headers={"Content-Type": "application/json"},
         )
 
         # Should return 422 for validation error or 404 for person not found
@@ -308,7 +321,7 @@ class TestErrorHandling:
         """Test handling of missing required fields."""
         response = client.post(
             f"/api/v1/{sample_network_id}/persons/{uuid.uuid4()}/update",
-            data={}  # Missing required fields
+            data={},  # Missing required fields
         )
 
         # Should still work as all fields are optional in the update endpoint
@@ -333,8 +346,8 @@ class TestCORS:
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": "Content-Type"
-            }
+                "Access-Control-Request-Headers": "Content-Type",
+            },
         )
 
         # CORS preflight should be handled
@@ -344,7 +357,9 @@ class TestCORS:
 class TestDatabaseIntegration:
     """Test cases for database integration."""
 
-    def test_database_session_isolation(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_database_session_isolation(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test that database sessions are properly isolated between requests."""
         # Create a network
         network = MiraNetwork(name="Test Network")
@@ -360,7 +375,9 @@ class TestDatabaseIntegration:
         response = client.get(f"/api/v1/{fake_network_id}/persons/")
         assert response.status_code == 200  # Should return empty list, not error
 
-    def test_database_transaction_rollback(self, client: TestClient, db_session: Session, sample_network_id):
+    def test_database_transaction_rollback(
+        self, client: TestClient, db_session: Session, sample_network_id
+    ):
         """Test that database transactions are properly rolled back on errors."""
         # This test would require a way to trigger a database error
         # For now, we'll test that the database is in a consistent state

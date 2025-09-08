@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Import models to register them with SQLAlchemy
-from app.models import *
+import app.models # noqa: F401
 
 import app.api.v1 as v1
 # import app.api.v2 as v2

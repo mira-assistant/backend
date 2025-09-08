@@ -148,7 +148,7 @@ class TestDatabaseSession:
             # Verify the data was saved
             saved_network = session.query(MiraNetwork).filter_by(name="Test Network").first()
             assert saved_network is not None
-            assert saved_network.name == "Test Network" # type: ignore
+            assert saved_network.name == "Test Network"  # type: ignore
 
         finally:
             # Close the generator

@@ -3,10 +3,9 @@ MiraNetwork model for network management.
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, JSON
-from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
 import uuid
 
 from app.db.base import Base
@@ -44,7 +43,3 @@ class MiraNetwork(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-
-
-

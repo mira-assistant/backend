@@ -2,10 +2,6 @@
 Tests for the main FastAPI application.
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch
-
 from app.main import app
 
 
@@ -22,7 +18,7 @@ class TestMainApp:
     def test_app_routes_registration(self):
         """Test that all routes are properly registered."""
         # Get all registered routes
-        routes = [route.path for route in app.routes]
+        routes = [str(route) for route in app.routes]
 
         # Check for API v1 routes
         assert any("/api/v1" in route for route in routes)
@@ -42,7 +38,10 @@ class TestMainApp:
         # Check that at least one middleware is present (CORS should be there)
         middleware_info = [str(middleware) for middleware in app.user_middleware]
         # CORS middleware should be present
-        assert any("cors" in str(middleware).lower() or "CORSMiddleware" in str(middleware) for middleware in app.user_middleware)
+        assert any(
+            "cors" in str(middleware).lower() or "CORSMiddleware" in str(middleware)
+            for middleware in app.user_middleware
+        )
 
     def test_global_exception_handler(self):
         """Test that global exception handler is registered."""
@@ -82,13 +81,13 @@ class TestMainApp:
     def test_root_endpoint_exists(self):
         """Test that the root endpoint exists."""
         # Get all registered routes
-        routes = [route.path for route in app.routes]
-        assert "/" in routes
+        routes = [str(route) for route in app.routes]
+        assert "/" in [route.split(" ")[1] for route in routes]
 
     def test_api_versioning(self):
         """Test that API versioning is properly set up."""
         # Check that v1 routes are registered
-        routes = [route.path for route in app.routes]
+        routes = [str(route) for route in app.routes]
         v1_routes = [route for route in routes if "/api/v1" in route]
         assert len(v1_routes) > 0
 
@@ -101,7 +100,10 @@ class TestMainApp:
         # CORS should be one of the first middlewares
         assert len(app.user_middleware) > 0
         # Check if CORS middleware is present in any form
-        cors_present = any("cors" in str(middleware).lower() or "CORSMiddleware" in str(middleware) for middleware in app.user_middleware)
+        cors_present = any(
+            "cors" in str(middleware).lower() or "CORSMiddleware" in str(middleware)
+            for middleware in app.user_middleware
+        )
         assert cors_present
 
     def test_app_metadata(self):
@@ -116,7 +118,7 @@ class TestMainApp:
     def test_router_inclusion(self):
         """Test that all routers are properly included."""
         # Check that all expected routers are included
-        routes = [route.path for route in app.routes]
+        routes = [str(route) for route in app.routes]
 
         # Check for conversation router
         assert any("/api/v1/{network_id}/conversations" in route for route in routes)

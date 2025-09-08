@@ -12,12 +12,11 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from app.db.base import Base
 from app.main import app
-from app.core.config import settings
 from app.db import get_db
 
 
@@ -33,11 +32,7 @@ def test_db_url() -> str:
 @pytest.fixture(scope="session")
 def test_engine(test_db_url: str):
     """Create a test database engine."""
-    engine = create_engine(
-        test_db_url,
-        connect_args={"check_same_thread": False},
-        echo=False
-    )
+    engine = create_engine(test_db_url, connect_args={"check_same_thread": False}, echo=False)
     return engine
 
 
@@ -67,6 +62,7 @@ def db_session(test_session_factory, test_engine) -> Generator[Session, None, No
 @pytest.fixture(scope="function")
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     """Create a test client with database dependency override."""
+
     def override_get_db():
         try:
             yield db_session
@@ -84,6 +80,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="function")
 async def async_client(db_session: Session) -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client with database dependency override."""
+
     def override_get_db():
         try:
             yield db_session
@@ -92,7 +89,7 @@ async def async_client(db_session: Session) -> AsyncGenerator[AsyncClient, None]
 
     app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -102,6 +99,7 @@ async def async_client(db_session: Session) -> AsyncGenerator[AsyncClient, None]
 def sample_network_id() -> str:
     """Generate a sample network ID for testing."""
     import uuid
+
     return str(uuid.uuid4())
 
 
@@ -109,6 +107,7 @@ def sample_network_id() -> str:
 def sample_person_id() -> str:
     """Generate a sample person ID for testing."""
     import uuid
+
     return str(uuid.uuid4())
 
 
@@ -116,6 +115,7 @@ def sample_person_id() -> str:
 def sample_conversation_id() -> str:
     """Generate a sample conversation ID for testing."""
     import uuid
+
     return str(uuid.uuid4())
 
 
@@ -123,6 +123,7 @@ def sample_conversation_id() -> str:
 def sample_interaction_id() -> str:
     """Generate a sample interaction ID for testing."""
     import uuid
+
     return str(uuid.uuid4())
 
 
@@ -130,6 +131,7 @@ def sample_interaction_id() -> str:
 def sample_action_id() -> str:
     """Generate a sample action ID for testing."""
     import uuid
+
     return str(uuid.uuid4())
 
 

@@ -13,10 +13,10 @@ from app.db.base import Base
 
 # Association table for many-to-many relationship between Person and Conversation
 person_conversation_association = Table(
-    'person_conversation',
+    "person_conversation",
     Base.metadata,
-    Column('person_id', UUID(as_uuid=True), ForeignKey('persons.id'), primary_key=True),
-    Column('conversation_id', UUID(as_uuid=True), ForeignKey('conversations.id'), primary_key=True)
+    Column("person_id", UUID(as_uuid=True), ForeignKey("persons.id"), primary_key=True),
+    Column("conversation_id", UUID(as_uuid=True), ForeignKey("conversations.id"), primary_key=True),
 )
 
 
@@ -34,5 +34,7 @@ class Conversation(Base):
 
     interactions = relationship("Interaction", back_populates="conversation")
     network = relationship("MiraNetwork", back_populates="conversations")
-    persons = relationship("Person", back_populates="conversations", secondary=person_conversation_association)
+    persons = relationship(
+        "Person", back_populates="conversations", secondary=person_conversation_association
+    )
     actions = relationship("Action", back_populates="conversation")
