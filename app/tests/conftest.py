@@ -16,9 +16,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from app.db.base import Base # noqa: E402
-from app.main import app # noqa: E402
-from app.db import get_db # noqa: E402
+from app.db.base import Base  # noqa: E402
+from app.main import app  # noqa: E402
+from app.db import get_db  # noqa: E402
 
 
 @pytest.fixture(scope="session")
