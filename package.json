@@ -1,0 +1,30 @@
+{
+  "name": "mira-backend-lambda",
+  "version": "1.0.0",
+  "description": "Mira Backend AWS Lambda deployment package",
+  "main": "lambda_handler.py",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:dev": "serverless deploy --stage dev",
+    "deploy:staging": "serverless deploy --stage staging",
+    "deploy:prod": "serverless deploy --stage prod",
+    "remove": "serverless remove",
+    "logs": "serverless logs -f api",
+    "offline": "serverless offline"
+  },
+  "devDependencies": {
+    "serverless": "^4.18.2",
+    "serverless-offline": "^14.0.0",
+    "serverless-python-requirements": "^6.1.2"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "fastapi",
+    "serverless",
+    "mira",
+    "ai"
+  ],
+  "author": "Mira Team",
+  "license": "MIT"
+}

@@ -19,15 +19,27 @@ demo_*.py
 Thumbs.db
 
 # Dependencies
+.venv/
 venv/
-env/
+.env/
 
 # Build artifacts
 dist/
 build/
 *.egg-info/
 
+# Environment variables
+.env
+
+# Coverage files
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+test-results.xml
+
 # backend specific
 *.db
 *.db-shm
 *.db-wal
+node_modules
