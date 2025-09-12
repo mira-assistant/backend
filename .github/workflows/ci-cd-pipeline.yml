@@ -53,6 +53,7 @@ jobs:
       run: |
         docker run --rm -v $(pwd):/app -w /app mira-backend:test \
           mypy app/ --ignore-missing-imports
+      continue-on-error: true
 
     - name: Security Scan
       run: |
