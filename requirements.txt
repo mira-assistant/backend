@@ -555,5 +555,10 @@ boto3==1.40.25
 botocore==1.40.25
 psycopg2-binary==2.9.9
 
+# CI/CD and development tools
+mypy==1.13.0
+bandit==1.7.10
+safety==3.2.7
+
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

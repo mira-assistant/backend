@@ -10,17 +10,27 @@ install: ## Install dependencies
 	pip install -r requirements.txt
 	python -m spacy download en_core_web_sm
 
-test: ## Run tests
+test: ## Run tests (native)
 	pytest
+
+test-docker: ## Run tests in Docker (matches CI environment)
+	docker build -f docker/Dockerfile.dev -t mira-backend:test .
+	docker run --rm -v $(pwd):/app -w /app -e DATABASE_URL=sqlite:///./test.db mira-backend:test pytest --cov=app --cov-report=html
 
 test-cov: ## Run tests with coverage
 	pytest --cov=app --cov-report=html --cov-report=term
 
-lint: ## Run linting
+lint: ## Run linting (native)
 	flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 	flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 	black --check app/
 	isort --check-only app/
+
+lint-docker: ## Run linting in Docker (matches CI environment)
+	docker build -f docker/Dockerfile.dev -t mira-backend:lint .
+	docker run --rm -v $(pwd):/app -w /app mira-backend:lint flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+	docker run --rm -v $(pwd):/app -w /app mira-backend:lint black --check app/
+	docker run --rm -v $(pwd):/app -w /app mira-backend:lint isort --check-only app/
 
 format: ## Format code
 	black app/
@@ -36,10 +46,19 @@ clean: ## Clean up temporary files
 	rm -rf .serverless/
 
 docker-build: ## Build Docker image
-	docker build -t mira-backend .
+	docker build -f docker/Dockerfile.dev -t mira-backend .
 
 docker-run: ## Run Docker container
 	docker run -p 8000:8000 mira-backend
+
+docker-compose-up: ## Start development environment with Docker Compose
+	cd docker && docker-compose -f docker-compose.dev.yml up --build
+
+docker-compose-down: ## Stop development environment
+	cd docker && docker-compose -f docker-compose.dev.yml down
+
+docker-compose-logs: ## View logs from Docker Compose
+	cd docker && docker-compose -f docker-compose.dev.yml logs -f
 
 dev: ## Run development server
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -53,11 +72,23 @@ db-migrate: ## Run database migrations
 db-migrate-aws: ## Run database migrations on AWS RDS
 	./scripts/migrate-db.sh
 
-deploy: ## Deploy to AWS Lambda
-	./scripts/deploy.sh
+deploy: ## Deploy to AWS Lambda (enterprise)
+	./scripts/deployment/deploy-infrastructure.sh $(ENV) && \
+	./scripts/deployment/deploy-application.sh $(ENV) && \
+	./scripts/deployment/migrate-database.sh $(ENV) && \
+	./scripts/deployment/health-check.sh $(ENV)
 
-setup-aws: ## Setup AWS Lambda environment
-	./scripts/setup-lambda.sh
+deploy-infra: ## Deploy infrastructure only
+	./scripts/deployment/deploy-infrastructure.sh $(ENV)
+
+deploy-app: ## Deploy application only
+	./scripts/deployment/deploy-application.sh $(ENV)
+
+migrate-db: ## Run database migrations
+	./scripts/deployment/migrate-database.sh $(ENV)
+
+health-check: ## Run health checks
+	./scripts/deployment/health-check.sh $(ENV)
 
 db-reset: ## Reset database
 	python -c "from app.db.init_db import reset_db; reset_db()"

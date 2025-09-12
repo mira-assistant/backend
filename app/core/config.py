@@ -40,8 +40,6 @@ class Settings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="")
-    lm_studio_api_key: str = Field(default="")
-    openai_api_key: str = Field(default="")
 
     class Config:
         env_file = ".env"

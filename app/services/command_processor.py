@@ -337,7 +337,7 @@ class CommandProcessor:
 
         config = types.GenerateContentConfig(**config_params)
 
-        response = self.gemini_client.models.generate_content(  # type: ignore
+        response = self.gemini_client.models.generate_content(
             model="gemini-1.5-pro", contents=str(interaction.text), config=config
         )
 

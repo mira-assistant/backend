@@ -141,15 +141,14 @@ check_env_file() {
 install_dependencies() {
     print_status "Installing Python dependencies..."
 
-    if [ ! -d "venv" ]; then
+    if [ ! -d ".venv" ]; then
         print_status "Creating virtual environment..."
-        python3 -m venv venv
+        python3 -m venv .venv
     fi
 
-    source venv/bin/activate
+    source .venv/bin/activate
     pip install --upgrade pip
     pip install -r requirements.txt
-    pip install serverless-python-requirements
 
     print_success "Dependencies installed"
 }

@@ -21,6 +21,9 @@ RUN pip install --upgrade pip
 # Install all dependencies from requirements.txt to ensure proper dependency resolution
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install additional CI/CD tools
+RUN pip install --no-cache-dir mypy bandit safety
+
 # Copy application code
 COPY . .
 
