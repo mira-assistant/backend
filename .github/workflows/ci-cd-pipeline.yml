@@ -95,16 +95,25 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Deploy Infrastructure
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         chmod +x scripts/deployment/deploy-infrastructure.sh
         ./scripts/deployment/deploy-infrastructure.sh ${{ github.event.inputs.environment || 'dev' }}
 
     - name: Deploy Application
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         chmod +x scripts/deployment/deploy-application.sh
         ./scripts/deployment/deploy-application.sh ${{ github.event.inputs.environment || 'dev' }}
 
     - name: Run Database Migrations
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
         chmod +x scripts/deployment/migrate-database.sh
         ./scripts/deployment/migrate-database.sh ${{ github.event.inputs.environment || 'dev' }}
