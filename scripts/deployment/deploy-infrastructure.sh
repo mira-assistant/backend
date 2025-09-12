@@ -92,6 +92,11 @@ create_lambda_execution_role() {
             --role-name "${role_name}" \
             --policy-arn "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
 
+        # Attach ECR access policy for container images
+        aws iam attach-role-policy \
+            --role-name "${role_name}" \
+            --policy-arn "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+
         log_success "Lambda execution role created: ${role_name}"
     else
         log_info "Lambda execution role already exists: ${role_name}"

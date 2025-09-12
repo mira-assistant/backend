@@ -102,13 +102,13 @@ jobs:
         chmod +x scripts/deployment/deploy-infrastructure.sh
         ./scripts/deployment/deploy-infrastructure.sh ${{ github.event.inputs.environment || 'dev' }}
 
-    - name: Deploy Application
+    - name: Deploy Application (Container)
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
-        chmod +x scripts/deployment/deploy-application.sh
-        ./scripts/deployment/deploy-application.sh ${{ github.event.inputs.environment || 'dev' }}
+        chmod +x scripts/deployment/deploy-application-container.sh
+        ./scripts/deployment/deploy-application-container.sh ${{ github.event.inputs.environment || 'dev' }}
 
     - name: Run Database Migrations
       env:
