@@ -33,8 +33,10 @@ build/
 
 # Coverage files
 .coverage
+.coverage.*
 htmlcov/
 coverage.xml
+test-results.xml
 
 # backend specific
 *.db

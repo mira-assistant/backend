@@ -30,6 +30,10 @@ COPY . .
 
 # Create a non-root user and set permissions
 RUN useradd --create-home app && chown -R app:app /app
+
+# Clean up any existing coverage files that might have wrong permissions
+RUN chmod +x scripts/cleanup-coverage.sh && ./scripts/cleanup-coverage.sh
+
 USER app
 
 # Expose FastAPI port

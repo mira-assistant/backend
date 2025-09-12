@@ -39,8 +39,10 @@ clean: ## Clean up temporary files
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
 	rm -rf .pytest_cache/
-	rm -rf htmlcov/
-	rm -rf .coverage
+	./scripts/cleanup-coverage.sh
+
+clean-coverage: ## Clean up only coverage files
+	./scripts/cleanup-coverage.sh
 
 docker-build: ## Build Docker image
 	docker build -f docker/Dockerfile.dev -t mira-backend .
