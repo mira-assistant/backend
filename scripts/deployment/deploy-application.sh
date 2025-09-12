@@ -131,11 +131,7 @@ deploy_lambda_function() {
             --function-name "${FUNCTION_NAME}" \
             --memory-size "${MEMORY_SIZE}" \
             --timeout "${TIMEOUT}" \
-            --environment Variables="{
-                \"DATABASE_URL\":\"${DATABASE_URL}\",
-                \"GEMINI_API_KEY\":\"${GEMINI_API_KEY}\",
-                \"ENVIRONMENT\":\"${ENVIRONMENT}\"
-            }" \
+            --environment "Variables={DATABASE_URL=${DATABASE_URL},GEMINI_API_KEY=${GEMINI_API_KEY},ENVIRONMENT=${ENVIRONMENT}}" \
             --region "${AWS_REGION}"
 
         log_success "Lambda function updated successfully"
@@ -149,11 +145,7 @@ deploy_lambda_function() {
             --zip-file "fileb://${PACKAGE_FILE}" \
             --memory-size "${MEMORY_SIZE}" \
             --timeout "${TIMEOUT}" \
-            --environment Variables="{
-                \"DATABASE_URL\":\"${DATABASE_URL}\",
-                \"GEMINI_API_KEY\":\"${GEMINI_API_KEY}\",
-                \"ENVIRONMENT\":\"${ENVIRONMENT}\"
-            }" \
+            --environment "Variables={DATABASE_URL=${DATABASE_URL},GEMINI_API_KEY=${GEMINI_API_KEY},ENVIRONMENT=${ENVIRONMENT}}" \
             --region "${AWS_REGION}"
 
         log_success "Lambda function created successfully"
