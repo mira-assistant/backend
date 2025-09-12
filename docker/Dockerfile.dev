@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     curl \
     git \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and install dependencies

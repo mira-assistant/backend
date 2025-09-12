@@ -50,7 +50,7 @@ docker-build: ## Build Docker image
 docker-run: ## Run Docker container
 	docker run -p 8000:8000 mira-backend
 
-docker-compose-up: ## Start development environment with Docker Compose
+docker-compose-up: ## Start dedvelopment environment with Docker Compose
 	cd docker && docker-compose -f docker-compose.dev.yml up --build
 
 docker-compose-down: ## Stop development environment
