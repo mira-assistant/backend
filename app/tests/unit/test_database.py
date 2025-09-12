@@ -194,9 +194,8 @@ class TestDatabaseSession:
         """Test that database errors are handled correctly."""
         Base.metadata.create_all(bind=test_engine)
 
-        # Create a session
-        db_gen = get_db()
-        session = next(db_gen)
+        # Create a session using the test session factory
+        session = test_session_factory()
 
         try:
             # Test that we can handle database errors
@@ -205,8 +204,4 @@ class TestDatabaseSession:
                 session.execute(text("INVALID SQL STATEMENT"))
 
         finally:
-            # Close the generator
-            try:
-                next(db_gen)
-            except StopIteration:
-                pass
+            session.close()

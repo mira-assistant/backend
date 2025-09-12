@@ -14,8 +14,7 @@ test: ## Run tests (native)
 	pytest
 
 test-docker: ## Run tests in Docker (matches CI environment)
-	docker build -f docker/Dockerfile.dev -t mira-backend:test .
-	docker run --rm -v $(pwd):/app -w /app -e DATABASE_URL=sqlite:///./test.db mira-backend:test pytest --cov=app --cov-report=html
+	docker run --rm -v $(PWD):/app -w /app -e DATABASE_URL=sqlite:///./test.db mira-backend pytest --cov=app --cov-report=xml --cov-report=html --junitxml=test-results.xml
 
 test-cov: ## Run tests with coverage
 	pytest --cov=app --cov-report=html --cov-report=term
@@ -27,10 +26,9 @@ lint: ## Run linting (native)
 	isort --check-only app/
 
 lint-docker: ## Run linting in Docker (matches CI environment)
-	docker build -f docker/Dockerfile.dev -t mira-backend:lint .
-	docker run --rm -v $(pwd):/app -w /app mira-backend:lint flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
-	docker run --rm -v $(pwd):/app -w /app mira-backend:lint black --check app/
-	docker run --rm -v $(pwd):/app -w /app mira-backend:lint isort --check-only app/
+	docker run --rm -v $(PWD):/app -w /app mira-backend flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+	docker run --rm -v $(PWD):/app -w /app mira-backend black --check app/
+	docker run --rm -v $(PWD):/app -w /app mira-backend isort --check-only app/
 
 format: ## Format code
 	black app/

@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Database
-    database_url: str = Field(default="postgresql://username:password@localhost:5432/mira")
+    database_url: str = Field(
+        default="postgresql://username:password@localhost:5432/mira"
+    )
 
     # AWS Bedrock Configuration (for production)
     aws_region: str = Field(default="us-east-1")

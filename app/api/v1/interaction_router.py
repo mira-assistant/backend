@@ -28,7 +28,11 @@ def _validate_network_and_client(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID format")
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == network_uuid)
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
@@ -54,7 +58,9 @@ async def _validate_audio_data(audio: UploadFile) -> bytes:
     return sentence_buf_raw
 
 
-def _process_stream_quality(network_id: str, client_id: str, sentence_buf_raw: bytes) -> None:
+def _process_stream_quality(
+    network_id: str, client_id: str, sentence_buf_raw: bytes
+) -> None:
     """Process stream quality analysis and logging."""
     sentence_processor = get_sentence_processor(network_id)
     multi_stream_processor = get_multi_stream_processor(network_id)
@@ -63,7 +69,9 @@ def _process_stream_quality(network_id: str, client_id: str, sentence_buf_raw: b
     audio_float = sentence_processor.pcm_bytes_to_float32(sentence_buf_raw)
 
     # Update stream quality for this client
-    stream_metrics = multi_stream_processor.update_stream_quality(client_id, audio_float)
+    stream_metrics = multi_stream_processor.update_stream_quality(
+        client_id, audio_float
+    )
 
     if stream_metrics:
         MiraLogger.info(
@@ -172,7 +180,9 @@ def _handle_wake_word_processing(
 async def register_interaction(
     network_id: str = Path(..., description="The ID of the network"),
     audio: UploadFile = File(..., description="The audio file to register"),
-    client_id: str = Form(..., description="The ID of the client that recorded the interaction"),
+    client_id: str = Form(
+        ..., description="The ID of the client that recorded the interaction"
+    ),
     db: Session = Depends(db.get_db),
 ):
     """Register interaction - transcribe sentence, identify speaker, and update stream quality."""
@@ -196,10 +206,14 @@ async def register_interaction(
         return stream_quality_response
 
     # Process transcription and save interaction
-    interaction = _process_transcription_and_save(network_id, client_id, sentence_buf_raw, db)
+    interaction = _process_transcription_and_save(
+        network_id, client_id, sentence_buf_raw, db
+    )
 
     # Handle wake word processing
-    return _handle_wake_word_processing(interaction, network_id, client_id, sentence_buf_raw, db)
+    return _handle_wake_word_processing(
+        interaction, network_id, client_id, sentence_buf_raw, db
+    )
 
 
 @router.get("/{interaction_id}")
@@ -273,7 +287,11 @@ def interaction_inference(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID format")
 
-    network = db.query(models.MiraNetwork).filter(models.MiraNetwork.id == network_uuid).first()
+    network = (
+        db.query(models.MiraNetwork)
+        .filter(models.MiraNetwork.id == network_uuid)
+        .first()
+    )
     if not network:
         raise HTTPException(status_code=404, detail="Network not found")
 
