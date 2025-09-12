@@ -38,8 +38,14 @@ htmlcov/
 coverage.xml
 test-results.xml
 
-# backend specific
+# Database files
 *.db
 *.db-shm
 *.db-wal
-node_modules
+
+# Node.js
+node_modules/
+
+# Deployment artifacts
+lambda-deployment*.zip
+deployment/

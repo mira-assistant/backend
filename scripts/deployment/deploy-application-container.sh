@@ -57,7 +57,7 @@ aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AW
 # Build Docker image
 log_info "Building Docker image..."
 cd "${PROJECT_ROOT}"
-docker build -f Dockerfile.lambda -t "${ECR_REPOSITORY}:${IMAGE_TAG}" .
+docker build -f docker/Dockerfile.lambda -t "${ECR_REPOSITORY}:${IMAGE_TAG}" .
 
 # Tag image for ECR
 docker tag "${ECR_REPOSITORY}:${IMAGE_TAG}" "${FULL_IMAGE_URI}"

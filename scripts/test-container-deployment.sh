@@ -37,7 +37,7 @@ echo ""
 
 # Test Docker build
 echo "🐳 Testing Docker build..."
-if docker build -f Dockerfile.lambda -t mira-backend-test .; then
+if docker build -f docker/Dockerfile.lambda -t mira-backend-test .; then
     echo "✅ Docker build successful"
 else
     echo "❌ Docker build failed"

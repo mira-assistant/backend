@@ -44,11 +44,17 @@ clean: ## Clean up temporary files
 clean-coverage: ## Clean up only coverage files
 	./scripts/cleanup-coverage.sh
 
-docker-build: ## Build Docker image
+docker-build: ## Build development Docker image
 	docker build -f docker/Dockerfile.dev -t mira-backend .
 
-docker-run: ## Run Docker container
+docker-build-lambda: ## Build Lambda Docker image
+	docker build -f docker/Dockerfile.lambda -t mira-backend-lambda .
+
+docker-run: ## Run development Docker container
 	docker run -p 8000:8000 mira-backend
+
+docker-test: ## Test container deployment locally
+	./scripts/test-container-deployment.sh
 
 docker-compose-up: ## Start dedvelopment environment with Docker Compose
 	cd docker && docker-compose -f docker-compose.dev.yml up --build
@@ -71,17 +77,17 @@ db-migrate: ## Run database migrations
 db-migrate-aws: ## Run database migrations on AWS RDS
 	./scripts/migrate-db.sh
 
-deploy: ## Deploy to AWS Lambda (enterprise)
+deploy: ## Deploy to AWS Lambda (container-based)
 	./scripts/deployment/deploy-infrastructure.sh $(ENV) && \
-	./scripts/deployment/deploy-application.sh $(ENV) && \
+	./scripts/deployment/deploy-application-container.sh $(ENV) && \
 	./scripts/deployment/migrate-database.sh $(ENV) && \
 	./scripts/deployment/health-check.sh $(ENV)
 
 deploy-infra: ## Deploy infrastructure only
 	./scripts/deployment/deploy-infrastructure.sh $(ENV)
 
-deploy-app: ## Deploy application only
-	./scripts/deployment/deploy-application.sh $(ENV)
+deploy-app: ## Deploy application only (container-based)
+	./scripts/deployment/deploy-application-container.sh $(ENV)
 
 migrate-db: ## Run database migrations
 	./scripts/deployment/migrate-database.sh $(ENV)
