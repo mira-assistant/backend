@@ -43,7 +43,6 @@ clean: ## Clean up temporary files
 	rm -rf .pytest_cache/
 	rm -rf htmlcov/
 	rm -rf .coverage
-	rm -rf .serverless/
 
 docker-build: ## Build Docker image
 	docker build -f docker/Dockerfile.dev -t mira-backend .
