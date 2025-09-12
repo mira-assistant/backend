@@ -14,7 +14,7 @@ test: ## Run tests (native)
 	pytest
 
 test-docker: ## Run tests in Docker (matches CI environment)
-	docker run --rm -v $(PWD):/app -w /app -e DATABASE_URL=sqlite:///./test.db mira-backend pytest --cov=app --cov-report=xml --cov-report=html --junitxml=test-results.xml
+	docker run --rm -v $(PWD):/app -w /app -e DATABASE_URL=sqlite:///./test.db mira-backend sh -c "mkdir -p /tmp/test-output && pytest --cov=app --cov-report=xml:/tmp/test-output/coverage.xml --cov-report=html:/tmp/test-output/htmlcov --junitxml=/tmp/test-output/test-results.xml && cp -r /tmp/test-output/* /app/ 2>/dev/null || true"
 
 test-cov: ## Run tests with coverage
 	pytest --cov=app --cov-report=html --cov-report=term
