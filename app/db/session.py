@@ -1,22 +1,29 @@
 """
-Database session management.
+Database session management for PostgreSQL/RDS.
 """
 
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.core.config import settings
 from app.db.base import Base
 
-# Create engine
+# Create PostgreSQL/RDS engine with optimized configuration
 engine = create_engine(
     settings.database_url,
     echo=settings.debug,
-    connect_args=(
-        {"check_same_thread": False} if "sqlite" in settings.database_url else {}
-    ),
+    connect_args={
+        "sslmode": "require",  # Require SSL for RDS connections
+        "connect_timeout": 10,
+    },
+    poolclass=QueuePool,
+    pool_size=5,  # Number of connections to maintain
+    max_overflow=10,  # Additional connections beyond pool_size
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=3600,  # Recycle connections every hour
 )
 
 # Create session factory
