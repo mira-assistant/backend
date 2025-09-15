@@ -1,5 +1,6 @@
 import uuid
 
+from db.base import Base
 from sqlalchemy import (
     JSON,
     Column,
@@ -9,8 +10,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
-from db.base import Base
 
 # Association table for many-to-many relationship between Person and Conversation
 person_conversation_association = Table(

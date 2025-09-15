@@ -21,11 +21,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from google import genai
-from google.genai import types
-
 from core.config import settings
 from core.mira_logger import MiraLogger
+from google import genai
+from google.genai import types
 from models import Interaction
 
 

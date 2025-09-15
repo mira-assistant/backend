@@ -1,5 +1,5 @@
 {
-  "name": "mira-backend-lambda",
+  "name": "mira-api-lambda",
   "version": "1.0.0",
   "description": "Mira Backend AWS Lambda deployment package",
   "main": "lambda_handler.py",

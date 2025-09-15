@@ -73,7 +73,7 @@ print_status "Profile: $PROFILE"
 get_rds_endpoint() {
     print_status "Getting RDS endpoint from CloudFormation stack..."
 
-    local stack_name="mira-backend-${STAGE}"
+    local stack_name="mira-api-${STAGE}"
     local db_endpoint
 
     db_endpoint=$(aws cloudformation describe-stacks \

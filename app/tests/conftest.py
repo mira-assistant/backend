@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from db import get_db  # noqa: E402
-from db.base import Base  # noqa: E402
-from main import app  # noqa: E402
+from db import get_db
+from db.base import Base
+from main import app
 
 
 @pytest.fixture(scope="session")

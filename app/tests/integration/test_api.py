@@ -5,9 +5,8 @@ Integration tests for API endpoints.
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
 from models import Conversation, MiraNetwork, Person
+from sqlalchemy.orm import Session
 
 
 class TestRootEndpoint:

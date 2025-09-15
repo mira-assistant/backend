@@ -4,12 +4,11 @@ Database session management for PostgreSQL/RDS.
 
 from typing import Generator
 
+from core.config import settings
+from db.base import Base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
-
-from core.config import settings
-from db.base import Base
 
 # Create PostgreSQL/RDS engine with optimized configuration
 engine = create_engine(

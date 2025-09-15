@@ -5,11 +5,10 @@ MiraNetwork model for network management.
 import uuid
 from datetime import datetime, timezone
 
+from db.base import Base
 from sqlalchemy import JSON, Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
-from db.base import Base
 
 
 class MiraNetwork(Base):

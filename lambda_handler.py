@@ -8,8 +8,8 @@ from pathlib import Path
 # Add the app directory to Python path
 sys.path.insert(0, str(Path(__file__).parent / "app"))
 
-from mangum import Mangum
 from main import app
+from mangum import Mangum
 
 # Create the Lambda handler
 handler = Mangum(app, lifespan="off")

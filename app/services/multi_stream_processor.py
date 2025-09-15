@@ -20,10 +20,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from scipy import signal
-
 from core.constants import SAMPLE_RATE
 from core.mira_logger import MiraLogger
+from scipy import signal
 
 
 @dataclass
