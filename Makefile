@@ -19,3 +19,11 @@ build-container:
 .PHONY: run
 run-container:
 	docker run --rm -it -v $(PWD)/app:/app -w /app -p 8000:8000 mira-backend:dev
+
+.PHONY: test
+test:
+	@echo "Tests not implemented yet"
+
+.PHONY: lint
+lint:
+	@echo "Linting not implemented yet"
