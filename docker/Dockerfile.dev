@@ -1,43 +1,18 @@
-# Use official Python slim image
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies needed for building packages
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libffi-dev \
-    libssl-dev \
-    curl \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
     git \
-    make \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip
 
-# Install all dependencies from requirements.txt to ensure proper dependency resolution
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install additional CI/CD tools
-RUN pip install --no-cache-dir mypy bandit safety
-
-# Copy application code
-COPY . .
-
-# Create a non-root user and set permissions
-RUN useradd --create-home app && chown -R app:app /app
-
-# Clean up any existing coverage files that might have wrong permissions
-RUN chmod +x scripts/cleanup-coverage.sh && ./scripts/cleanup-coverage.sh
-
-USER app
-
-# Expose FastAPI port
 EXPOSE 8000
 
-# Default command for development with live reload
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
