@@ -8,8 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
-from app.core.config import settings
-from app.db.base import Base
+from core.config import settings
+from db.base import Base
 
 # Create PostgreSQL/RDS engine with optimized configuration
 engine = create_engine(

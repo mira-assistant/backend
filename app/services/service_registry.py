@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict
 
-from app.core.mira_logger import MiraLogger
+from core.mira_logger import MiraLogger
 
 
 @dataclass

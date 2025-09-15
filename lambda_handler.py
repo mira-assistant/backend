@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "app"))
 
 from mangum import Mangum
-from app.main import app
+from main import app
 
 # Create the Lambda handler
 handler = Mangum(app, lifespan="off")

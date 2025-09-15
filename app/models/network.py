@@ -9,7 +9,7 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from app.db.base import Base
+from db.base import Base
 
 
 class MiraNetwork(Base):

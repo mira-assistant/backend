@@ -7,11 +7,11 @@ with proper dependency injection and configuration.
 
 from typing import Any, Dict
 
-from app.core.constants import SAMPLE_RATE
-from app.core.mira_logger import MiraLogger
+from core.constants import SAMPLE_RATE
+from core.mira_logger import MiraLogger
 
 # MLModelManager no longer needed - using direct Gemini integration
-from app.services.service_registry import service_registry
+from services.service_registry import service_registry
 
 
 class ServiceFactory:
@@ -20,7 +20,7 @@ class ServiceFactory:
     @staticmethod
     def create_command_processor(network_id: str):
         """Create a CommandProcessor for a specific network."""
-        from app.services.command_processor import CommandProcessor
+        from services.command_processor import CommandProcessor
 
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
@@ -36,7 +36,7 @@ class ServiceFactory:
     @staticmethod
     def create_context_processor(network_id: str):
         """Create a ContextProcessor for a specific network."""
-        from app.services.context_processor import ContextProcessor
+        from services.context_processor import ContextProcessor
 
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
@@ -46,7 +46,7 @@ class ServiceFactory:
     @staticmethod
     def create_inference_processor(network_id: str):
         """Create an InferenceProcessor for a specific network."""
-        from app.services.inference_processor import InferenceProcessor
+        from services.inference_processor import InferenceProcessor
 
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
@@ -65,7 +65,7 @@ class ServiceFactory:
     @staticmethod
     def create_multi_stream_processor(network_id: str):
         """Create a MultiStreamProcessor for a specific network."""
-        from app.services.multi_stream_processor import MultiStreamProcessor
+        from services.multi_stream_processor import MultiStreamProcessor
 
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)
@@ -75,7 +75,7 @@ class ServiceFactory:
     @staticmethod
     def create_sentence_processor(network_id: str):
         """Create a SentenceProcessor for a specific network."""
-        from app.services.sentence_processor import SentenceProcessor
+        from services.sentence_processor import SentenceProcessor
 
         # Load network-specific configuration
         config = ServiceFactory._load_network_config(network_id)

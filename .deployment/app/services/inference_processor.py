@@ -10,9 +10,9 @@ from typing import Optional
 
 from google import genai
 
-from app.core.config import settings
-from app.core.mira_logger import MiraLogger
-from app.models import Action, Interaction
+from core.config import settings
+from core.mira_logger import MiraLogger
+from models import Action, Interaction
 
 
 class InferenceProcessor:

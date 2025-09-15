@@ -2,7 +2,7 @@
 Tests for the main FastAPI application.
 """
 
-from app.main import app
+from main import app
 
 
 class TestMainApp:
@@ -58,7 +58,7 @@ class TestMainApp:
         # Test that the lifespan function exists and can be called
         import asyncio
 
-        from app.main import lifespan
+        from main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):
@@ -72,7 +72,7 @@ class TestMainApp:
         # Test that the lifespan function exists and can be called
         import asyncio
 
-        from app.main import lifespan
+        from main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):

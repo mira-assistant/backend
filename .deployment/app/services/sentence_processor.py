@@ -22,10 +22,10 @@ from scipy.signal import butter, lfilter
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
 
-from app.core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
-from app.core.mira_logger import MiraLogger
-from app.db import get_db_session
-from app.models import Interaction, Person
+from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
+from core.mira_logger import MiraLogger
+from db import get_db_session
+from models import Interaction, Person
 
 # MiraLogger is used directly via class methods
 

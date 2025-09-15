@@ -8,10 +8,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import app.api.v1 as v1
-import app.api.v2 as v2
-from app.core.config import settings
-from app.core.mira_logger import MiraLogger
+import api.v1 as v1
+import api.v2 as v2
+from core.config import settings
+from core.mira_logger import MiraLogger
 
 # Get FastAPI logger configured with our custom formatter
 fastapi_logger = MiraLogger.get_fastapi_logger()
