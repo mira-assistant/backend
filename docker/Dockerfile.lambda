@@ -7,7 +7,6 @@ RUN microdnf install -y \
     gcc-c++ \
     libpq-devel \
     git \
-    curl \
     && microdnf clean all
 
 COPY requirements.txt .
