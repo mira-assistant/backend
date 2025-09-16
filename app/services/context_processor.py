@@ -14,16 +14,13 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import spacy
-from core.mira_logger import MiraLogger
-from db import get_db_session
-from models import (
-    Conversation,
-    Interaction,
-    Person,
-)
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import or_
 from transformers.pipelines import pipeline
+
+from core.mira_logger import MiraLogger
+from db import get_db_session
+from models import Conversation, Interaction, Person
 
 
 class ContextProcessorConfig:

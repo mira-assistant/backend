@@ -8,9 +8,10 @@ and lifecycle management.
 import json
 from typing import Optional
 
+from google import genai
+
 from core.config import settings
 from core.mira_logger import MiraLogger
-from google import genai
 from models import Action, Interaction
 
 

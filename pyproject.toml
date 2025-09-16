@@ -48,6 +48,10 @@ known_first_party = ["app"]
 known_third_party = ["fastapi", "pydantic", "sqlalchemy", "pytest"]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 skip_glob = ["*/migrations/*", "*/alembic/*"]
+force_single_line = false
+include_trailing_comma = true
+use_parentheses = true
+ensure_newline_before_comments = true
 
 [tool.flake8]
 max-line-length = 88

@@ -1,17 +1,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from db.base import Base
-from sqlalchemy import (
-    JSON,
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-)
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
+from db.base import Base
 
 from .conversation import person_conversation_association
 

@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime, timezone
 
-import db as db
-import models as models
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
+
+import db as db
+import models as models
 
 router = APIRouter(prefix="/{network_id}/service")
 

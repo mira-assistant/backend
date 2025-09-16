@@ -8,6 +8,7 @@ help:
 	@echo "  stop-container - Stop all running containers"
 	@echo "  test - Run tests"
 	@echo "  lint - Run linting tools"
+	@echo "  format - Format code with isort and black"
 	@echo "  clean - Clean up containers and images"
 
 
@@ -37,7 +38,11 @@ test:
 lint:
 	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
 	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev black --check --diff .
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev isort --check-only --diff .
+
+.PHONY: format
+format:
+	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev isort .
+	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev black .
 
 .PHONY: clean
 clean:

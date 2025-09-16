@@ -3,11 +3,12 @@ Unit tests for database functionality.
 """
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
 from core.config import settings
 from db.base import Base
 from db.session import SessionLocal, get_db
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
 
 
 class TestDatabaseSession:

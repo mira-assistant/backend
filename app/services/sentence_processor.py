@@ -16,15 +16,16 @@ from typing import Any, Dict
 
 import noisereduce as nr
 import numpy as np
-from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
-from core.mira_logger import MiraLogger
-from db import get_db_session
 from faster_whisper import WhisperModel
-from models import Interaction, Person
 from resemblyzer import VoiceEncoder
 from scipy.signal import butter, lfilter
 from sklearn.cluster import DBSCAN
 from sqlalchemy.orm import Session
+
+from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
+from core.mira_logger import MiraLogger
+from db import get_db_session
+from models import Interaction, Person
 
 # MiraLogger is used directly via class methods
 

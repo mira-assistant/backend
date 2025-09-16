@@ -6,9 +6,10 @@ import uuid
 from datetime import datetime
 
 import pytest
+from sqlalchemy.exc import IntegrityError
+
 from models import Action, Conversation, Interaction, MiraNetwork, Person
 from models.conversation import person_conversation_association
-from sqlalchemy.exc import IntegrityError
 
 
 class TestMiraNetwork:
