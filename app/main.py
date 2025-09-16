@@ -78,4 +78,5 @@ def root():
         "beta": "v2",
     }
 
+
 handler = Mangum(app)

@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: Continuous Integration Pipeline
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
         - '**'
 
 jobs:
-    ci:
+    integrate:
         name: Continuous Integration
         runs-on: ubuntu-latest
 
