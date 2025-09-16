@@ -23,7 +23,7 @@ jobs:
 
       # Build the Docker image
       - name: Build Docker image
-        run: docker build -t mira-api:${{ github.sha }} .
+        run: docker build -t mira-api:${{ github.sha }} -f docker/Dockerfile.lambda .
 
       # Login to ECR
       - name: Login to Amazon ECR
