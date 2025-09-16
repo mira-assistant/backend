@@ -42,6 +42,7 @@ jobs:
         run: |
           aws lambda invoke \
             --function-name mira-backend-prod \
+            --cli-binary-format raw-in-base64-out \
             --payload '{"action":"run_migrations"}' \
             migration_output.json
 

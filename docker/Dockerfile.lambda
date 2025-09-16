@@ -18,4 +18,3 @@ COPY alembic/ ./alembic
 COPY alembic.ini .
 
 CMD ["main.handler"]
-# CMD ["tail", "-f", "/dev/null"] # Use this to hold the docker container open
