@@ -7,14 +7,13 @@ on:
 
 jobs:
   deploy:
+    name: Deploying to AWS
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -22,28 +21,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Build Docker image
       - name: Build Docker image
         run: docker build -t mira-api:${{ github.sha }} -f docker/Dockerfile.lambda .
 
-      # Login to ECR
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Tag & push image
       - name: Tag and push Docker image
         run: |
           docker tag mira-api:${{ github.sha }} 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
           docker push 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
 
-      # Deploy to Lambda
       - name: Update Lambda function
         run: |
           aws lambda update-function-code \
             --function-name mira-backend-prod \
             --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
 
-      # Trigger Alembic migrations through Lambda
       - name: Run Alembic migrations via Lambda
         run: |
           aws lambda invoke \

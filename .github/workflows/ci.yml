@@ -10,7 +10,7 @@ on:
 
 jobs:
     integrate:
-        name: Continuous Integration
+        name: Testing Code
         runs-on: ubuntu-latest
 
         steps:
