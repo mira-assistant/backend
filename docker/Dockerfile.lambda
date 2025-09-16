@@ -1,20 +1,21 @@
-FROM python:3.12-slim AS base
+FROM public.ecr.aws/lambda/python:3.12
 
-WORKDIR /
+WORKDIR /var/task
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
+RUN yum -y update && yum install -y \
+    gcc \
+    gcc-c++ \
+    libpq-devel \
     git \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && yum clean all
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY app/ ./app
-
-COPY alembic/ ./alembic
 COPY alembic.ini .
+COPY alembic/ ./alembic
 
-CMD ["main.handler"]
+CMD ["app.main.handler"]

@@ -40,6 +40,7 @@ app = FastAPI(
 
 asgi_handler = Mangum(app)
 
+
 # Exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
