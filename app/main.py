@@ -38,6 +38,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+asgi_handler = Mangum(app)
 
 # Exception handler
 @app.exception_handler(Exception)
@@ -116,5 +117,4 @@ def handler(event, context):
         return run_migrations()
 
     # Otherwise, route through Mangum
-    asgi_handler = Mangum(app)
     return asgi_handler(event, context)
