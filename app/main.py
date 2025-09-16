@@ -1,20 +1,24 @@
 """
-FastAPI application entrypoint.
+FastAPI application entrypoint with Lambda migration support.
 """
 
 from contextlib import asynccontextmanager
+import json
+import sys
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
+from alembic import command
+from alembic.config import Config
 
 import api.v1 as v1
 import api.v2 as v2
 from core.config import settings
 from core.mira_logger import MiraLogger
 
-# Get FastAPI logger configured with our custom formatter
+# Logger
 fastapi_logger = MiraLogger.get_fastapi_logger()
 
 
@@ -26,6 +30,7 @@ async def lifespan(app: FastAPI):
     fastapi_logger.info("Shutting down Mira Backend API...")
 
 
+# Initialize FastAPI
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -34,9 +39,9 @@ app = FastAPI(
 )
 
 
+# Exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for better error responses."""
     fastapi_logger.exception("Unhandled exception")
     return JSONResponse(
         status_code=500,
@@ -47,6 +52,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -55,22 +61,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(v1.conversation_router, prefix="/api/v1")
-app.include_router(v1.persons_router, prefix="/api/v1")
-app.include_router(v1.streams_router, prefix="/api/v1")
-app.include_router(v1.interaction_router, prefix="/api/v1")
-app.include_router(v1.service_router, prefix="/api/v1")
+# Routers
+for router in [
+    v1.conversation_router,
+    v1.persons_router,
+    v1.streams_router,
+    v1.interaction_router,
+    v1.service_router,
+]:
+    app.include_router(router, prefix="/api/v1")
 
-app.include_router(v2.conversation_router, prefix="/api/v2")
-app.include_router(v2.persons_router, prefix="/api/v2")
-app.include_router(v2.streams_router, prefix="/api/v2")
-app.include_router(v2.interaction_router, prefix="/api/v2")
-app.include_router(v2.service_router, prefix="/api/v2")
+for router in [
+    v2.conversation_router,
+    v2.persons_router,
+    v2.streams_router,
+    v2.interaction_router,
+    v2.service_router,
+]:
+    app.include_router(router, prefix="/api/v2")
 
 
 @app.get("/")
 def root():
-    """Root endpoint with system status."""
     return {
         "message": "Mira Backend API",
         "version": settings.app_version,
@@ -80,4 +92,29 @@ def root():
     }
 
 
-handler = Mangum(app)
+# Function to run Alembic migrations
+def run_migrations():
+    fastapi_logger.info("Running Alembic migrations...")
+    alembic_cfg = Config("alembic.ini")
+    try:
+        command.upgrade(alembic_cfg, "head")
+        fastapi_logger.info("Migrations completed successfully.")
+        return {"status": "success", "message": "Database migrated successfully."}
+    except Exception as e:
+        fastapi_logger.exception("Migration failed")
+        return {"status": "error", "message": str(e)}
+
+
+# Lambda handler
+def handler(event, context):
+    """
+    Mangum Lambda entrypoint.
+    If the payload contains {"action": "run_migrations"}, it runs Alembic migrations.
+    Otherwise, it serves the FastAPI API.
+    """
+    if isinstance(event, dict) and event.get("action") == "run_migrations":
+        return run_migrations()
+
+    # Otherwise, route through Mangum
+    asgi_handler = Mangum(app)
+    return asgi_handler(event, context)
