@@ -69,3 +69,4 @@ mangum>=0.17.0
 boto3>=1.40.0
 botocore>=1.40.0
 psycopg2-binary>=2.9.9
+typing-inspect>=0.9.0
