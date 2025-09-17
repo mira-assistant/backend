@@ -553,8 +553,6 @@ typer==0.17.4
     #   weasel
 types-requests==2.32.4.20250809
     # via -r requirements.in
-typing==3.7.4.3
-    # via resemblyzer
 typing-extensions==4.15.0
     # via
     #   aiosignal
