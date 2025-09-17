@@ -38,6 +38,12 @@ jobs:
             --function-name mira-backend-prod \
             --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
 
+      - name: Wait for function to update
+        run: |
+          aws lambda wait function-updated \
+            --region us-east-1 \
+            --function-name mira-backend-prod
+
       - name: Run Alembic migrations via Lambda
         run: |
           aws lambda invoke \
