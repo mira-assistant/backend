@@ -4,10 +4,10 @@ help:
 	@echo "Targets:"
 	@echo "  dev - Run development server"
 	@echo "  lambda - Run deployment server"
-	@echo "  build-container-dev - Build development container"
-	@echo "  build-container-lambda - Build deployment container"
-	@echo "  run-container-dev - Start development container"
-	@echo "  run-container-lambda - Start deployment container"
+	@echo "  dev-build - Build development container"
+	@echo "  lambda-build - Build deployment container"
+	@echo "  dev-run - Start development container"
+	@echo "  lambda-run - Start deployment container"
 	@echo "  stop-containers - Stop all running containers"
 	@echo "  test - Run tests"
 	@echo "  lint - Run linting tools"
@@ -17,26 +17,22 @@ help:
 
 .PHONY: dev
 dev:
-	make build-container-dev
-	make run-container-dev
+	make dev-build
+	make dev-run
 
 .PHONY: lambda
 lambda:
-	make build-container-lambda
-	make run-container-lambda
+	make lambda-build
+	make lambda-run
 
-.PHONY: build
-build-container-dev:
+dev-build:
 	docker build -t mira-api:dev -f docker/Dockerfile.dev .
-
-build-container-lambda:
+lambda-build:
 	docker build -t mira-api:lambda -f docker/Dockerfile.lambda .
 
-.PHONY: run
-run-container-dev:
+dev-run:
 	docker run --rm -it -v $(PWD)/app:/app -w /app -p 8000:8000 mira-api:dev
-
-run-container-lambda:
+lambda-run:
 	docker run --rm -it -v $(PWD)/app:/app -w /app -p 8000:8000 mira-api:lambda uvicorn main:app --host 0.0.0.0 --port 8000
 
 .PHONY: stop

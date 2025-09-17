@@ -1,6 +1,6 @@
 FROM public.ecr.aws/lambda/python:3.12
 
-WORKDIR /var/task
+WORKDIR ${LAMBDA_TASK_ROOT}
 
 RUN microdnf install -y \
     gcc \
@@ -9,12 +9,12 @@ RUN microdnf install -y \
     git \
     && microdnf clean all
 
-COPY requirements.txt .
+COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ ./app
+COPY ./app ./app
 
-COPY alembic/ ./alembic
+COPY ./alembic ./alembic
 COPY alembic.ini .
 
-CMD ["main.handler"]
+CMD ["app.main.handler"]
