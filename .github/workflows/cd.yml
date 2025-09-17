@@ -47,9 +47,12 @@ jobs:
       - name: Run Alembic migrations via Lambda
         run: |
           aws lambda invoke \
+            --region us-east-1 \
             --function-name mira-backend-prod \
-            --cli-binary-format raw-in-base64-out \
-            --payload '{"action":"run_migrations"}' \
-            migration_output.json
+            --payload '{}' \
+            --log-type Tail \
+            out.json \
+          | jq -r '.LogResult' | base64 --decode
 
-          cat migration_output.json
+          echo "---- Payload ----"
+          cat out.json
