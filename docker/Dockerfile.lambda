@@ -17,6 +17,6 @@ COPY ./app ./app
 COPY ./alembic ./alembic
 COPY alembic.ini .
 
-ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/app:${PYTHONPATH}"
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}:${PYTHONPATH}"
 
 CMD ["app.main.handler"]

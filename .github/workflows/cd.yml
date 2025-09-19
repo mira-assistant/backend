@@ -51,6 +51,8 @@ jobs:
             --function-name mira-backend-prod \
             --payload '{}' \
             --log-type Tail \
+            --timeout 60 \
+            --memory-size 256 \
             out.json \
           | jq -r '.LogResult' | base64 --decode
 
