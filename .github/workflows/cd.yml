@@ -36,10 +36,7 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name mira-backend-prod \
-            --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
-
-          aws lambda update-function-configuration \
-            --function-name mira-backend-prod \
+            --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }} \
             --handler main.handler
 
       - name: Wait for function to update
@@ -50,6 +47,8 @@ jobs:
 
       - name: Run Alembic migrations via Lambda
         run: |
+          set -e
+
           aws lambda invoke \
             --region us-east-1 \
             --function-name mira-backend-prod \
@@ -57,9 +56,20 @@ jobs:
             --log-type Tail \
             out.json > response.json
 
+          if [ $? -ne 0 ]; then
+            echo "Lambda invocation failed."
+            exit 1
+          fi
+
           LOG_RESULT=$(jq -r '.LogResult' response.json | base64 --decode)
           echo "---- Lambda Log Output ----"
           echo "$LOG_RESULT"
 
           echo "---- Lambda Payload ----"
           cat out.json
+
+          # Check for FunctionError in the response and fail if present
+          if jq -e '.FunctionError' out.json > /dev/null; then
+            echo "Lambda function returned an error."
+            exit 1
+          fi
