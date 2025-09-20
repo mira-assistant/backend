@@ -35,15 +35,14 @@ jobs:
       - name: Update Lambda function
         run: |
           aws lambda update-function-code \
-            --function-name mira-backend-prod \
+            --function-name mira-api \
             --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }} \
-            --handler main.handler
 
       - name: Wait for function to update
         run: |
           aws lambda wait function-updated \
             --region us-east-1 \
-            --function-name mira-backend-prod
+            --function-name mira-api
 
       - name: Run Alembic migrations via Lambda
         run: |
@@ -51,7 +50,7 @@ jobs:
 
           aws lambda invoke \
             --region us-east-1 \
-            --function-name mira-backend-prod \
+            --function-name mira-api \
             --payload '{}' \
             --log-type Tail \
             out.json > response.json
