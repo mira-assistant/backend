@@ -25,7 +25,7 @@ sentence-transformers>=2.2.0
 torch>=2.0.0
 
 # Voice processing
-resemblyzer>=0.1.0
+pyannote.audio>=3.1.1
 
 # HTTP and API
 httpx>=0.25.0
