@@ -24,6 +24,7 @@ from scipy.signal import butter, lfilter
 from sqlalchemy.orm import Session
 
 from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
+from core.config import settings
 from core.mira_logger import MiraLogger
 from db import get_db_session
 from models import Interaction, Person
@@ -66,7 +67,7 @@ class SentenceProcessor:
         """Initialize the pyannote.audio speaker diarization pipeline."""
         try:
             # Check for Hugging Face token
-            hf_token = os.getenv("HUGGING_FACE_TOKEN")
+            hf_token = settings.huggingface_api_key
             if not hf_token:
                 MiraLogger.warning(
                     "HUGGING_FACE_TOKEN environment variable not set. "
@@ -387,7 +388,7 @@ class SentenceProcessor:
         # Combine with speaker label hash for consistency
         label_hash = int(hashlib.md5(speaker_label.encode()).hexdigest()[:8], 16)
 
-        # Create a 256-dimensional embedding (similar to resemblyzer)
+        # Create a 256-dimensional embedding
         embedding = np.random.RandomState(label_hash).randn(256).astype(np.float32)
 
         # Add some audio-derived features

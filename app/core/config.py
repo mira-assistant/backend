@@ -23,7 +23,6 @@ class Settings(BaseSettings):
 
     # AWS Bedrock Configuration (for production)
     aws_region: str = Field(default="us-east-1")
-    bedrock_model_id: str = Field(default="anthropic.claude-3-sonnet-20240229-v1:0")
 
     # CORS
     cors_origins: Union[str, List[str]] = Field(default=["*"])
@@ -42,6 +41,7 @@ class Settings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="")
+    huggingface_api_key: str = Field(default="")
 
     class Config:
         env_file = ".env"
