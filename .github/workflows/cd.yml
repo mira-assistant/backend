@@ -51,10 +51,11 @@ jobs:
             --function-name mira-backend-prod \
             --payload '{}' \
             --log-type Tail \
-            --timeout 60 \
-            --memory-size 256 \
-            out.json \
-          | jq -r '.LogResult' | base64 --decode
+            out.json > response.json
 
-          echo "---- Payload ----"
+          LOG_RESULT=$(jq -r '.LogResult' response.json | base64 --decode)
+          echo "---- Lambda Log Output ----"
+          echo "$LOG_RESULT"
+
+          echo "---- Lambda Payload ----"
           cat out.json
