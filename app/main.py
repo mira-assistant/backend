@@ -38,7 +38,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-asgi_handler = Mangum(app)
+asgi_handler = Mangum(app, api_gateway_base_path="/")
 
 
 # Exception handler

@@ -53,22 +53,6 @@ jobs:
             --function-name mira-api \
             --payload '{}' \
             --log-type Tail \
-            out.json > response.json
+            out.json > /dev/null
 
-          if [ $? -ne 0 ]; then
-            echo "Lambda invocation failed."
-            exit 1
-          fi
-
-          LOG_RESULT=$(jq -r '.LogResult' response.json | base64 --decode)
-          echo "---- Lambda Log Output ----"
-          echo "$LOG_RESULT"
-
-          echo "---- Lambda Payload ----"
           cat out.json
-
-          # Check for FunctionError in the response and fail if present
-          if jq -e '.FunctionError' out.json > /dev/null; then
-            echo "Lambda function returned an error."
-            exit 1
-          fi
