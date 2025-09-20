@@ -38,6 +38,10 @@ jobs:
             --function-name mira-backend-prod \
             --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
 
+          aws lambda update-function-configuration \
+            --function-name mira-backend-prod \
+            --handler main.handler
+
       - name: Wait for function to update
         run: |
           aws lambda wait function-updated \

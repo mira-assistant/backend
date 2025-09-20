@@ -2,7 +2,7 @@
   "name": "mira-api-lambda",
   "version": "1.0.0",
   "description": "Mira Backend AWS Lambda deployment package",
-  "main": "lambda_handler.py",
+  "main": "app.main.py",
   "scripts": {
     "deploy": "serverless deploy",
     "deploy:dev": "serverless deploy --stage dev",
