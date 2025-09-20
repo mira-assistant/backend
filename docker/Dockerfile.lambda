@@ -12,11 +12,10 @@ RUN microdnf install -y \
 COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./app ./app
+# Copy contents of the app directory to the workdir
+COPY ./app/ .
 
 COPY ./alembic ./alembic
 COPY alembic.ini .
 
-ENV PYTHONPATH="${LAMBDA_TASK_ROOT}:${PYTHONPATH}"
-
-CMD ["app.main.handler"]
+CMD ["main.handler"]
