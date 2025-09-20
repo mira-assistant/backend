@@ -1,0 +1,239 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting pyannote.audio
+  Downloading pyannote_audio-3.4.0-py2.py3-none-any.whl.metadata
+     - 11.7 kB 61.2 MB/s 0:00:00
+Collecting asteroid-filterbanks>=0.4 (from pyannote.audio)
+  Downloading asteroid_filterbanks-0.4.0-py3-none-any.whl.metadata
+     - 3.3 kB ? 0:00:00
+Collecting einops>=0.6.0 (from pyannote.audio)
+  Downloading einops-0.8.1-py3-none-any.whl.metadata
+     - 13.5 kB 135.2 MB/s 0:00:00
+Requirement already satisfied: huggingface_hub>=0.13.0 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.audio) (0.34.4)
+Collecting lightning>=2.0.1 (from pyannote.audio)
+  Downloading lightning-2.5.5-py3-none-any.whl.metadata
+     - 39.8 kB 222.6 MB/s 0:00:00
+Collecting omegaconf<3.0,>=2.1 (from pyannote.audio)
+  Downloading omegaconf-2.3.0-py3-none-any.whl.metadata
+     - 3.9 kB ? 0:00:00
+Collecting pyannote.core<6.0,>=5.0.0 (from pyannote.audio)
+  Downloading pyannote.core-5.0.0-py3-none-any.whl.metadata
+     - 1.4 kB ? 0:00:00
+Collecting pyannote.database<6.0,>=5.0.1 (from pyannote.audio)
+  Downloading pyannote.database-5.1.3-py3-none-any.whl.metadata
+     - 1.1 kB ? 0:00:00
+Collecting pyannote.metrics<4.0,>=3.2 (from pyannote.audio)
+  Downloading pyannote.metrics-3.2.1-py3-none-any.whl.metadata
+     - 1.3 kB ? 0:00:00
+Collecting pyannote.pipeline<4.0,>=3.0.1 (from pyannote.audio)
+  Downloading pyannote.pipeline-3.0.1-py3-none-any.whl.metadata
+     - 897 bytes ? 0:00:00
+Collecting pytorch_metric_learning>=2.1.0 (from pyannote.audio)
+  Downloading pytorch_metric_learning-2.9.0-py3-none-any.whl.metadata
+     - 18.4 kB 178.6 MB/s 0:00:00
+Requirement already satisfied: rich>=12.0.0 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.audio) (14.1.0)
+Collecting semver>=3.0.0 (from pyannote.audio)
+  Downloading semver-3.0.4-py3-none-any.whl.metadata
+     - 6.8 kB ? 0:00:00
+Requirement already satisfied: soundfile>=0.12.1 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.audio) (0.13.1)
+Collecting speechbrain>=1.0.0 (from pyannote.audio)
+  Downloading speechbrain-1.0.3-py3-none-any.whl.metadata
+     - 24.1 kB 241.0 MB/s 0:00:00
+Collecting tensorboardX>=2.6 (from pyannote.audio)
+  Downloading tensorboardx-2.6.4-py3-none-any.whl.metadata
+     - 6.2 kB ? 0:00:00
+Requirement already satisfied: torch>=2.0.0 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.audio) (2.8.0)
+Collecting torch_audiomentations>=0.11.0 (from pyannote.audio)
+  Downloading torch_audiomentations-0.12.0-py3-none-any.whl.metadata
+     - 15.6 kB 156.5 MB/s 0:00:00
+Collecting torchaudio>=2.2.0 (from pyannote.audio)
+  Downloading torchaudio-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata
+     - 7.2 kB ? 0:00:00
+Collecting torchmetrics>=0.11.0 (from pyannote.audio)
+  Downloading torchmetrics-1.8.2-py3-none-any.whl.metadata
+     - 22.0 kB 149.2 MB/s 0:00:00
+Requirement already satisfied: numpy in /home/runner/.local/lib/python3.12/site-packages (from asteroid-filterbanks>=0.4->pyannote.audio) (1.26.4)
+Requirement already satisfied: typing-extensions in /home/runner/.local/lib/python3.12/site-packages (from asteroid-filterbanks>=0.4->pyannote.audio) (4.15.0)
+Requirement already satisfied: filelock in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (3.19.1)
+Requirement already satisfied: fsspec>=2023.5.0 in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (2025.3.0)
+Requirement already satisfied: packaging>=20.9 in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (25.0)
+Requirement already satisfied: pyyaml>=5.1 in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (6.0.2)
+Requirement already satisfied: requests in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (2.32.5)
+Requirement already satisfied: tqdm>=4.42.1 in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (4.67.1)
+Requirement already satisfied: hf-xet<2.0.0,>=1.1.3 in /home/runner/.local/lib/python3.12/site-packages (from huggingface_hub>=0.13.0->pyannote.audio) (1.1.9)
+Collecting lightning-utilities<2.0,>=0.10.0 (from lightning>=2.0.1->pyannote.audio)
+  Downloading lightning_utilities-0.15.2-py3-none-any.whl.metadata
+     - 5.7 kB ? 0:00:00
+Collecting pytorch-lightning (from lightning>=2.0.1->pyannote.audio)
+  Downloading pytorch_lightning-2.5.5-py3-none-any.whl.metadata
+     - 21.0 kB 166.3 MB/s 0:00:00
+Collecting antlr4-python3-runtime==4.9.* (from omegaconf<3.0,>=2.1->pyannote.audio)
+  Downloading antlr4-python3-runtime-4.9.3.tar.gz
+     - 117.0 kB 192.3 MB/s 0:00:00
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting sortedcontainers>=2.0.4 (from pyannote.core<6.0,>=5.0.0->pyannote.audio)
+  Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl.metadata
+     - 10.7 kB 13.3 MB/s 0:00:00
+Requirement already satisfied: scipy>=1.1 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.core<6.0,>=5.0.0->pyannote.audio) (1.13.1)
+Requirement already satisfied: pandas>=0.19 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.database<6.0,>=5.0.1->pyannote.audio) (2.3.2)
+Requirement already satisfied: typer>=0.12.1 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.database<6.0,>=5.0.1->pyannote.audio) (0.17.4)
+Requirement already satisfied: scikit-learn>=0.17.1 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.4.2)
+Collecting docopt>=0.6.2 (from pyannote.metrics<4.0,>=3.2->pyannote.audio)
+  Downloading docopt-0.6.2.tar.gz
+     - 25.9 kB 101.4 MB/s 0:00:00
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting tabulate>=0.7.7 (from pyannote.metrics<4.0,>=3.2->pyannote.audio)
+  Downloading tabulate-0.9.0-py3-none-any.whl.metadata
+     - 34.1 kB 213.6 MB/s 0:00:00
+Requirement already satisfied: matplotlib>=2.0.0 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.metrics<4.0,>=3.2->pyannote.audio) (3.10.6)
+Requirement already satisfied: sympy>=1.1 in /home/runner/.local/lib/python3.12/site-packages (from pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.14.0)
+Collecting optuna>=3.1 (from pyannote.pipeline<4.0,>=3.0.1->pyannote.audio)
+  Downloading optuna-4.5.0-py3-none-any.whl.metadata
+     - 17.5 kB 101.1 MB/s 0:00:00
+Requirement already satisfied: markdown-it-py>=2.2.0 in /home/runner/.local/lib/python3.12/site-packages (from rich>=12.0.0->pyannote.audio) (4.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in /home/runner/.local/lib/python3.12/site-packages (from rich>=12.0.0->pyannote.audio) (2.19.2)
+Requirement already satisfied: cffi>=1.0 in /home/runner/.local/lib/python3.12/site-packages (from soundfile>=0.12.1->pyannote.audio) (1.17.1)
+Collecting hyperpyyaml (from speechbrain>=1.0.0->pyannote.audio)
+  Downloading HyperPyYAML-1.2.2-py3-none-any.whl.metadata
+     - 7.6 kB ? 0:00:00
+Requirement already satisfied: joblib in /home/runner/.local/lib/python3.12/site-packages (from speechbrain>=1.0.0->pyannote.audio) (1.5.2)
+Collecting sentencepiece (from speechbrain>=1.0.0->pyannote.audio)
+  Downloading sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata
+     - 10.0 kB ? 0:00:00
+Requirement already satisfied: protobuf>=3.20 in /home/runner/.local/lib/python3.12/site-packages (from tensorboardX>=2.6->pyannote.audio) (5.29.5)
+Requirement already satisfied: setuptools in /usr/lib/python3/dist-packages (from torch>=2.0.0->pyannote.audio) (68.1.2)
+Requirement already satisfied: networkx in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (3.5)
+Requirement already satisfied: jinja2 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (3.1.6)
+Requirement already satisfied: nvidia-cuda-nvrtc-cu12==12.8.93 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.93)
+Requirement already satisfied: nvidia-cuda-runtime-cu12==12.8.90 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.90)
+Requirement already satisfied: nvidia-cuda-cupti-cu12==12.8.90 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.90)
+Requirement already satisfied: nvidia-cudnn-cu12==9.10.2.21 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (9.10.2.21)
+Requirement already satisfied: nvidia-cublas-cu12==12.8.4.1 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.4.1)
+Requirement already satisfied: nvidia-cufft-cu12==11.3.3.83 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (11.3.3.83)
+Requirement already satisfied: nvidia-curand-cu12==10.3.9.90 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (10.3.9.90)
+Requirement already satisfied: nvidia-cusolver-cu12==11.7.3.90 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (11.7.3.90)
+Requirement already satisfied: nvidia-cusparse-cu12==12.5.8.93 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.5.8.93)
+Requirement already satisfied: nvidia-cusparselt-cu12==0.7.1 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (0.7.1)
+Requirement already satisfied: nvidia-nccl-cu12==2.27.3 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (2.27.3)
+Requirement already satisfied: nvidia-nvtx-cu12==12.8.90 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.90)
+Requirement already satisfied: nvidia-nvjitlink-cu12==12.8.93 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (12.8.93)
+Requirement already satisfied: nvidia-cufile-cu12==1.13.1.3 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (1.13.1.3)
+Requirement already satisfied: triton==3.4.0 in /home/runner/.local/lib/python3.12/site-packages (from torch>=2.0.0->pyannote.audio) (3.4.0)
+Collecting julius<0.3,>=0.2.3 (from torch_audiomentations>=0.11.0->pyannote.audio)
+  Downloading julius-0.2.7.tar.gz
+     - 59.6 kB 148.1 MB/s 0:00:00
+  Preparing metadata (setup.py): started
+  Preparing metadata (setup.py): finished with status 'done'
+Collecting torch-pitch-shift>=1.2.2 (from torch_audiomentations>=0.11.0->pyannote.audio)
+  Downloading torch_pitch_shift-1.2.5-py3-none-any.whl.metadata
+     - 2.5 kB ? 0:00:00
+Requirement already satisfied: pycparser in /home/runner/.local/lib/python3.12/site-packages (from cffi>=1.0->soundfile>=0.12.1->pyannote.audio) (2.22)
+Requirement already satisfied: aiohttp!=4.0.0a0,!=4.0.0a1 in /home/runner/.local/lib/python3.12/site-packages (from fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (3.12.15)
+Requirement already satisfied: mdurl~=0.1 in /usr/lib/python3/dist-packages (from markdown-it-py>=2.2.0->rich>=12.0.0->pyannote.audio) (0.1.2)
+Requirement already satisfied: contourpy>=1.0.1 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.3.3)
+Requirement already satisfied: cycler>=0.10 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (4.59.2)
+Requirement already satisfied: kiwisolver>=1.3.1 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.4.9)
+Requirement already satisfied: pillow>=8 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (11.3.0)
+Requirement already satisfied: pyparsing>=2.3.1 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (3.2.3)
+Requirement already satisfied: python-dateutil>=2.7 in /home/runner/.local/lib/python3.12/site-packages (from matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (2.9.0.post0)
+Requirement already satisfied: alembic>=1.5.0 in /home/runner/.local/lib/python3.12/site-packages (from optuna>=3.1->pyannote.pipeline<4.0,>=3.0.1->pyannote.audio) (1.16.5)
+Collecting colorlog (from optuna>=3.1->pyannote.pipeline<4.0,>=3.0.1->pyannote.audio)
+  Downloading colorlog-6.9.0-py3-none-any.whl.metadata
+     - 11.0 kB 29.8 MB/s 0:00:00
+Requirement already satisfied: sqlalchemy>=1.4.2 in /home/runner/.local/lib/python3.12/site-packages (from optuna>=3.1->pyannote.pipeline<4.0,>=3.0.1->pyannote.audio) (2.0.43)
+Requirement already satisfied: pytz>=2020.1 in /home/runner/.local/lib/python3.12/site-packages (from pandas>=0.19->pyannote.database<6.0,>=5.0.1->pyannote.audio) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in /home/runner/.local/lib/python3.12/site-packages (from pandas>=0.19->pyannote.database<6.0,>=5.0.1->pyannote.audio) (2025.2)
+Requirement already satisfied: threadpoolctl>=2.0.0 in /home/runner/.local/lib/python3.12/site-packages (from scikit-learn>=0.17.1->pyannote.metrics<4.0,>=3.2->pyannote.audio) (3.6.0)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /home/runner/.local/lib/python3.12/site-packages (from sympy>=1.1->pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.3.0)
+Collecting primePy>=1.3 (from torch-pitch-shift>=1.2.2->torch_audiomentations>=0.11.0->pyannote.audio)
+  Downloading primePy-1.3-py3-none-any.whl.metadata
+     - 4.8 kB ? 0:00:00
+Requirement already satisfied: click>=8.0.0 in /home/runner/.local/lib/python3.12/site-packages (from typer>=0.12.1->pyannote.database<6.0,>=5.0.1->pyannote.audio) (8.2.1)
+Requirement already satisfied: shellingham>=1.3.0 in /home/runner/.local/lib/python3.12/site-packages (from typer>=0.12.1->pyannote.database<6.0,>=5.0.1->pyannote.audio) (1.5.4)
+Requirement already satisfied: ruamel.yaml>=0.17.28 in /home/runner/.local/lib/python3.12/site-packages (from hyperpyyaml->speechbrain>=1.0.0->pyannote.audio) (0.18.15)
+Requirement already satisfied: MarkupSafe>=2.0 in /home/runner/.local/lib/python3.12/site-packages (from jinja2->torch>=2.0.0->pyannote.audio) (3.0.2)
+Requirement already satisfied: charset_normalizer<4,>=2 in /home/runner/.local/lib/python3.12/site-packages (from requests->huggingface_hub>=0.13.0->pyannote.audio) (3.4.3)
+Requirement already satisfied: idna<4,>=2.5 in /home/runner/.local/lib/python3.12/site-packages (from requests->huggingface_hub>=0.13.0->pyannote.audio) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /home/runner/.local/lib/python3.12/site-packages (from requests->huggingface_hub>=0.13.0->pyannote.audio) (2.5.0)
+Requirement already satisfied: certifi>=2017.4.17 in /home/runner/.local/lib/python3.12/site-packages (from requests->huggingface_hub>=0.13.0->pyannote.audio) (2025.8.3)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (2.6.1)
+Requirement already satisfied: aiosignal>=1.4.0 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (1.4.0)
+Requirement already satisfied: attrs>=17.3.0 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (25.3.0)
+Requirement already satisfied: frozenlist>=1.1.1 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (1.7.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (6.6.4)
+Requirement already satisfied: propcache>=0.2.0 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (0.3.2)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in /home/runner/.local/lib/python3.12/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<2027.0,>=2022.5.0->lightning>=2.0.1->pyannote.audio) (1.20.1)
+Requirement already satisfied: Mako in /home/runner/.local/lib/python3.12/site-packages (from alembic>=1.5.0->optuna>=3.1->pyannote.pipeline<4.0,>=3.0.1->pyannote.audio) (1.3.10)
+Requirement already satisfied: six>=1.5 in /home/runner/.local/lib/python3.12/site-packages (from python-dateutil>=2.7->matplotlib>=2.0.0->pyannote.metrics<4.0,>=3.2->pyannote.audio) (1.17.0)
+Requirement already satisfied: ruamel.yaml.clib>=0.2.7 in /home/runner/.local/lib/python3.12/site-packages (from ruamel.yaml>=0.17.28->hyperpyyaml->speechbrain>=1.0.0->pyannote.audio) (0.2.12)
+Requirement already satisfied: greenlet>=1 in /home/runner/.local/lib/python3.12/site-packages (from sqlalchemy>=1.4.2->optuna>=3.1->pyannote.pipeline<4.0,>=3.0.1->pyannote.audio) (3.2.4)
+Downloading pyannote_audio-3.4.0-py2.py3-none-any.whl
+   - 897.8 kB 213.9 MB/s 0:00:00
+Downloading asteroid_filterbanks-0.4.0-py3-none-any.whl
+   - 29.9 kB 202.9 MB/s 0:00:00
+Downloading einops-0.8.1-py3-none-any.whl
+   - 64.4 kB 217.0 MB/s 0:00:00
+Downloading lightning-2.5.5-py3-none-any.whl
+   - 828.5 kB 202.6 MB/s 0:00:00
+Downloading omegaconf-2.3.0-py3-none-any.whl
+   - 79.5 kB 223.8 MB/s 0:00:00
+Downloading pyannote.core-5.0.0-py3-none-any.whl
+   - 58.5 kB 168.3 MB/s 0:00:00
+Downloading pyannote.database-5.1.3-py3-none-any.whl
+   - 48.1 kB 224.4 MB/s 0:00:00
+Downloading pyannote.metrics-3.2.1-py3-none-any.whl
+   - 51.4 kB 146.9 MB/s 0:00:00
+Downloading pyannote.pipeline-3.0.1-py3-none-any.whl
+   - 31.5 kB 201.3 MB/s 0:00:00
+Downloading pytorch_metric_learning-2.9.0-py3-none-any.whl
+   - 127.8 kB 179.3 MB/s 0:00:00
+Downloading semver-3.0.4-py3-none-any.whl
+   - 17.9 kB 76.4 MB/s 0:00:00
+Downloading speechbrain-1.0.3-py3-none-any.whl
+   - 864.1 kB 219.3 MB/s 0:00:00
+Downloading tensorboardx-2.6.4-py3-none-any.whl
+   - 87.2 kB 149.4 MB/s 0:00:00
+Downloading torch_audiomentations-0.12.0-py3-none-any.whl
+   - 48.5 kB 133.6 MB/s 0:00:00
+Downloading torchaudio-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl
+   - 4.0 MB 130.5 MB/s 0:00:00
+Downloading torchmetrics-1.8.2-py3-none-any.whl
+   - 983.2 kB 194.3 MB/s 0:00:00
+Downloading lightning_utilities-0.15.2-py3-none-any.whl
+   - 29.4 kB 158.8 MB/s 0:00:00
+Downloading optuna-4.5.0-py3-none-any.whl
+   - 400.9 kB 197.6 MB/s 0:00:00
+Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl
+   - 29.6 kB 201.7 MB/s 0:00:00
+Downloading tabulate-0.9.0-py3-none-any.whl
+   - 35.3 kB 150.5 MB/s 0:00:00
+Downloading torch_pitch_shift-1.2.5-py3-none-any.whl
+   - 5.0 kB ? 0:00:00
+Downloading HyperPyYAML-1.2.2-py3-none-any.whl
+   - 16.1 kB 173.0 MB/s 0:00:00
+Downloading pytorch_lightning-2.5.5-py3-none-any.whl
+   - 832.4 kB 208.9 MB/s 0:00:00
+Downloading sentencepiece-0.2.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+   - 1.4 MB 196.3 MB/s 0:00:00
+Downloading primePy-1.3-py3-none-any.whl
+   - 4.0 kB ? 0:00:00
+Downloading colorlog-6.9.0-py3-none-any.whl
+   - 11.4 kB 53.4 MB/s 0:00:00
+Building wheels for collected packages: antlr4-python3-runtime, docopt, julius
+  Building wheel for antlr4-python3-runtime (setup.py): started
+  Building wheel for antlr4-python3-runtime (setup.py): finished with status 'done'
+  Created wheel for antlr4-python3-runtime: filename=antlr4_python3_runtime-4.9.3-py3-none-any.whl size=144554 sha256=e87597daa41666994fd912ecd18575ee7b9810aa4218db09e6c498c901326189
+  Stored in directory: /home/runner/.cache/pip/wheels/1f/be/48/13754633f1d08d1fbfc60d5e80ae1e5d7329500477685286cd
+  Building wheel for docopt (setup.py): started
+  Building wheel for docopt (setup.py): finished with status 'done'
+  Created wheel for docopt: filename=docopt-0.6.2-py2.py3-none-any.whl size=13706 sha256=e700baccb8a946ba0faa0b6d0d6572c018000f92f66ebeef90835786e2e3e747
+  Stored in directory: /home/runner/.cache/pip/wheels/1a/bf/a1/4cee4f7678c68c5875ca89eaccf460593539805c3906722228
+  Building wheel for julius (setup.py): started
+  Building wheel for julius (setup.py): finished with status 'done'
+  Created wheel for julius: filename=julius-0.2.7-py3-none-any.whl size=21870 sha256=58c5b2a6a783f027d128f671551ba9e8dfd4954c568439c2393c5397275573b2
+  Stored in directory: /home/runner/.cache/pip/wheels/de/c1/ca/544dafe48401e8e2e17064dfe465a390fca9e8720ffa12e744
+Successfully built antlr4-python3-runtime docopt julius
+Installing collected packages: sortedcontainers, primePy, docopt, antlr4-python3-runtime, tensorboardX, tabulate, sentencepiece, semver, omegaconf, lightning-utilities, einops, colorlog, pyannote.core, hyperpyyaml, optuna, torchmetrics, torchaudio, pytorch_metric_learning, pyannote.database, julius, asteroid-filterbanks, torch-pitch-shift, speechbrain, pytorch-lightning, pyannote.pipeline, pyannote.metrics, torch_audiomentations, lightning, pyannote.audio
+Successfully installed antlr4-python3-runtime-4.9.3 asteroid-filterbanks-0.4.0 colorlog-6.9.0 docopt-0.6.2 einops-0.8.1 hyperpyyaml-1.2.2 julius-0.2.7 lightning-2.5.5 lightning-utilities-0.15.2 omegaconf-2.3.0 optuna-4.5.0 primePy-1.3 pyannote.audio-3.4.0 pyannote.core-5.0.0 pyannote.database-5.1.3 pyannote.metrics-3.2.1 pyannote.pipeline-3.0.1 pytorch-lightning-2.5.5 pytorch_metric_learning-2.9.0 semver-3.0.4 sentencepiece-0.2.1 sortedcontainers-2.4.0 speechbrain-1.0.3 tabulate-0.9.0 tensorboardX-2.6.4 torch-pitch-shift-1.2.5 torch_audiomentations-0.12.0 torchaudio-2.8.0 torchmetrics-1.8.2
