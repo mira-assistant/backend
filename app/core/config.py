@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     huggingface_api_key: str = Field(default="")
 
+    # Authentication
+    jwt_secret_key: str = Field(default="your-secret-key-here")
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_access_token_expire_minutes: int = Field(default=30)
+    jwt_refresh_token_expire_days: int = Field(default=7)
+
+    # Google OAuth
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

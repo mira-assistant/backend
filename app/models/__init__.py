@@ -5,6 +5,7 @@ from .conversation import Conversation
 from .interaction import Interaction
 from .network import MiraNetwork
 from .person import Person
+from .user import User
 
 __all__ = [
     "Interaction",
@@ -12,4 +13,5 @@ __all__ = [
     "Conversation",
     "MiraNetwork",
     "Action",
+    "User",
 ]
