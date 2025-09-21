@@ -2,15 +2,20 @@
 Alembic environment configuration for Mira Backend.
 """
 
+import sys
+import os
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
 
 from alembic import context
 
+# Add the app directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
+
 # Import your models and database configuration
-from app.db.base import Base
-from app.core.config import settings
+from db.base import Base
+from core.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
