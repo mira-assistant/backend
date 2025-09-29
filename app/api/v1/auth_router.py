@@ -17,7 +17,7 @@ from core.auth import (
     verify_password,
     verify_token,
 )
-from core.oauth import extract_user_info_github, extract_user_info_google, oauth
+from services.oauth_service import extract_user_info_github, extract_user_info_google, oauth
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 

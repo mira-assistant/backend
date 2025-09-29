@@ -41,8 +41,6 @@ av==15.1.0
     # via faster-whisper
 bcrypt==5.0.0
     # via passlib
-black==25.1.0
-    # via -r requirements.in
 blis==1.2.1
     # via thinc
 boto3==1.40.25
@@ -72,7 +70,6 @@ charset-normalizer==3.4.3
     # via requests
 click==8.2.1
     # via
-    #   black
     #   nltk
     #   safety
     #   typer
@@ -205,8 +202,6 @@ idna==3.10
     #   yarl
 iniconfig==2.1.0
     # via pytest
-isort==6.0.1
-    # via -r requirements.in
 jinja2==3.1.6
     # via
     #   safety
@@ -273,9 +268,7 @@ murmurhash==1.0.13
     #   spacy
     #   thinc
 mypy-extensions==1.1.0
-    # via
-    #   black
-    #   typing-inspect
+    # via typing-inspect
 networkx==3.5
     # via torch
 nltk==3.9.1
@@ -326,7 +319,6 @@ optype[numpy]==0.13.4
 packaging==25.0
     # via
     #   accelerate
-    #   black
     #   datasets
     #   dparse
     #   huggingface-hub
@@ -356,16 +348,12 @@ pandas==2.3.2
     #   pyannote-metrics
 passlib[bcrypt]==1.7.4
     # via -r requirements.in
-pathspec==0.12.1
-    # via black
 peft==0.17.1
     # via -r requirements.in
 pillow==11.3.0
     # via
     #   matplotlib
     #   sentence-transformers
-platformdirs==4.4.0
-    # via black
 pluggy==1.6.0
     # via
     #   pytest
