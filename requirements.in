@@ -36,6 +36,7 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 authlib>=1.6.0
 email-validator>=2.0.0
+itsdangerous>=2.0.0
 
 # AI/ML APIs
 openai>=1.0.0

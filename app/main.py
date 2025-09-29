@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
+from starlette.middleware.sessions import SessionMiddleware
 
 import api.v1 as v1
 import api.v2 as v2
@@ -59,6 +60,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
+)
+
+# Session middleware for OAuth2 flows
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    max_age=3600,  # 1 hour
+    same_site="lax",
+    https_only=False,  # Set to True in production with HTTPS
 )
 
 # Routers
