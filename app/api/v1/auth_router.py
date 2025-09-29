@@ -14,7 +14,7 @@ import models
 import schemas.auth as auth_schemas
 from core.auth import verify_password, get_password_hash, create_access_token, create_refresh_token, verify_token
 from core.oauth import oauth, extract_user_info_google, extract_user_info_github
-from core.dependencies import get_current_user_required
+from api.deps import get_current_user_required
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 

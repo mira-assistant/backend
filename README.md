@@ -112,7 +112,101 @@ The Mira Backend uses **versioned APIs** to ensure backward compatibility and sm
 - **Production**: `https://your-api-gateway-url.amazonaws.com`
 
 ### Authentication
-All endpoints use **network-scoped access** with `{network_id}` path parameter for multi-tenancy.
+
+The Mira Backend includes a comprehensive authentication system that supports:
+
+- **Username/password login** with JWT tokens
+- **Google OAuth2** login
+- **GitHub OAuth2** login  
+- **Token refresh** capabilities
+- **Backward compatibility** with existing network_id-based endpoints
+
+#### Authentication Endpoints
+
+**User Registration:**
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "optional_username",
+  "email": "user@example.com", 
+  "password": "secure_password"
+}
+```
+
+**Username/Password Login:**
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "user@example.com",  # Can use email or username
+  "password": "secure_password"
+}
+```
+
+**OAuth2 Login:**
+```http
+# Google OAuth2
+GET /api/v1/auth/google/login
+
+# GitHub OAuth2
+GET /api/v1/auth/github/login
+```
+
+**Token Refresh:**
+```http
+POST /api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJ..."
+}
+```
+
+#### Using Authentication
+
+**Making Authenticated Requests:**
+```http
+GET /api/v1/some-endpoint
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Backward Compatibility:**
+All existing endpoints continue to work without authentication. If no Authorization header is provided, the system falls back to the original network_id-based behavior.
+
+```http
+# This still works exactly as before
+GET /api/v1/{network_id}/persons/{person_id}
+
+# This now also works with authentication
+GET /api/v1/{network_id}/persons/{person_id}
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+#### Authentication Configuration
+
+Add these environment variables (see `.env.example`):
+
+```bash
+# Required for JWT tokens
+SECRET_KEY=your-secret-key-here-change-in-production
+
+# OAuth2 Providers (Optional)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+```
+
+#### Security Features
+
+- Passwords are hashed using **bcrypt**
+- JWT tokens signed with **HS256** (30min access, 7day refresh)
+- OAuth2 flows use secure state parameters
+- User accounts can be activated/deactivated
+- All endpoints support **optional authentication**
 
 ### Complete API Endpoints
 
