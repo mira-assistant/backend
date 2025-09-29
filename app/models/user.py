@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 
 from db.base import Base
 
@@ -21,14 +20,14 @@ class User(Base):
     username = Column(String, unique=True, nullable=True)
     email = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=True)  # nullable for OAuth users
-    
+
     # OAuth provider info
     google_id = Column(String, unique=True, nullable=True)
     github_id = Column(String, unique=True, nullable=True)
-    
+
     # User status
     is_active = Column(Boolean, default=True)
-    
+
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(

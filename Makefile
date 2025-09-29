@@ -11,7 +11,7 @@ help:
 	@echo "  stop-containers - Stop all running containers"
 	@echo "  test - Run tests"
 	@echo "  lint - Run linting tools"
-	@echo "  format - Format code with isort and black"
+	@echo "  format - Format code with ruff"
 	@echo "  clean - Clean up containers and images"
 
 
@@ -47,13 +47,12 @@ test:
 
 .PHONY: lint
 lint:
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev flake8 --count --select=E9,F63,F7,F82 --show-source --statistics
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev black --check --diff .
+	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff check .
 
 .PHONY: format
 format:
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev isort .
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev black .
+	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff check --fix .
+	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff format .
 
 .PHONY: clean
 clean:

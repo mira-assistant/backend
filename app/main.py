@@ -3,15 +3,13 @@ FastAPI application entrypoint with Lambda migration support.
 """
 
 from contextlib import asynccontextmanager
-import json
-import sys
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
-from alembic import command
-from alembic.config import Config
 
 import api.v1 as v1
 import api.v2 as v2

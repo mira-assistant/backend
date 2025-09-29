@@ -2,11 +2,11 @@
 Authentication middleware and dependencies.
 """
 
-from typing import Optional, Union
 import uuid
+from typing import Optional, Union
 
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 import db
@@ -26,16 +26,20 @@ async def get_current_user_optional(
     """
     if not credentials:
         return None
-    
+
     payload = verify_token(credentials.credentials)
     if not payload:
         return None
-    
+
     user_id = payload.get("sub")
     if not user_id:
         return None
-    
-    user = db_session.query(models.User).filter(models.User.id == uuid.UUID(user_id)).first()
+
+    user = (
+        db_session.query(models.User)
+        .filter(models.User.id == uuid.UUID(user_id))
+        .first()
+    )
     return user
 
 
@@ -53,7 +57,7 @@ async def get_current_user_required(
             detail="Authorization header missing",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(
@@ -61,7 +65,7 @@ async def get_current_user_required(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
@@ -69,22 +73,26 @@ async def get_current_user_required(
             detail="Invalid token payload",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user = db_session.query(models.User).filter(models.User.id == uuid.UUID(user_id)).first()
+
+    user = (
+        db_session.query(models.User)
+        .filter(models.User.id == uuid.UUID(user_id))
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is disabled",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     return user
 
 
@@ -98,9 +106,9 @@ def get_user_or_network_id(
     """
     if current_user:
         return str(current_user.id)
-    
+
     # Fallback to network_id from path parameters
     if request and hasattr(request, "path_params"):
         return request.path_params.get("network_id")
-    
+
     return None

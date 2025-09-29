@@ -23,8 +23,8 @@ from pyannote.audio import Pipeline
 from scipy.signal import butter, lfilter
 from sqlalchemy.orm import Session
 
-from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
 from core.config import settings
+from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
 from core.mira_logger import MiraLogger
 from db import get_db_session
 from models import Interaction, Person
@@ -314,6 +314,7 @@ class SentenceProcessor:
             # Convert numpy array to pyannote-compatible format
             # Create a temporary audio structure for pyannote
             import tempfile
+
             import soundfile as sf
 
             # Save audio temporarily for pyannote processing

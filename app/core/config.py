@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # API Keys
     gemini_api_key: str = Field(default="")
     huggingface_api_key: str = Field(default="")
-    
+
     # Authentication
     secret_key: str = Field(default="your-secret-key-here-change-in-production")
     google_client_id: str = Field(default="")

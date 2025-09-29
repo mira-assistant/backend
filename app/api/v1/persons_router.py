@@ -161,7 +161,9 @@ def get_all_persons(
                 "index": person.index,
                 "has_voice_embedding": person.voice_embedding is not None,
                 "cluster_id": person.cluster_id,
-                "created_at": person.created_at.isoformat() if person.created_at else None,  # type: ignore
+                "created_at": person.created_at.isoformat()
+                if person.created_at
+                else None,  # type: ignore
             }
             for person in persons
         ],
