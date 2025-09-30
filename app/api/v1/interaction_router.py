@@ -16,7 +16,7 @@ from services.service_factory import (
     get_sentence_processor,
 )
 
-router = APIRouter(prefix="/{network_id}/interactions")
+router = APIRouter(prefix="/interactions")
 
 
 def _validate_network_and_client(
@@ -312,6 +312,8 @@ def interaction_inference(
         return {"message": "Intent not recognized, no inference performed."}
 
     inference_processor = get_inference_processor(network_id)
-    action = inference_processor.extract_action(interaction=interaction, context=context)  # type: ignore
+    action = inference_processor.extract_action(
+        interaction=interaction, context=context
+    )  # type: ignore
 
     return action

@@ -3,15 +3,14 @@ FastAPI application entrypoint with Lambda migration support.
 """
 
 from contextlib import asynccontextmanager
-import json
-import sys
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
-from alembic import command
-from alembic.config import Config
+from starlette.middleware.sessions import SessionMiddleware
 
 import api.v1 as v1
 import api.v2 as v2
@@ -63,8 +62,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Session middleware for OAuth2 flows
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    max_age=3600,  # 1 hour
+    same_site="lax",
+    https_only=False,  # Set to True in production with HTTPS
+)
+
 # Routers
 for router in [
+    v1.auth_router,
     v1.conversation_router,
     v1.persons_router,
     v1.streams_router,

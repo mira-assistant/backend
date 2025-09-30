@@ -8,7 +8,7 @@ import models as models
 from core.mira_logger import MiraLogger
 from services.service_factory import get_sentence_processor
 
-router = APIRouter(prefix="/{network_id}/persons")
+router = APIRouter(prefix="/persons")
 
 
 @router.get("/{person_id}")
@@ -161,7 +161,9 @@ def get_all_persons(
                 "index": person.index,
                 "has_voice_embedding": person.voice_embedding is not None,
                 "cluster_id": person.cluster_id,
-                "created_at": person.created_at.isoformat() if person.created_at else None,  # type: ignore
+                "created_at": person.created_at.isoformat()
+                if person.created_at
+                else None,  # type: ignore
             }
             for person in persons
         ],

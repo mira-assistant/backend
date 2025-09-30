@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     huggingface_api_key: str = Field(default="")
 
+    # Authentication
+    secret_key: str = Field(default="your-secret-key-here-change-in-production")
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+    github_client_id: str = Field(default="")
+    github_client_secret: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

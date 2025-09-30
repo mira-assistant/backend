@@ -123,13 +123,19 @@ class ContextProcessor:
             sentiment_result = self.sentiment_pipeline(interaction.text)  # type: ignore
             if sentiment_result and len(sentiment_result[0]) > 0:
                 positive_score = next(
-                    (item["score"] for item in sentiment_result[0] if item["label"] == "LABEL_2"),  # type: ignore
+                    (
+                        item["score"]
+                        for item in sentiment_result[0]
+                        if item["label"] == "LABEL_2"
+                    ),  # type: ignore
                     0.5,
                 )
                 interaction.sentiment = positive_score  # type: ignore
 
             # Text Embedding for semantic similarity
-            embedding = self.sentence_transformer.encode(interaction.text, show_progress_bar=False)  # type: ignore
+            embedding = self.sentence_transformer.encode(
+                interaction.text, show_progress_bar=False
+            )  # type: ignore
             interaction.text_embedding = embedding.tolist()
 
         except Exception as e:

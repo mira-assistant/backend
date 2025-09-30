@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from models import Conversation
 
-router = APIRouter(prefix="/{network_id}/conversations")
+router = APIRouter(prefix="/conversations")
 
 
 @router.get("/{conversation_id}")

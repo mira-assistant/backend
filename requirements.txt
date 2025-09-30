@@ -34,11 +34,13 @@ asteroid-filterbanks==0.4.0
 attrs==25.3.0
     # via aiohttp
 authlib==1.6.3
-    # via safety
+    # via
+    #   -r requirements.in
+    #   safety
 av==15.1.0
     # via faster-whisper
-black==25.1.0
-    # via -r requirements.in
+bcrypt==5.0.0
+    # via passlib
 blis==1.2.1
     # via thinc
 boto3==1.40.25
@@ -68,7 +70,6 @@ charset-normalizer==3.4.3
     # via requests
 click==8.2.1
     # via
-    #   black
     #   nltk
     #   safety
     #   typer
@@ -92,7 +93,9 @@ coverage[toml]==7.10.6
     #   codecov
     #   pytest-cov
 cryptography==45.0.7
-    # via authlib
+    # via
+    #   authlib
+    #   python-jose
 ctranslate2==4.6.0
     # via faster-whisper
 cycler==0.12.1
@@ -110,6 +113,8 @@ dill==0.3.8
     #   multiprocess
 distro==1.9.0
     # via openai
+dnspython==2.8.0
+    # via email-validator
 docopt==0.6.2
     # via
     #   pyannote-metrics
@@ -118,8 +123,12 @@ dparse==0.6.4
     # via
     #   safety
     #   safety-schemas
+ecdsa==0.19.1
+    # via python-jose
 einops==0.8.1
     # via pyannote-audio
+email-validator==2.3.0
+    # via -r requirements.in
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
     # via -r requirements.in
 fastapi==0.116.1
@@ -134,8 +143,6 @@ filelock==3.19.1
     #   safety
     #   torch
     #   transformers
-flake8==7.3.0
-    # via -r requirements.in
 flatbuffers==25.2.10
     # via onnxruntime
 fonttools==4.59.2
@@ -189,12 +196,13 @@ hyperpyyaml==1.2.2
 idna==3.10
     # via
     #   anyio
+    #   email-validator
     #   httpx
     #   requests
     #   yarl
 iniconfig==2.1.0
     # via pytest
-isort==6.0.1
+itsdangerous==2.2.0
     # via -r requirements.in
 jinja2==3.1.6
     # via
@@ -246,8 +254,6 @@ matplotlib==3.10.6
     # via
     #   noisereduce
     #   pyannote-metrics
-mccabe==0.7.0
-    # via flake8
 mdurl==0.1.2
     # via markdown-it-py
 mpmath==1.3.0
@@ -264,9 +270,7 @@ murmurhash==1.0.13
     #   spacy
     #   thinc
 mypy-extensions==1.1.0
-    # via
-    #   black
-    #   typing-inspect
+    # via typing-inspect
 networkx==3.5
     # via torch
 nltk==3.9.1
@@ -317,7 +321,6 @@ optype[numpy]==0.13.4
 packaging==25.0
     # via
     #   accelerate
-    #   black
     #   datasets
     #   dparse
     #   huggingface-hub
@@ -345,16 +348,14 @@ pandas==2.3.2
     #   datasets
     #   pyannote-database
     #   pyannote-metrics
-pathspec==0.12.1
-    # via black
+passlib[bcrypt]==1.7.4
+    # via -r requirements.in
 peft==0.17.1
     # via -r requirements.in
 pillow==11.3.0
     # via
     #   matplotlib
     #   sentence-transformers
-platformdirs==4.4.0
-    # via black
 pluggy==1.6.0
     # via
     #   pytest
@@ -402,11 +403,10 @@ pyarrow==21.0.0
 pyasn1==0.6.1
     # via
     #   pyasn1-modules
+    #   python-jose
     #   rsa
 pyasn1-modules==0.4.2
     # via google-auth
-pycodestyle==2.14.0
-    # via flake8
 pycparser==2.22
     # via cffi
 pydantic==2.9.2
@@ -426,8 +426,6 @@ pydantic-core==2.23.4
     # via pydantic
 pydantic-settings==2.10.1
     # via -r requirements.in
-pyflakes==3.4.0
-    # via flake8
 pygments==2.19.2
     # via
     #   pytest
@@ -455,6 +453,8 @@ python-dotenv==1.1.1
     # via
     #   pydantic-settings
     #   uvicorn
+python-jose[cryptography]==3.5.0
+    # via -r requirements.in
 python-multipart==0.0.20
     # via -r requirements.in
 pytorch-lightning==2.5.5
@@ -498,7 +498,9 @@ rich==14.1.0
     #   pyannote-audio
     #   typer
 rsa==4.9.1
-    # via google-auth
+    # via
+    #   google-auth
+    #   python-jose
 ruamel-yaml==0.18.15
     # via
     #   hyperpyyaml
@@ -506,6 +508,8 @@ ruamel-yaml==0.18.15
     #   safety-schemas
 ruamel-yaml-clib==0.2.12
     # via ruamel-yaml
+ruff==0.13.2
+    # via -r requirements.in
 s3transfer==0.13.1
     # via boto3
 safetensors==0.6.2
@@ -544,7 +548,9 @@ sentencepiece==0.2.1
 shellingham==1.5.4
     # via typer
 six==1.17.0
-    # via python-dateutil
+    # via
+    #   ecdsa
+    #   python-dateutil
 smart-open==7.3.0.post1
     # via weasel
 sniffio==1.3.1
