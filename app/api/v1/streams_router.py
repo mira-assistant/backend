@@ -8,7 +8,7 @@ import models as models
 from core.mira_logger import MiraLogger
 from services.service_factory import get_multi_stream_processor
 
-router = APIRouter(prefix="/{network_id}/streams")
+router = APIRouter(prefix="/streams")
 
 
 @router.get("/best")

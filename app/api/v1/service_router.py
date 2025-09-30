@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import db as db
 import models as models
 
-router = APIRouter(prefix="/{network_id}/service")
+router = APIRouter(prefix="/service")
 
 
 @router.post("/client/register/{client_id}")

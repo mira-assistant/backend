@@ -16,7 +16,7 @@ from services.service_factory import (
     get_sentence_processor,
 )
 
-router = APIRouter(prefix="/{network_id}/interactions")
+router = APIRouter(prefix="/interactions")
 
 
 def _validate_network_and_client(

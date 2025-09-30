@@ -8,7 +8,7 @@ import models as models
 from core.mira_logger import MiraLogger
 from services.service_factory import get_sentence_processor
 
-router = APIRouter(prefix="/{network_id}/persons")
+router = APIRouter(prefix="/persons")
 
 
 @router.get("/{person_id}")
