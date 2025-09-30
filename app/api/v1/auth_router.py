@@ -18,6 +18,7 @@ from core.auth import (
     verify_token,
 )
 from services.oauth_service import extract_user_info_github, extract_user_info_google, oauth
+from core.config import settings
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -33,11 +34,7 @@ async def register(
         db_session.query(models.User)
         .filter(
             (models.User.email == user_create.email)
-            | (
-                models.User.username == user_create.username
-                if user_create.username
-                else False
-            )
+            | (models.User.username == user_create.username if user_create.username else False)
         )
         .first()
     )
@@ -312,11 +309,7 @@ async def refresh_token(
             detail="Invalid token payload",
         )
 
-    user = (
-        db_session.query(models.User)
-        .filter(models.User.id == uuid.UUID(user_id))
-        .first()
-    )
+    user = db_session.query(models.User).filter(models.User.id == uuid.UUID(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -338,10 +331,10 @@ async def refresh_token(
         ),
     )
 
+
 @router.post("/github/exchange", response_model=auth_schemas.TokenResponse)
 async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
     code = data.get("code")
-    state = data.get("state")
 
     if not code:
         raise HTTPException(status_code=400, detail="Missing code")
@@ -349,21 +342,21 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
     # Exchange code for access token
     try:
         token = await oauth.github.fetch_token(
-            token_endpoint='https://github.com/login/oauth/access_token',
+            token_endpoint="https://github.com/login/oauth/access_token",
             code=code,
-            client_secret=settings.github_client_secret
+            client_secret=settings.github_client_secret,
         )
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to exchange code for access token"
+            detail="Failed to exchange code for access token",
         )
     # Check for OAuth error in token response
     if not token or ("error" in token):
         error_description = token.get("error_description") if isinstance(token, dict) else None
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth error: {error_description or 'Invalid code or token exchange failed'}"
+            detail=f"OAuth error: {error_description or 'Invalid code or token exchange failed'}",
         )
 
     # Fetch user info
@@ -379,7 +372,9 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
     user = db_session.query(models.User).filter_by(email=github_data["email"]).first()
     if not user:
         user = models.User(
-            username=github_data.get("username") or github_data.get("login") or github_data["email"].split("@")[0],
+            username=github_data.get("username")
+            or github_data.get("login")
+            or github_data["email"].split("@")[0],
             email=github_data["email"],
             is_active=True,
             # Add any other fields as needed, e.g., github_id=github_data.get("id")
@@ -395,9 +390,38 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         user=auth_schemas.UserResponse(
-            id=str(user.id),
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active
-        )
+            id=str(user.id), username=user.username, email=user.email, is_active=user.is_active
+        ),
     )
+
+
+@router.get("/google/url")
+async def google_url(request: Request):
+    """Return Google OAuth URL for frontend to open."""
+    redirect_uri = request.url_for("google_callback")
+    state = secrets.token_urlsafe(16)
+    # Store state somewhere to validate later if needed
+    url = await oauth.google.create_authorization_url(redirect_uri, state=state)
+    return JSONResponse({"url": url[0], "state": state})
+
+
+@router.get("/github/url")
+async def github_url():
+    """Return GitHub OAuth URL for frontend to open."""
+    import urllib.parse
+
+    client_id = settings.github_client_id
+    redirect_uri = "mira://auth/github/callback"  # Desktop app custom scheme
+    scope = "user:email"
+    state = secrets.token_urlsafe(16)
+    # Store state somewhere to validate later if needed
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state,
+        "allow_signup": "true",
+    }
+    url = f"https://github.com/login/oauth/authorize?{urllib.parse.urlencode(params)}"
+    return {"url": url, "state": state}
