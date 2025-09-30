@@ -211,7 +211,7 @@ async def google_callback(
 @router.get("/github/login")
 async def github_login(request: Request):
     """Initiate GitHub OAuth2 login."""
-    redirect_uri = request.url_for("github_callback")
+    redirect_uri = "mira://auth/github/callback"  # <-- custom URI for desktop app
     return await oauth.github.authorize_redirect(request, redirect_uri)
 
 
@@ -336,4 +336,45 @@ async def refresh_token(
             email=user.email,
             is_active=user.is_active,
         ),
+    )
+
+@router.post("/github/exchange", response_model=auth_schemas.TokenResponse)
+async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
+    code = data.get("code")
+    state = data.get("state")
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+
+    # Exchange code for access token
+    token = await oauth.github.fetch_token(
+        token_endpoint='https://github.com/login/oauth/access_token',
+        code=code,
+        client_secret=settings.github_client_secret
+    )
+
+    # Fetch user info
+    resp = await oauth.github.get("user", token=token)
+    user_info = resp.json()
+
+    email_resp = await oauth.github.get("user/emails", token=token)
+    email_info = email_resp.json()
+
+    github_data = extract_user_info_github(user_info, email_info)
+
+    # Find or create user in DB (same logic as your callback)
+    # ... (reuse github_callback logic)
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return auth_schemas.TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=auth_schemas.UserResponse(
+            id=str(user.id),
+            username=user.username,
+            email=user.email,
+            is_active=user.is_active
+        )
     )

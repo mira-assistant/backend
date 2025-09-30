@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
 
     # Application
-    app_name: str = "Mira Backend"
-    app_version: str = "5.0.0"
+    app_name: str = "Mira API"
+    app_version: str = "6.0.0"
     debug: bool = False
 
     # Database
