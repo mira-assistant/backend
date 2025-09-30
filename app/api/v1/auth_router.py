@@ -3,6 +3,7 @@ Authentication router with login, OAuth2, and token refresh endpoints.
 """
 
 import uuid
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -132,47 +133,35 @@ async def login(
 @router.get("/google/login")
 async def google_login(request: Request):
     """Initiate Google OAuth2 login."""
-    redirect_uri = request.url_for("google_callback")
+    redirect_uri = str(request.url_for("google_callback"))
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/google/callback", response_model=auth_schemas.TokenResponse)
-async def google_callback(
-    request: Request,
-    db_session: Session = Depends(db.get_db),
-):
-    """Handle Google OAuth2 callback."""
-    try:
-        token = await oauth.google.authorize_access_token(request)
-        user_info = token.get("userinfo")
+@router.get("/google/callback", response_model=auth_schemas.TokenResponse, name="google_callback")
+async def google_callback_desktop(request: Request, db_session: Session = Depends(db.get_db)):
+    code = request.query_params.get("code")
+    returned_state = request.query_params.get("state")
 
+    if not code or not returned_state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        # Disable automatic state verification for desktop apps
+        token = await oauth.google.authorize_access_token(request, state=None)
+
+        user_info = await oauth.google.parse_id_token(request, token)
         if not user_info:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to get user information from Google",
-            )
+            raise HTTPException(status_code=400, detail="Failed to get user info")
 
         google_data = extract_user_info_google(user_info)
 
         # Find or create user
-        user = (
-            db_session.query(models.User)
-            .filter(models.User.google_id == google_data["google_id"])
-            .first()
-        )
-
+        user = db_session.query(models.User).filter_by(google_id=google_data["google_id"]).first()
         if not user:
-            # Check if user exists with same email
-            user = (
-                db_session.query(models.User)
-                .filter(models.User.email == google_data["email"])
-                .first()
-            )
+            user = db_session.query(models.User).filter_by(email=google_data["email"]).first()
             if user:
-                # Link Google account to existing user
                 user.google_id = google_data["google_id"]
             else:
-                # Create new user
                 user = models.User(
                     email=google_data["email"],
                     google_id=google_data["google_id"],
@@ -180,10 +169,8 @@ async def google_callback(
                     is_active=True,
                 )
                 db_session.add(user)
-
         db_session.commit()
 
-        # Create tokens
         access_token = create_access_token(data={"sub": str(user.id)})
         refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
@@ -199,10 +186,7 @@ async def google_callback(
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth2 authentication failed: {str(e)}",
-        )
+        raise HTTPException(status_code=400, detail=f"OAuth2 authentication failed: {str(e)}")
 
 
 @router.get("/github/login")
@@ -372,9 +356,13 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
     user = db_session.query(models.User).filter_by(email=github_data["email"]).first()
     if not user:
         user = models.User(
-            username=github_data.get("username")
-            or github_data.get("login")
-            or github_data["email"].split("@")[0],
+            username=(
+                github_data.get("username")
+                or github_data.get("login")
+                or github_data["email"].split("@")[0]
+                if github_data["email"]
+                else ""
+            ),
             email=github_data["email"],
             is_active=True,
             # Add any other fields as needed, e.g., github_id=github_data.get("id")
@@ -397,12 +385,10 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
 
 @router.get("/google/url")
 async def google_url(request: Request):
-    """Return Google OAuth URL for frontend to open."""
-    redirect_uri = request.url_for("google_callback")
+    redirect_uri = str(request.url_for("google_callback"))
     state = secrets.token_urlsafe(16)
-    # Store state somewhere to validate later if needed
-    url = await oauth.google.create_authorization_url(redirect_uri, state=state)
-    return JSONResponse({"url": url[0], "state": state})
+    auth_data = await oauth.google.create_authorization_url(redirect_uri, state=state)
+    return {"url": auth_data["url"], "state": auth_data["state"]}
 
 
 @router.get("/github/url")
@@ -414,7 +400,6 @@ async def github_url():
     redirect_uri = "mira://auth/github/callback"  # Desktop app custom scheme
     scope = "user:email"
     state = secrets.token_urlsafe(16)
-    # Store state somewhere to validate later if needed
 
     params = {
         "client_id": client_id,
