@@ -347,11 +347,24 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
         raise HTTPException(status_code=400, detail="Missing code")
 
     # Exchange code for access token
-    token = await oauth.github.fetch_token(
-        token_endpoint='https://github.com/login/oauth/access_token',
-        code=code,
-        client_secret=settings.github_client_secret
-    )
+    try:
+        token = await oauth.github.fetch_token(
+            token_endpoint='https://github.com/login/oauth/access_token',
+            code=code,
+            client_secret=settings.github_client_secret
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to exchange code for access token"
+        )
+    # Check for OAuth error in token response
+    if not token or ("error" in token):
+        error_description = token.get("error_description") if isinstance(token, dict) else None
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth error: {error_description or 'Invalid code or token exchange failed'}"
+        )
 
     # Fetch user info
     resp = await oauth.github.get("user", token=token)
