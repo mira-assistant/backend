@@ -363,7 +363,17 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
     github_data = extract_user_info_github(user_info, email_info)
 
     # Find or create user in DB (same logic as your callback)
-    # ... (reuse github_callback logic)
+    user = db_session.query(models.User).filter_by(email=github_data["email"]).first()
+    if not user:
+        user = models.User(
+            username=github_data.get("username") or github_data.get("login") or github_data["email"].split("@")[0],
+            email=github_data["email"],
+            is_active=True,
+            # Add any other fields as needed, e.g., github_id=github_data.get("id")
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
 
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
