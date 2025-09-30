@@ -31,9 +31,9 @@ lambda-build:
 	docker build -t mira-api:lambda -f docker/Dockerfile.lambda .
 
 dev-run:
-	docker run --rm -it -v $(PWD)/app:/app -w /app -p 8000:8000 mira-api:dev
+	docker run --rm -it --env-file .env -v $(PWD)/app:/app -w /app -p 8000:8000 mira-api:dev
 lambda-run:
-	docker run --rm -it -v $(PWD)/app:/app -w /app -p 9000:8000 mira-api:lambda uvicorn main:app --host 0.0.0.0 --port 8000
+	docker run --rm -it --env-file .env -v $(PWD)/app:/app -w /app -p 9000:8000 mira-api:lambda uvicorn main:app --host 0.0.0.0 --port 8000
 
 .PHONY: stop
 stop-containera:
