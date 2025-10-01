@@ -33,7 +33,7 @@ lambda-build:
 dev-run:
 	docker run --rm -it --env-file .env -v $(PWD)/app:/app -p 8000:8000 mira-api:dev
 lambda-run:
-	docker run --rm -it --env-file .env -p 9000:8000 mira-api:lambda
+	docker run --rm -it --env-file .env -p 9000:8080 mira-api:lambda
 
 .PHONY: stop
 stop-containera:
