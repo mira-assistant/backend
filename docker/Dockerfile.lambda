@@ -13,9 +13,8 @@ COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy contents of the app directory to the workdir
-COPY ./app/ ./app/
+COPY ./app/ .
 
-COPY ./alembic ./alembic
 COPY alembic.ini .
 
-CMD ["app.main.handler"]
+CMD ["main.handler"]
