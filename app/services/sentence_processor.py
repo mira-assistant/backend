@@ -23,11 +23,11 @@ from pyannote.audio import Pipeline
 from scipy.signal import butter, lfilter
 from sqlalchemy.orm import Session
 
-from core.config import settings
-from core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
-from core.mira_logger import MiraLogger
-from db import get_db_session
-from models import Interaction, Person
+from app.core.config import settings
+from app.core.constants import CONTEXT_SIMILARITY_THRESHOLD, SAMPLE_RATE
+from app.core.mira_logger import MiraLogger
+from app.db import get_db_session
+from app.models import Interaction, Person
 
 # MiraLogger is used directly via class methods
 

@@ -8,8 +8,8 @@ from datetime import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from models import Action, Conversation, Interaction, MiraNetwork, Person
-from models.conversation import person_conversation_association
+from app.models import Action, Conversation, Interaction, MiraNetwork, Person
+from app.models.conversation import person_conversation_association
 
 
 class TestMiraNetwork:

@@ -4,12 +4,12 @@ Unit tests for service classes.
 
 from unittest.mock import Mock, mock_open, patch
 
-from services.service_factory import (
+from app.services.service_factory import (
     ServiceFactory,
     get_command_processor,
     get_sentence_processor,
 )
-from services.service_registry import service_registry
+from app.services.service_registry import service_registry
 
 
 # Helper functions for mocking

@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 
-from core.config import settings
+from app.core.config import settings
 
 # OAuth configuration
 config = Config()

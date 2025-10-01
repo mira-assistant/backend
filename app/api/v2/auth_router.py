@@ -8,22 +8,22 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-import db
-import models
-import schemas.auth as auth_schemas
-from core.auth import (
+import app.db as db
+import app.models as models
+import app.schemas.auth as auth_schemas
+from app.core.auth import (
     create_access_token,
     create_refresh_token,
     get_password_hash,
     verify_password,
     verify_token,
 )
-from services.oauth_service import (
+from app.services.oauth_service import (
     extract_user_info_github,
     extract_user_info_google,
     oauth,
 )
-from core.config import settings
+from app.core.config import settings
 import urllib.parse
 
 router = APIRouter(prefix="/auth", tags=["authentication"])

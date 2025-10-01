@@ -6,7 +6,7 @@ import logging
 import sys
 from typing import Optional
 
-from core.config import settings
+from app.core.config import settings
 
 
 class ColoredFormatter(logging.Formatter):

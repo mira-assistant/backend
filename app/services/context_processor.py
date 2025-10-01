@@ -18,9 +18,9 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import or_
 from transformers.pipelines import pipeline
 
-from core.mira_logger import MiraLogger
-from db import get_db_session
-from models import Conversation, Interaction, Person
+from app.core.mira_logger import MiraLogger
+from app.db import get_db_session
+from app.models import Conversation, Interaction, Person
 
 
 class ContextProcessorConfig:

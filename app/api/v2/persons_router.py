@@ -3,10 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, UploadFile
 from sqlalchemy.orm import Session
 
-import db as db
-import models as models
-from core.mira_logger import MiraLogger
-from services.service_factory import get_sentence_processor
+import app.db as db
+import app.models as models
+from app.core.mira_logger import MiraLogger
+from app.services.service_factory import get_sentence_processor
 
 router = APIRouter(prefix="/persons")
 

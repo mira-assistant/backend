@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 
-from db.base import Base
+from app.db.base import Base
 
 
 class User(Base):

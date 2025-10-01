@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
-import db as db
-import models as models
+import app.db as db
+import app.models as models
 
 router = APIRouter(prefix="/service")
 

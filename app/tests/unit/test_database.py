@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from core.config import settings
-from db.base import Base
-from db.session import SessionLocal, get_db
+from app.core.config import settings
+from app.db.base import Base
+from app.db.session import SessionLocal, get_db
 
 
 class TestDatabaseSession:
@@ -141,7 +141,7 @@ class TestDatabaseSession:
 
         try:
             # Test that we can perform operations
-            from models import MiraNetwork
+            from app.models import MiraNetwork
 
             network = MiraNetwork(name="Test Network")
             session.add(network)
@@ -168,7 +168,7 @@ class TestDatabaseSession:
             # Add a network with a unique name
             import uuid
 
-            from models import MiraNetwork
+            from app.models import MiraNetwork
 
             unique_name = f"Test Network {uuid.uuid4()}"
             network = MiraNetwork(name=unique_name)

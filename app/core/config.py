@@ -62,8 +62,8 @@ class Settings(BaseSettings):
         Load secrets from AWS Secrets Manager and override settings.
         """
 
-        client = boto3.client("secretsmanager", region_name=self.aws_region)
         try:
+            client = boto3.client("secretsmanager", region_name=self.aws_region)
             secret_response = client.get_secret_value(SecretId=secret_name)
             secret_string = secret_response.get("SecretString")
             if not secret_string:
@@ -82,8 +82,5 @@ class Settings(BaseSettings):
 # Global settings instance
 settings = Settings()
 
-# Automatically load AWS secrets if in production
-try:
-    settings.load_aws_secrets("mira-secrets")
-except Exception as e:
-    print(f"Failed to load AWS secrets: {e}")
+# Automatically load AWS secrets if in production, fail if not
+settings.load_aws_secrets("mira-secrets")

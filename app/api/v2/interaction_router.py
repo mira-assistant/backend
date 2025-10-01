@@ -4,11 +4,11 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, UploadFile
 from sqlalchemy.orm import Session
 
-import db as db
-import models as models
-from core.constants import SAMPLE_RATE
-from core.mira_logger import MiraLogger
-from services.service_factory import (
+import app.db as db
+import app.models as models
+from app.core.constants import SAMPLE_RATE
+from app.core.mira_logger import MiraLogger
+from app.services.service_factory import (
     get_command_processor,
     get_context_processor,
     get_inference_processor,
