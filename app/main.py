@@ -73,7 +73,6 @@ app.add_middleware(
 
 # Routers
 for router in [
-    v1.auth_router,
     v1.conversation_router,
     v1.persons_router,
     v1.streams_router,
@@ -88,6 +87,7 @@ for router in [
     v2.streams_router,
     v2.interaction_router,
     v2.service_router,
+    v2.auth_router,
 ]:
     app.include_router(router, prefix="/api/v2")
 

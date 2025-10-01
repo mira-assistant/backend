@@ -162,7 +162,7 @@ def get_all_persons(
                 "has_voice_embedding": person.voice_embedding is not None,
                 "cluster_id": person.cluster_id,
                 "created_at": person.created_at.isoformat()
-                if person.created_at # pyright: ignore[reportGeneralTypeIssues]
+                if person.created_at  # pyright: ignore[reportGeneralTypeIssues]
                 else None,  # type: ignore
             }
             for person in persons
