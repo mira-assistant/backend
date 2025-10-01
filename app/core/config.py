@@ -3,7 +3,6 @@ Application configuration using Pydantic BaseSettings,
 supports both local .env files and AWS Secrets Manager.
 """
 
-import os
 import json
 from typing import List, Union
 
@@ -17,7 +16,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Mira API"
-    app_version: str = "6.0.1"
+    app_version: str = "6.0.2"
     debug: bool = False
 
     # Database
@@ -27,7 +26,6 @@ class Settings(BaseSettings):
 
     # AWS Configuration
     aws_region: str = Field(default="us-east-1")
-    env: str = Field(default="development")  # "development" or "production"
 
     # CORS
     cors_origins: Union[str, List[str]] = Field(default=["*"])
