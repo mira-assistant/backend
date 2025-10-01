@@ -47,12 +47,10 @@ jobs:
       - name: Run Alembic migrations via Lambda
         run: |
           set -e
-
           aws lambda invoke \
             --region us-east-1 \
             --function-name mira-api \
-            --payload '{}' \
+            --payload '{"action":"run_migrations"}' \
             --log-type Tail \
-            out.json > /dev/null
-
-          cat out.json
+            out.json \
+          && cat out.json

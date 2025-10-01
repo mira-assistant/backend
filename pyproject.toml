@@ -20,10 +20,10 @@ classifiers = [
 
 [tool.ruff]
 line-length = 120
-extend-ignore = ["E501", "W503", "E203", "E402", "F401"]
+lint.extend-ignore = ["E501", "E203", "E402", "F401"]
 target-version = "py311"
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "app/tests/*" = ["S101", "S106"]
 
