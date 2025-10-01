@@ -18,8 +18,13 @@ from core.auth import (
     verify_password,
     verify_token,
 )
-from services.oauth_service import extract_user_info_github, extract_user_info_google, oauth
+from services.oauth_service import (
+    extract_user_info_github,
+    extract_user_info_google,
+    oauth,
+)
 from core.config import settings
+import urllib.parse
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -35,7 +40,11 @@ async def register(
         db_session.query(models.User)
         .filter(
             (models.User.email == user_create.email)
-            | (models.User.username == user_create.username if user_create.username else False)
+            | (
+                models.User.username == user_create.username
+                if user_create.username
+                else False
+            )
         )
         .first()
     )
@@ -74,9 +83,9 @@ async def register(
         refresh_token=refresh_token,
         user=auth_schemas.UserResponse(
             id=str(user.id),
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
+            username=user.username,  # pyright: ignore[reportArgumentType]
+            email=user.email,  # pyright: ignore[reportArgumentType]
+            is_active=user.is_active,  # pyright: ignore[reportArgumentType]
         ),
     )
 
@@ -99,8 +108,11 @@ async def login(
 
     if (
         not user
-        or not user.hashed_password
-        or not verify_password(user_login.password, user.hashed_password)
+        or not user.hashed_password  # pyright: ignore[reportGeneralTypeIssues]
+        or not verify_password(
+            user_login.password,
+            user.hashed_password,  # pyright: ignore[reportArgumentType]
+        )
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -108,7 +120,7 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
+    if not user.is_active:  # pyright: ignore[reportGeneralTypeIssues]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is disabled",
@@ -123,94 +135,131 @@ async def login(
         refresh_token=refresh_token,
         user=auth_schemas.UserResponse(
             id=str(user.id),
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
+            username=user.username,  # pyright: ignore[reportArgumentType]
+            email=user.email,  # pyright: ignore[reportArgumentType]
+            is_active=user.is_active,  # pyright: ignore[reportArgumentType]
         ),
     )
 
 
-@router.get("/google/login")
-async def google_login(request: Request):
-    """Initiate Google OAuth2 login."""
-    redirect_uri = str(request.url_for("google_callback"))
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+# @router.get("/google/login")
+# async def google_login(request: Request):
+#     """Initiate Google OAuth2 login."""
+#     redirect_uri = str(request.url_for("google_callback"))
+#     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-@router.get("/google/callback", response_model=auth_schemas.TokenResponse, name="google_callback")
-async def google_callback_desktop(request: Request, db_session: Session = Depends(db.get_db)):
-    code = request.query_params.get("code")
-    returned_state = request.query_params.get("state")
+@router.post("/google/callback", response_model=auth_schemas.TokenResponse)
+async def google_callback(
+    payload: dict,
+    db_session: Session = Depends(db.get_db),
+):
+    """
+    Handle Google OAuth2 callback for desktop apps.
+    Expects POST JSON body: { "code": "...", "state": "..." }
+    """
+    code = payload.get("code")
+    state = payload.get("state")
 
-    if not code or not returned_state:
+    if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code or state")
 
-    try:
-        # Disable automatic state verification for desktop apps
-        token = await oauth.google.authorize_access_token(request, state=None)
+    # Exchange code for tokens manually (desktop app flow)
+    import httpx
 
-        user_info = await oauth.google.parse_id_token(request, token)
-        if not user_info:
-            raise HTTPException(status_code=400, detail="Failed to get user info")
+    token_endpoint = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "redirect_uri": "http://127.0.0.1:4280/auth/google/callback",
+        "grant_type": "authorization_code",
+    }
 
-        google_data = extract_user_info_google(user_info)
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(token_endpoint, data=data)
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to fetch token from Google: {resp.text}",
+            )
+        token = resp.json()
 
-        # Find or create user
-        user = db_session.query(models.User).filter_by(google_id=google_data["google_id"]).first()
-        if not user:
-            user = db_session.query(models.User).filter_by(email=google_data["email"]).first()
-            if user:
-                user.google_id = google_data["google_id"]
-            else:
-                user = models.User(
-                    email=google_data["email"],
-                    google_id=google_data["google_id"],
-                    username=google_data["username"],
-                    is_active=True,
-                )
-                db_session.add(user)
-        db_session.commit()
+    id_token = token.get("id_token")
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing id_token in response")
 
-        access_token = create_access_token(data={"sub": str(user.id)})
-        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    # Parse user info safely
+    user_info = await oauth.google.parse_id_token(token=token, nonce=None)  # pyright: ignore[reportOptionalMemberAccess]
+    if not user_info:
+        raise HTTPException(status_code=400, detail="Failed to parse Google ID token")
 
-        return auth_schemas.TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            user=auth_schemas.UserResponse(
-                id=str(user.id),
-                username=user.username,
-                email=user.email,
-                is_active=user.is_active,
-            ),
+    google_data = extract_user_info_google(user_info)
+
+    # Find or create user in DB
+    user = (
+        db_session.query(models.User)
+        .filter_by(google_id=google_data["google_id"])
+        .first()
+    )
+    if not user:
+        user = (
+            db_session.query(models.User).filter_by(email=google_data["email"]).first()
         )
+        if user:
+            user.google_id = google_data["google_id"]  # pyright: ignore[reportAttributeAccessIssue]
+        else:
+            user = models.User(
+                email=google_data["email"],
+                google_id=google_data["google_id"],
+                username=google_data["username"],
+                is_active=True,
+            )
+            db_session.add(user)
+    db_session.commit()
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"OAuth2 authentication failed: {str(e)}")
+    # Issue tokens
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    return auth_schemas.TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=auth_schemas.UserResponse(
+            id=str(user.id),
+            username=user.username,  # pyright: ignore[reportArgumentType]
+            email=user.email,  # pyright: ignore[reportArgumentType]
+            is_active=user.is_active,  # pyright: ignore[reportArgumentType]
+        ),
+    )
 
 
 @router.get("/github/login")
 async def github_login(request: Request):
     """Initiate GitHub OAuth2 login."""
     redirect_uri = "mira://auth/github/callback"  # <-- custom URI for desktop app
-    return await oauth.github.authorize_redirect(request, redirect_uri)
+    return await oauth.github.authorize_redirect(request, redirect_uri)  # pyright: ignore[reportOptionalMemberAccess]
 
 
-@router.get("/github/callback", response_model=auth_schemas.TokenResponse)
+@router.post(
+    "/github/callback",
+    response_model=auth_schemas.TokenResponse,
+    name="github_callback",
+)
 async def github_callback(
-    request: Request,
+    payload: dict,
     db_session: Session = Depends(db.get_db),
 ):
     """Handle GitHub OAuth2 callback."""
     try:
-        token = await oauth.github.authorize_access_token(request)
+        token = await oauth.github.authorize_access_token(payload)  # pyright: ignore[reportOptionalMemberAccess]
 
         # Get user info from GitHub API
-        resp = await oauth.github.get("user", token=token)
+        resp = await oauth.github.get("user", token=token)  # pyright: ignore[reportOptionalMemberAccess]
         user_info = resp.json()
 
         # Get user emails
-        email_resp = await oauth.github.get("user/emails", token=token)
+        email_resp = await oauth.github.get("user/emails", token=token)  # pyright: ignore[reportOptionalMemberAccess]
         email_info = email_resp.json()
 
         github_data = extract_user_info_github(user_info, email_info)
@@ -237,7 +286,9 @@ async def github_callback(
             )
             if user:
                 # Link GitHub account to existing user
-                user.github_id = github_data["github_id"]
+                user.github_id = github_data[  # pyright: ignore[reportAttributeAccessIssue]
+                    "github_id"
+                ]
             else:
                 # Create new user
                 user = models.User(
@@ -259,9 +310,9 @@ async def github_callback(
             refresh_token=refresh_token,
             user=auth_schemas.UserResponse(
                 id=str(user.id),
-                username=user.username,
-                email=user.email,
-                is_active=user.is_active,
+                username=user.username,  # pyright: ignore[reportArgumentType]
+                email=user.email,  # pyright: ignore[reportArgumentType]
+                is_active=user.is_active,  # pyright: ignore[reportArgumentType]
             ),
         )
 
@@ -293,8 +344,12 @@ async def refresh_token(
             detail="Invalid token payload",
         )
 
-    user = db_session.query(models.User).filter(models.User.id == uuid.UUID(user_id)).first()
-    if not user or not user.is_active:
+    user = (
+        db_session.query(models.User)
+        .filter(models.User.id == uuid.UUID(user_id))
+        .first()
+    )
+    if not user or not user.is_active:  # pyright: ignore[reportGeneralTypeIssues]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
@@ -309,9 +364,9 @@ async def refresh_token(
         refresh_token=new_refresh_token,
         user=auth_schemas.UserResponse(
             id=str(user.id),
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
+            username=user.username,  # pyright: ignore[reportArgumentType]
+            email=user.email,  # pyright: ignore[reportArgumentType]
+            is_active=user.is_active,  # pyright: ignore[reportArgumentType]
         ),
     )
 
@@ -325,7 +380,7 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
 
     # Exchange code for access token
     try:
-        token = await oauth.github.fetch_token(
+        token = await oauth.github.fetch_token(  # pyright: ignore[reportOptionalMemberAccess]
             token_endpoint="https://github.com/login/oauth/access_token",
             code=code,
             client_secret=settings.github_client_secret,
@@ -337,17 +392,19 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
         )
     # Check for OAuth error in token response
     if not token or ("error" in token):
-        error_description = token.get("error_description") if isinstance(token, dict) else None
+        error_description = (
+            token.get("error_description") if isinstance(token, dict) else None
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"OAuth error: {error_description or 'Invalid code or token exchange failed'}",
         )
 
     # Fetch user info
-    resp = await oauth.github.get("user", token=token)
+    resp = await oauth.github.get("user", token=token)  # pyright: ignore[reportOptionalMemberAccess]
     user_info = resp.json()
 
-    email_resp = await oauth.github.get("user/emails", token=token)
+    email_resp = await oauth.github.get("user/emails", token=token)  # pyright: ignore[reportOptionalMemberAccess]
     email_info = email_resp.json()
 
     github_data = extract_user_info_github(user_info, email_info)
@@ -378,33 +435,49 @@ async def github_exchange(data: dict, db_session: Session = Depends(db.get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         user=auth_schemas.UserResponse(
-            id=str(user.id), username=user.username, email=user.email, is_active=user.is_active
+            id=str(user.id),
+            username=user.username,  # pyright: ignore[reportArgumentType]
+            email=user.email,  # pyright: ignore[reportArgumentType]
+            is_active=user.is_active,  # pyright: ignore[reportArgumentType]
         ),
     )
 
 
 @router.get("/google/url")
-async def google_url(request: Request):
-    redirect_uri = str(request.url_for("google_callback"))
-    state = secrets.token_urlsafe(16)
-    auth_data = await oauth.google.create_authorization_url(redirect_uri, state=state)
-    return {"url": auth_data["url"], "state": auth_data["state"]}
+def get_google_oauth_url(redirect_port: int = 4280):
+    """Return Google OAuth URL for frontend to open."""
 
-
-@router.get("/github/url")
-async def github_url():
-    """Return GitHub OAuth URL for frontend to open."""
-    import urllib.parse
-
-    client_id = settings.github_client_id
-    redirect_uri = "mira://auth/github/callback"  # Desktop app custom scheme
-    scope = "user:email"
+    redirect_uri = f"http://127.0.0.1:{redirect_port}/auth/google/callback"
     state = secrets.token_urlsafe(16)
 
     params = {
-        "client_id": client_id,
+        "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
-        "scope": scope,
+        "response_type": "code",
+        "scope": "openid profile email",
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+
+    oauth_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+    )
+
+    return {"url": oauth_url, "state": state}
+
+
+@router.get("/github/url")
+def get_github_oauth_url(redirect_port: int = 4280):
+    """Return GitHub OAuth URL for frontend to open."""
+
+    redirect_uri = f"http://127.0.0.1:{redirect_port}/auth/github/callback"
+    state = secrets.token_urlsafe(16)
+
+    params = {
+        "client_id": settings.github_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "user:email",
         "state": state,
         "allow_signup": "true",
     }
