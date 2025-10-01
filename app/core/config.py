@@ -4,6 +4,7 @@ supports both local .env files and AWS Secrets Manager.
 """
 
 import json
+import os
 from typing import List, Union
 
 import boto3
@@ -53,7 +54,7 @@ class Settings(BaseSettings):
     github_client_secret: str = Field(default="")
 
     class Config:
-        env_file = ".env"  # only used in development
+        env_file = ".env"
         case_sensitive = False
         extra = "ignore"
 
@@ -82,5 +83,5 @@ class Settings(BaseSettings):
 # Global settings instance
 settings = Settings()
 
-# Automatically load AWS secrets if in production, fail if not
-settings.load_aws_secrets("mira-secrets")
+if os.environ.get("AWS_EXECUTION_ENV"):
+    settings.load_aws_secrets("mira-secrets")
