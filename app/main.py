@@ -105,8 +105,8 @@ def root():
 
 # Function to run Alembic migrations
 def run_migrations():
-    fastapi_logger.info("Running Alembic migrations...")
     alembic_cfg = Config("alembic.ini")
+    fastapi_logger.info("Running Alembic migrations...")
     try:
         command.upgrade(alembic_cfg, "head")
         fastapi_logger.info("Migrations completed successfully.")
