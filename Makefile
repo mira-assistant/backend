@@ -8,7 +8,6 @@ help:
 	@echo "  lambda-build - Build deployment container"
 	@echo "  dev-run - Start development container"
 	@echo "  lambda-run - Start deployment container"
-	@echo "  stop-containers - Stop all running containers"
 	@echo "  test - Run tests"
 	@echo "  lint - Run linting tools"
 	@echo "  format - Format code with ruff"
@@ -34,12 +33,6 @@ dev-run:
 	docker run --rm -it --env-file .env -v $(PWD)/app:/app -p 8000:8000 mira-api:dev
 lambda-run:
 	docker run --rm -it --env-file .env -p 9000:8080 mira-api:lambda
-
-.PHONY: stop
-stop-containera:
-	@echo "Stopping all running containers..."
-	@docker stop $$(docker ps -q) 2>/dev/null || echo "No containers to stop"
-
 
 .PHONY: test
 test:

@@ -25,6 +25,13 @@ fastapi_logger = MiraLogger.get_fastapi_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     fastapi_logger.info("Starting Mira Backend API...")
+
+    # Load AWS secrets if running in Lambda environment
+    import os
+    if os.environ.get("AWS_EXECUTION_ENV"):
+        fastapi_logger.info("Detected AWS Lambda environment, loading secrets...")
+        settings.load_aws_secrets("mira-secrets")
+
     yield
     fastapi_logger.info("Shutting down Mira Backend API...")
 

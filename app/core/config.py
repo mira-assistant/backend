@@ -82,6 +82,3 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
-
-if os.environ.get("AWS_EXECUTION_ENV"):
-    settings.load_aws_secrets("mira-secrets")
