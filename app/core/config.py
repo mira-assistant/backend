@@ -20,9 +20,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Database
-    database_url: str = Field(
-        default=""
-    )
+    database_url: str = Field(default="")
 
     # AWS Configuration
     aws_region: str = Field(default="us-east-1")

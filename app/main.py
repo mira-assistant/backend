@@ -21,6 +21,9 @@ from app.core.mira_logger import MiraLogger
 # Logger
 fastapi_logger = MiraLogger.get_fastapi_logger()
 
+# Track if AWS secrets have been loaded
+_aws_secrets_loaded = False
+
 
 def cleanup_resources():
     """Force cleanup of all resources."""
@@ -57,14 +60,18 @@ signal.signal(signal.SIGTERM, signal_handler)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    global _aws_secrets_loaded
+
     fastapi_logger.info("Starting Mira Backend API...")
 
     # Load AWS secrets if running in Lambda environment
     import os
 
-    if os.environ.get("AWS_EXECUTION_ENV"):
+    if os.environ.get("AWS_EXECUTION_ENV") and not _aws_secrets_loaded:
         fastapi_logger.info("Detected AWS Lambda environment, loading secrets...")
         settings.load_aws_secrets("mira-secrets")
+        fastapi_logger.info(f"Database URL: {settings.database_url}")
+        _aws_secrets_loaded = True
 
     yield
 
@@ -147,8 +154,10 @@ def root():
     }
 
 
-# Function to run Alembic migrations
 def run_migrations():
+    # Load secrets explicitly
+    settings.load_aws_secrets("mira-secrets")
+
     alembic_cfg = Config("alembic.ini")
     fastapi_logger.info("Running Alembic migrations...")
     try:
