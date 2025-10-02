@@ -16,12 +16,12 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Mira API"
-    app_version: str = "6.0.2"
+    app_version: str = "6.1.0"
     debug: bool = False
 
     # Database
     database_url: str = Field(
-        default="postgresql://username:password@localhost:5432/mira"
+        default=""
     )
 
     # AWS Configuration
