@@ -2,6 +2,8 @@
 FastAPI application entrypoint with Lambda migration support.
 """
 
+import signal
+import sys
 from contextlib import asynccontextmanager
 
 from alembic import command
@@ -21,6 +23,35 @@ from app.core.mira_logger import MiraLogger
 fastapi_logger = MiraLogger.get_fastapi_logger()
 
 
+def cleanup_resources():
+    """Force cleanup of all resources."""
+    try:
+        from app.services.service_registry import service_registry
+        service_registry.cleanup_all()
+    except Exception as e:
+        fastapi_logger.error(f"Error during cleanup: {e}")
+
+    # Force garbage collection
+    import gc
+    gc.collect()
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    import os
+    fastapi_logger.info(f"Received signal {signum}, forcing shutdown...")
+    cleanup_resources()
+
+    # Use os._exit to bypass Python cleanup and force immediate exit
+    # This is necessary because ML libraries create non-daemon C threads
+    os._exit(0)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
@@ -28,12 +59,16 @@ async def lifespan(app: FastAPI):
 
     # Load AWS secrets if running in Lambda environment
     import os
+
     if os.environ.get("AWS_EXECUTION_ENV"):
         fastapi_logger.info("Detected AWS Lambda environment, loading secrets...")
         settings.load_aws_secrets("mira-secrets")
 
     yield
+
     fastapi_logger.info("Shutting down Mira Backend API...")
+    cleanup_resources()
+    fastapi_logger.info("Shutdown complete")
 
 
 # Initialize FastAPI

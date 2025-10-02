@@ -4,7 +4,6 @@ supports both local .env files and AWS Secrets Manager.
 """
 
 import json
-import os
 from typing import List, Union
 
 import boto3

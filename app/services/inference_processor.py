@@ -6,9 +6,10 @@ and lifecycle management.
 """
 
 import json
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from google import genai
+if TYPE_CHECKING:
+    pass
 
 from app.core.config import settings
 from app.core.mira_logger import MiraLogger
@@ -36,16 +37,23 @@ class InferenceProcessor:
         self.system_prompt = system_prompt
         self.response_format = response_format or {}
 
-        self.gemini_client = self._initialize_gemini_client()
+        # Lazy-loaded Gemini client (initialized on first use)
+        self._gemini_client = None
 
         MiraLogger.info(f"InferenceProcessor initialized for network {network_id}")
 
-    def _initialize_gemini_client(self):
-        """Initialize Gemini client with API key from settings."""
-        api_key = settings.gemini_api_key
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
-        return genai.Client(api_key=api_key)
+    @property
+    def gemini_client(self):
+        """Lazy load Gemini client."""
+        if self._gemini_client is None:
+            from google import genai
+
+            MiraLogger.info("Initializing Gemini client...")
+            api_key = settings.gemini_api_key
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+            self._gemini_client = genai.Client(api_key=api_key)
+        return self._gemini_client
 
     def _run_gemini_inference(
         self, interaction: Interaction, context: Optional[str] = None
@@ -109,4 +117,12 @@ class InferenceProcessor:
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
         MiraLogger.info(f"Cleaning up InferenceProcessor for network {self.network_id}")
-        # Add any cleanup logic here if needed
+
+        # Explicitly close Gemini client
+        if self._gemini_client is not None:
+            del self._gemini_client
+            self._gemini_client = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()

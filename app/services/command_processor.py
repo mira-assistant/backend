@@ -19,10 +19,10 @@ Features:
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from google import genai
-from google.genai import types
+if TYPE_CHECKING:
+    pass
 
 from app.core.config import settings
 from app.core.mira_logger import MiraLogger
@@ -229,20 +229,31 @@ class CommandProcessor:
         self.system_prompt = system_prompt
         self.wake_word_detector = WakeWordDetector(network_id)
 
-        # Initialize Gemini client
-        self.gemini_client = self._initialize_gemini_client()
-
-        # Register tools
-        self._register_tools()
+        # Lazy-loaded Gemini client and tools (initialized on first use)
+        self._gemini_client = None
+        self._tools = None
 
         MiraLogger.info(f"CommandProcessor initialized for network {network_id}")
 
-    def _initialize_gemini_client(self):
-        """Initialize Gemini client with API key from settings."""
-        api_key = settings.gemini_api_key
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
-        return genai.Client(api_key=api_key)
+    @property
+    def gemini_client(self):
+        """Lazy load Gemini client."""
+        if self._gemini_client is None:
+            from google import genai
+
+            MiraLogger.info("Initializing Gemini client...")
+            api_key = settings.gemini_api_key
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+            self._gemini_client = genai.Client(api_key=api_key)
+        return self._gemini_client
+
+    @property
+    def tools(self):
+        """Lazy load tools."""
+        if self._tools is None:
+            self._register_tools()
+        return self._tools
 
     def _register_tools(self):
         """Register tools for the command processor."""
@@ -285,7 +296,7 @@ class CommandProcessor:
             return f"Network {network_id} is active with 5 connected devices"
 
         # Store tools for execution
-        self.tools = {
+        self._tools = {
             "get_weather": get_weather,
             "get_time": get_time,
             "get_network_info": get_network_info,
@@ -325,6 +336,7 @@ class CommandProcessor:
         self, interaction: Interaction, context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Run inference using Gemini API."""
+        from google.genai import types
 
         system_instruction = self.system_prompt
         if context and context.strip():
@@ -417,4 +429,15 @@ class CommandProcessor:
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
         MiraLogger.info(f"Cleaning up CommandProcessor for network {self.network_id}")
-        # Add any cleanup logic here if needed
+
+        # Explicitly close Gemini client and clear tools
+        if self._gemini_client is not None:
+            del self._gemini_client
+            self._gemini_client = None
+        if self._tools is not None:
+            self._tools.clear()
+            self._tools = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()

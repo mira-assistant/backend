@@ -13,13 +13,15 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
-import noisereduce as nr
-import numpy as np
-import torch
-from faster_whisper import WhisperModel
-from pyannote.audio import Pipeline
+if TYPE_CHECKING:
+    import noisereduce as nr
+    import numpy as np
+    import torch
+    from faster_whisper import WhisperModel
+    from pyannote.audio import Pipeline
+
 from scipy.signal import butter, lfilter
 from sqlalchemy.orm import Session
 
@@ -50,21 +52,38 @@ class SentenceProcessor:
         self.config = config or {} if config else {}
         self.sample_rate = SAMPLE_RATE
 
-        # Initialize models
-        self.asr_model = WhisperModel("small", device="cpu", compute_type="int8")
-
-        # Initialize pyannote.audio diarization pipeline
-        self._initialize_speaker_diarization()
+        # Lazy-loaded models (initialized on first use)
+        self._asr_model = None
+        self._diarization_pipeline = None
 
         # Initialize speaker cache for consistency with existing database structure
-        self._speaker_embeddings: list[np.ndarray] = []
-        self._speaker_ids: list[uuid.UUID] = []
+        self._speaker_embeddings: list = []
+        self._speaker_ids: list = []
         self._clusters_dirty: bool = True
 
         MiraLogger.info(f"SentenceProcessor initialized for network {network_id}")
 
+    @property
+    def asr_model(self):
+        """Lazy load Whisper model."""
+        if self._asr_model is None:
+            from faster_whisper import WhisperModel
+            MiraLogger.info("Loading Whisper model...")
+            self._asr_model = WhisperModel("small", device="cpu", compute_type="int8")
+        return self._asr_model
+
+    @property
+    def diarization_pipeline(self):
+        """Lazy load diarization pipeline."""
+        if self._diarization_pipeline is None:
+            self._initialize_speaker_diarization()
+        return self._diarization_pipeline
+
     def _initialize_speaker_diarization(self):
         """Initialize the pyannote.audio speaker diarization pipeline."""
+        import torch
+        from pyannote.audio import Pipeline
+
         try:
             # Check for Hugging Face token
             hf_token = settings.huggingface_api_key
@@ -73,19 +92,20 @@ class SentenceProcessor:
                     "HUGGING_FACE_TOKEN environment variable not set. "
                     "Speaker diarization will use fallback mode."
                 )
-                self.diarization_pipeline = None
+                self._diarization_pipeline = None
                 return
 
+            MiraLogger.info("Loading pyannote.audio diarization pipeline...")
             # Load the pre-trained speaker diarization pipeline
-            self.diarization_pipeline = Pipeline.from_pretrained(
+            self._diarization_pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-cambridge", use_auth_token=hf_token
             )
 
             # Set device to CPU for compatibility
             if torch.cuda.is_available():
-                self.diarization_pipeline.to(torch.device("cuda"))
+                self._diarization_pipeline.to(torch.device("cuda"))
             else:
-                self.diarization_pipeline.to(torch.device("cpu"))
+                self._diarization_pipeline.to(torch.device("cpu"))
 
             MiraLogger.info(
                 "Pyannote.audio speaker diarization pipeline loaded successfully"
@@ -96,11 +116,12 @@ class SentenceProcessor:
                 f"Failed to initialize speaker diarization, using fallback mode: {e}"
             )
             # Fallback: create a mock pipeline to maintain API compatibility
-            self.diarization_pipeline = None
+            self._diarization_pipeline = None
 
     @staticmethod
-    def pcm_bytes_to_float32(pcm: bytes) -> np.ndarray:
+    def pcm_bytes_to_float32(pcm: bytes):
         """Convert 16-bit PCM to float32 in [-1,1]."""
+        import numpy as np
         audio_int16 = np.frombuffer(pcm, dtype=np.int16)
         return audio_int16.astype(np.float32) / 32768.0
 
@@ -129,7 +150,7 @@ class SentenceProcessor:
         y = lfilter(b, a, data)
         return y
 
-    def denoise_audio(self, audio_data: np.ndarray) -> np.ndarray:
+    def denoise_audio(self, audio_data):
         """
         Apply real-time audio denoising to remove white noise and background sounds.
 
@@ -139,6 +160,9 @@ class SentenceProcessor:
         Returns:
             Denoised audio signal
         """
+        import numpy as np
+        import noisereduce as nr
+
         try:
             audio_data = np.array(audio_data, dtype=np.float32)
             filtered_audio = self.butter_highpass_filter(
@@ -181,8 +205,9 @@ class SentenceProcessor:
             return filtered
 
     @staticmethod
-    def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    def cosine_sim(a, b) -> float:
         """Cosine similarity between two vectors."""
+        import numpy as np
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def transcribe_interaction(
@@ -482,7 +507,7 @@ class SentenceProcessor:
         MiraLogger.info(
             f"Created new speaker with ID {new_person.id} and index {next_index}"
         )
-        return new_person.id
+        return new_person.id # pyright: ignore[reportReturnType]
 
     def _update_speaker_embedding(
         self, speaker_id: uuid.UUID, new_embedding: np.ndarray, session: Session
@@ -508,7 +533,7 @@ class SentenceProcessor:
             # Try to find a default speaker
             default_speaker = session.query(Person).filter_by(index=1).first()
             if default_speaker:
-                return default_speaker.id
+                return default_speaker.id # pyright: ignore[reportReturnType]
 
             # Create default speaker if none exists
             return self._create_new_speaker_with_embedding(None, session)
@@ -541,5 +566,20 @@ class SentenceProcessor:
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
         MiraLogger.info(f"Cleaning up SentenceProcessor for network {self.network_id}")
-        # Add any cleanup logic here if needed
-        # Add any cleanup logic here if needed
+
+        # Explicitly unload models to release resources
+        if self._asr_model is not None:
+            del self._asr_model
+            self._asr_model = None
+
+        if self._diarization_pipeline is not None:
+            del self._diarization_pipeline
+            self._diarization_pipeline = None
+
+        # Clear speaker cache
+        self._speaker_embeddings.clear()
+        self._speaker_ids.clear()
+
+        # Force garbage collection
+        import gc
+        gc.collect()

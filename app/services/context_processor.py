@@ -10,13 +10,12 @@ from __future__ import annotations
 import json
 import re
 from datetime import timedelta, timezone
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, TYPE_CHECKING
 
-import numpy as np
-import spacy
-from sentence_transformers import SentenceTransformer
+if TYPE_CHECKING:
+    pass
+
 from sqlalchemy import or_
-from transformers.pipelines import pipeline
 
 from app.core.mira_logger import MiraLogger
 from app.db import get_db_session
@@ -85,21 +84,47 @@ class ContextProcessor:
         self.network_id = network_id
         self.config = config or {}
 
-        # Initialize NLP models
-        self._init_nlp_components()
+        # Lazy-loaded NLP models (initialized on first use)
+        self._spacy_model = None
+        self._sentence_transformer = None
+        self._sentiment_pipeline = None
 
         # MiraLogger is used directly via class methods
         MiraLogger.info(f"ContextProcessor initialized for network {network_id}")
 
-    def _init_nlp_components(self):
-        """Initialize NLP models as individual state variables."""
-        self.spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
-        self.sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
-        self.sentiment_pipeline = pipeline(
-            task="text-classification",
-            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-            top_k=None,
-        )
+    @property
+    def spacy_model(self):
+        """Lazy load spaCy model."""
+        if self._spacy_model is None:
+            import spacy
+
+            MiraLogger.info("Loading spaCy model...")
+            self._spacy_model = spacy.load(ContextProcessorConfig.NLPConfig.SPACY_MODEL)
+        return self._spacy_model
+
+    @property
+    def sentence_transformer(self):
+        """Lazy load sentence transformer."""
+        if self._sentence_transformer is None:
+            from sentence_transformers import SentenceTransformer
+
+            MiraLogger.info("Loading sentence transformer...")
+            self._sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+        return self._sentence_transformer
+
+    @property
+    def sentiment_pipeline(self):
+        """Lazy load sentiment analysis pipeline."""
+        if self._sentiment_pipeline is None:
+            from transformers.pipelines import pipeline
+
+            MiraLogger.info("Loading sentiment pipeline...")
+            self._sentiment_pipeline = pipeline(
+                task="text-classification",
+                model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+                top_k=None,
+            )
+        return self._sentiment_pipeline
 
     def _process_nlp_features(self, interaction: Interaction):
         """Process NLP features for a SQLAlchemy interaction."""
@@ -142,8 +167,10 @@ class ContextProcessor:
             MiraLogger.error(f"NLP processing failed: {e}")
 
     @staticmethod
-    def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    def _cosine_sim(a, b) -> float:
         """Cosine similarity between two vectors."""
+        import numpy as np
+
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def detect_conversation_boundary(
@@ -300,6 +327,8 @@ class ContextProcessor:
         self, query_embedding, session, max_results: int
     ) -> List[Interaction]:
         """Get semantically similar interactions using text embeddings from database."""
+        import numpy as np
+
         query_embedding_np = np.array(query_embedding)
 
         interactions_with_embeddings = (
@@ -313,6 +342,8 @@ class ContextProcessor:
         similarities = []
         for interaction in interactions_with_embeddings:
             try:
+                import numpy as np
+
                 interaction_embedding = np.array(interaction.text_embedding)
                 similarity = self._cosine_sim(query_embedding_np, interaction_embedding)
                 if (
@@ -628,4 +659,18 @@ class ContextProcessor:
     def cleanup(self):
         """Clean up resources when the processor is no longer needed."""
         MiraLogger.info(f"Cleaning up ContextProcessor for network {self.network_id}")
-        # Add any cleanup logic here if needed
+
+        # Explicitly unload models to release resources
+        if self._spacy_model is not None:
+            del self._spacy_model
+            self._spacy_model = None
+        if self._sentence_transformer is not None:
+            del self._sentence_transformer
+            self._sentence_transformer = None
+        if self._sentiment_pipeline is not None:
+            del self._sentiment_pipeline
+            self._sentiment_pipeline = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()
