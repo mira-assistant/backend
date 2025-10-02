@@ -16,11 +16,7 @@ import uuid
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import noisereduce as nr
     import numpy as np
-    import torch
-    from faster_whisper import WhisperModel
-    from pyannote.audio import Pipeline
 
 from scipy.signal import butter, lfilter
 from sqlalchemy.orm import Session
@@ -68,6 +64,7 @@ class SentenceProcessor:
         """Lazy load Whisper model."""
         if self._asr_model is None:
             from faster_whisper import WhisperModel
+
             MiraLogger.info("Loading Whisper model...")
             self._asr_model = WhisperModel("small", device="cpu", compute_type="int8")
         return self._asr_model
@@ -122,6 +119,7 @@ class SentenceProcessor:
     def pcm_bytes_to_float32(pcm: bytes):
         """Convert 16-bit PCM to float32 in [-1,1]."""
         import numpy as np
+
         audio_int16 = np.frombuffer(pcm, dtype=np.int16)
         return audio_int16.astype(np.float32) / 32768.0
 
@@ -208,6 +206,7 @@ class SentenceProcessor:
     def cosine_sim(a, b) -> float:
         """Cosine similarity between two vectors."""
         import numpy as np
+
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def transcribe_interaction(
@@ -507,7 +506,7 @@ class SentenceProcessor:
         MiraLogger.info(
             f"Created new speaker with ID {new_person.id} and index {next_index}"
         )
-        return new_person.id # pyright: ignore[reportReturnType]
+        return new_person.id  # pyright: ignore[reportReturnType]
 
     def _update_speaker_embedding(
         self, speaker_id: uuid.UUID, new_embedding: np.ndarray, session: Session
@@ -533,7 +532,7 @@ class SentenceProcessor:
             # Try to find a default speaker
             default_speaker = session.query(Person).filter_by(index=1).first()
             if default_speaker:
-                return default_speaker.id # pyright: ignore[reportReturnType]
+                return default_speaker.id  # pyright: ignore[reportReturnType]
 
             # Create default speaker if none exists
             return self._create_new_speaker_with_embedding(None, session)
@@ -582,4 +581,5 @@ class SentenceProcessor:
 
         # Force garbage collection
         import gc
+
         gc.collect()

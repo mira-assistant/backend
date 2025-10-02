@@ -440,4 +440,5 @@ class CommandProcessor:
 
         # Force garbage collection
         import gc
+
         gc.collect()

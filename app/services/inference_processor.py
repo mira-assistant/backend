@@ -125,4 +125,5 @@ class InferenceProcessor:
 
         # Force garbage collection
         import gc
+
         gc.collect()

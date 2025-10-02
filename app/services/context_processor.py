@@ -673,4 +673,5 @@ class ContextProcessor:
 
         # Force garbage collection
         import gc
+
         gc.collect()

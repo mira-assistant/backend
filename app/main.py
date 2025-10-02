@@ -3,7 +3,6 @@ FastAPI application entrypoint with Lambda migration support.
 """
 
 import signal
-import sys
 from contextlib import asynccontextmanager
 
 from alembic import command
@@ -27,18 +26,21 @@ def cleanup_resources():
     """Force cleanup of all resources."""
     try:
         from app.services.service_registry import service_registry
+
         service_registry.cleanup_all()
     except Exception as e:
         fastapi_logger.error(f"Error during cleanup: {e}")
 
     # Force garbage collection
     import gc
+
     gc.collect()
 
 
 def signal_handler(signum, frame):
     """Handle shutdown signals."""
     import os
+
     fastapi_logger.info(f"Received signal {signum}, forcing shutdown...")
     cleanup_resources()
 
