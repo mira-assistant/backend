@@ -8,11 +8,12 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPO: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api
-  IMAGE_URI: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
+  LAMBDA_IMAGE_URI: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:lambda-${{ github.sha }}
+  EC2_IMAGE_URI: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:prod-${{ github.sha }}
 
 jobs:
   build_and_push:
-    name: Build and Push Docker Image to ECR
+    name: Build and Push Docker Images to ECR
     runs-on: ubuntu-latest
 
     steps:
@@ -29,11 +30,17 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push Docker image
+      - name: Build, tag, and push Lambda image
         run: |
-          docker build -t mira-api:${{ github.sha }} -f docker/Dockerfile.prod .
-          docker tag mira-api:${{ github.sha }} ${{ env.IMAGE_URI }}
-          docker push ${{ env.IMAGE_URI }}
+          docker build -t mira-api:lambda -f docker/Dockerfile.lambda .
+          docker tag mira-api:lambda ${{ env.LAMBDA_IMAGE_URI }}
+          docker push ${{ env.LAMBDA_IMAGE_URI }}
+
+      - name: Build, tag, and push EC2 image
+        run: |
+          docker build -t mira-api:prod -f docker/Dockerfile.prod .
+          docker tag mira-api:prod ${{ env.EC2_IMAGE_URI }}
+          docker push ${{ env.EC2_IMAGE_URI }}
 
   update_lambda:
     name: Update Lambda Function
@@ -52,7 +59,7 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name mira-api \
-            --image-uri ${{ env.IMAGE_URI }}
+            --image-uri ${{ env.LAMBDA_IMAGE_URI }}
 
       - name: Wait for Lambda to update
         run: aws lambda wait function-updated --function-name mira-api
@@ -80,7 +87,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker pull ${{ env.IMAGE_URI }}
+            docker pull ${{ env.EC2_IMAGE_URI }}
             docker stop mira-api || true
             docker rm mira-api || true
-            docker run -d --name mira-api -p 80:80 ${{ env.IMAGE_URI }}
+            docker run -d --name mira-api -p 80:80 ${{ env.EC2_IMAGE_URI }}

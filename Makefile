@@ -27,7 +27,7 @@ lambda:
 	make lambda-build
 	make lambda-run
 
-.PHONY
+.PHONY: prod
 prod:
 	make prod-build
 	make prod-run
