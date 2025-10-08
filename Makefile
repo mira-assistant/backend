@@ -1,68 +1,38 @@
-.PHONY: help
+.PHONY: help up down build lint format test clean db
+
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
-	@echo "  dev           - Run development server"
-	@echo "  lambda        - Run deployment server"
-	@echo "  prod          - Run production server"
-	@echo "  dev-build     - Build development container"
-	@echo "  lambda-build  - Build deployment container"
-	@echo "  prod-build    - Build production container"
-	@echo "  dev-run       - Start development container"
-	@echo "  lambda-run    - Start deployment container"
-	@echo "  prod-run      - Start production container"
-	@echo "  test          - Run tests"
-	@echo "  lint          - Run linting tools"
-	@echo "  format        - Format code with ruff"
-	@echo "  clean         - Clean up containers and images"
+	@echo "  up      - Start containers"
+	@echo "  down    - Stop containers"
+	@echo "  build   - Build the API container"
+	@echo "  lint    - Run linting tools"
+	@echo "  format  - Format code with ruff"
+	@echo "  test    - Run tests"
+	@echo "  clean   - Remove containers and images"
 
+up:
+	docker-compose up -d --build
 
-.PHONY: dev
-dev:
-	make dev-build
-	make dev-run
+down:
+	docker-compose down
 
-.PHONY: lambda
-lambda:
-	make lambda-build
-	make lambda-run
+build:
+	docker-compose build api
 
-.PHONY: prod
-prod:
-	make prod-build
-	make prod-run
-
-dev-build:
-	docker build -t mira-api:dev -f docker/Dockerfile.dev .
-lambda-build:
-	docker build -t mira-api:lambda -f docker/Dockerfile.lambda .
-prod-build:
-	docker build -t mira-api:prod -f docker/Dockerfile.prod .
-
-dev-run:
-	docker run --rm -it --env-file .env -v $(PWD)/app:/app -p 8000:8000 mira-api:dev
-lambda-run:
-	docker run --rm -it --env-file .env -p 9000:8080 mira-api:lambda
-prod-run:
-	docker run -it -p 80:80 mira-api:prod
-
-.PHONY: test
-test:
-	@echo "Running tests..."
-
-.PHONY: lint
 lint:
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff check .
+	docker-compose run --rm api ruff check /app
 
-.PHONY: format
 format:
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff check --fix .
-	docker run --rm -v $(PWD)/app:/app -w /app mira-api:dev ruff format .
+	docker-compose run --rm api ruff check --fix /app
+	docker-compose run --rm api ruff format /app
 
-.PHONY: clean
+test:
+	docker-compose run --rm api pytest /app
+
 clean:
-	@echo "Cleaning up containers and images..."
-	@docker stop $$(docker ps -q) 2>/dev/null || true
-	@docker rm $$(docker ps -aq) 2>/dev/null || true
-	@docker rmi mira-api:dev 2>/dev/null || true
-	@echo "Cleanup complete!"
+	docker-compose down -v
+	docker rmi mira-api:dev || true
+
+db-upgrade:
+	docker-compose run --rm api alembic upgrade head

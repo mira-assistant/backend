@@ -15,10 +15,7 @@ from app.db.base import Base
 engine = create_engine(
     settings.database_url,
     echo=settings.debug,
-    connect_args={
-        "sslmode": "require",  # Require SSL for RDS connections
-        "connect_timeout": 10,
-    },
+    connect_args={"connect_timeout": 10},
     poolclass=QueuePool,
     pool_size=5,  # Number of connections to maintain
     max_overflow=10,  # Additional connections beyond pool_size
