@@ -5,9 +5,14 @@ on:
     branches:
       - main
 
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api
+  IMAGE_URI: 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
+
 jobs:
-  deploy:
-    name: Deploying to AWS
+  build_and_push:
+    name: Build and Push Docker Image to ECR
     runs-on: ubuntu-latest
 
     steps:
@@ -19,42 +24,63 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Build Docker image
-        run: docker build -t mira-api:${{ github.sha }} -f docker/Dockerfile.lambda .
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag and push Docker image
+      - name: Build, tag, and push Docker image
         run: |
-          docker tag mira-api:${{ github.sha }} 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
-          docker push 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }}
+          docker build -t mira-api:${{ github.sha }} -f docker/Dockerfile.prod .
+          docker tag mira-api:${{ github.sha }} ${{ env.IMAGE_URI }}
+          docker push ${{ env.IMAGE_URI }}
+
+  update_lambda:
+    name: Update Lambda Function
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Update Lambda function
         run: |
           aws lambda update-function-code \
             --function-name mira-api \
-            --image-uri 210291640622.dkr.ecr.us-east-1.amazonaws.com/mira-api:${{ github.sha }} \
+            --image-uri ${{ env.IMAGE_URI }}
 
-      - name: Wait for function to update
-        run: |
-          aws lambda wait function-updated \
-            --region us-east-1 \
-            --function-name mira-api
+      - name: Wait for Lambda to update
+        run: aws lambda wait function-updated --function-name mira-api
 
       - name: Run Alembic migrations via Lambda
         run: |
-          set -e
-
           aws lambda invoke \
-            --region us-east-1 \
             --function-name mira-api \
             --payload '{"action":"run_migrations"}' \
+            --cli-binary-format raw-in-base64-out \
             --log-type Tail \
-            out.json \
-            --cli-binary-format raw-in-base64-out
-
+            out.json
           cat out.json
 
+  update_ec2:
+    name: Update EC2 Instance
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    steps:
+      - name: SSH into EC2 and update container
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ env.IMAGE_URI }}
+            docker stop mira-api || true
+            docker rm mira-api || true
+            docker run -d --name mira-api -p 80:80 ${{ env.IMAGE_URI }}
