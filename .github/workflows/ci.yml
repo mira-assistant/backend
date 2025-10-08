@@ -21,10 +21,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build API Docker Image
-        run: make build
+        run: docker build -t mira-api:ci -f docker/Dockerfile.prod .
 
       - name: Run Unit Tests
-        run: make test
+        run: docker run --rm mira-api:ci pytest
 
       - name: Lint Code
-        run: make lint
+        run: docker run --rm mira-api:ci ruff check /app

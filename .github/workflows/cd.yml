@@ -87,14 +87,11 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Log in to AWS ECR
             aws ecr get-login-password --region us-east-1 | docker login \
               --username AWS \
               --password-stdin 210291640622.dkr.ecr.us-east-1.amazonaws.com
 
-            # Pull and run the latest image
-            IMAGE_URI=${{ env.EC2_IMAGE_URI }}
-            docker pull $IMAGE_URI
+            docker pull ${{ env.EC2_IMAGE_URI }}
             docker stop mira-api || true
             docker rm mira-api || true
-            docker run -d --name mira-api -p 80:80 $IMAGE_URI
+            docker run -d --name mira-api -p 80:80 ${{ env.EC2_IMAGE_URI }}
