@@ -87,6 +87,14 @@ async def lifespan(app: FastAPI):
     yield
 
     fastapi_logger.info("Shutting down Mira Backend API...")
+    
+    # Cleanup webhook dispatcher
+    try:
+        from app.services.webhook_dispatcher import cleanup_webhook_dispatcher
+        await cleanup_webhook_dispatcher()
+    except Exception as e:
+        fastapi_logger.error(f"Error cleaning up webhook dispatcher: {e}")
+    
     cleanup_resources()
     fastapi_logger.info("Shutdown complete")
 

@@ -15,8 +15,9 @@ from app.services.service_factory import (
     get_multi_stream_processor,
     get_sentence_processor,
 )
+from app.services.webhook_dispatcher import get_webhook_dispatcher
 
-router = APIRouter(prefix="/{network_id}/interactions")
+router = APIRouter(prefix="/{network_id}/interactions", tags=["interactions"])
 
 
 def _validate_network_and_client(
@@ -115,7 +116,6 @@ def _process_transcription_and_save(
     interaction = models.Interaction(
         **transcription_result,
         network_id=network_id,
-        client_id=client_id,
     )
 
     db.add(interaction)
@@ -209,6 +209,14 @@ async def register_interaction(
     interaction = _process_transcription_and_save(
         network_id, client_id, sentence_buf_raw, db
     )
+
+    # Dispatch webhooks to all registered clients
+    webhook_dispatcher = get_webhook_dispatcher()
+    try:
+        await webhook_dispatcher.dispatch_interaction(interaction, network)
+    except Exception as e:
+        MiraLogger.error(f"Failed to dispatch webhooks: {e}")
+        # Continue processing even if webhook dispatch fails
 
     # Handle wake word processing
     return _handle_wake_word_processing(
