@@ -2,7 +2,7 @@
 Tests for the main FastAPI application.
 """
 
-from main import app
+from app.main import app
 
 
 class TestMainApp:
@@ -11,8 +11,8 @@ class TestMainApp:
     def test_app_creation(self):
         """Test that the FastAPI app is created correctly."""
         assert app is not None
-        assert app.title == "Mira Backend"
-        assert app.version == "5.0.0"
+        assert app.title == "Mira API"
+        assert app.version == "6.1.0"
         assert app.description == "Mira AI Assistant Backend API"
 
     def test_app_routes_registration(self):
@@ -58,7 +58,7 @@ class TestMainApp:
         # Test that the lifespan function exists and can be called
         import asyncio
 
-        from main import lifespan
+        from app.main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):
@@ -72,7 +72,7 @@ class TestMainApp:
         # Test that the lifespan function exists and can be called
         import asyncio
 
-        from main import lifespan
+        from app.main import lifespan
 
         async def test_lifespan():
             async with lifespan(app):
@@ -118,8 +118,8 @@ class TestMainApp:
 
     def test_app_metadata(self):
         """Test that app metadata is correctly set."""
-        assert app.title == "Mira Backend"
-        assert app.version == "5.0.0"
+        assert app.title == "Mira API"
+        assert app.version == "6.1.0"
         assert app.description == "Mira AI Assistant Backend API"
         assert app.openapi_url == "/openapi.json"
         assert app.docs_url == "/docs"

@@ -4,7 +4,7 @@ Tests for authentication endpoints.
 
 from fastapi.testclient import TestClient
 
-from main import app
+from app.main import app
 
 
 class TestAuth:
@@ -16,22 +16,22 @@ class TestAuth:
 
         # Test login endpoint
         response = client.post(
-            "/api/v1/auth/login", json={"username": "test", "password": "test"}
+            "/api/v2/auth/login", json={"username": "test", "password": "test"}
         )
         # Should get 422 for invalid data, not 404 for missing endpoint
         assert response.status_code != 404
 
-        # Test Google OAuth endpoints
-        response = client.get("/api/v1/auth/google/login")
+        # Test Google OAuth URL endpoint (login endpoint is commented out)
+        response = client.get("/api/v2/auth/google/url")
         assert response.status_code != 404
 
-        # Test GitHub OAuth endpoints
-        response = client.get("/api/v1/auth/github/login")
+        # Test GitHub OAuth endpoints (returns 302 redirect, not 404)
+        response = client.get("/api/v2/auth/github/login", follow_redirects=False)
         assert response.status_code != 404
 
         # Test refresh endpoint
         response = client.post(
-            "/api/v1/auth/refresh", json={"refresh_token": "invalid"}
+            "/api/v2/auth/refresh", json={"refresh_token": "invalid"}
         )
         assert response.status_code != 404
 
@@ -40,7 +40,7 @@ class TestAuth:
         client = TestClient(app)
 
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/v2/auth/login",
             json={"username": "nonexistent", "password": "wrongpassword"},
         )
 
@@ -53,7 +53,7 @@ class TestAuth:
         client = TestClient(app)
 
         response = client.post(
-            "/api/v1/auth/refresh", json={"refresh_token": "invalid_token"}
+            "/api/v2/auth/refresh", json={"refresh_token": "invalid_token"}
         )
 
         # Should get 401 for invalid token

@@ -6,13 +6,13 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Conversation
 
-router = APIRouter(prefix="/conversations")
+router = APIRouter(prefix="/{network_id}/conversations")
 
 
 @router.get("/{conversation_id}")
 def get_conversation(
-    conversation_id: str = Path(..., description="The ID of the conversation"),
     network_id: str = Path(..., description="The ID of the network"),
+    conversation_id: str = Path(..., description="The ID of the conversation"),
     db: Session = Depends(get_db),
 ):
     """Get a conversation by ID."""

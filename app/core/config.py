@@ -9,6 +9,8 @@ from typing import List, Union
 import boto3
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+import io
+import os
 
 
 class Settings(BaseSettings):
@@ -56,23 +58,36 @@ class Settings(BaseSettings):
         extra = "ignore"
 
     def load_aws_secrets(self, secret_name: str):
-        """
-        Load secrets from AWS Secrets Manager and override settings.
-        """
-
         try:
             client = boto3.client("secretsmanager", region_name=self.aws_region)
             secret_response = client.get_secret_value(SecretId=secret_name)
             secret_string = secret_response.get("SecretString")
+
             if not secret_string:
                 print(f"No secret string found for {secret_name}")
                 return
-            secret_data = json.loads(secret_string)
+
+            # Try JSON parse first
+            try:
+                secret_data = json.loads(secret_string)
+            except json.JSONDecodeError:
+                # Fallback to .env format
+                secret_data = {}
+                for line in io.StringIO(secret_string):
+                    if line.strip() and not line.startswith("#"):
+                        key, value = line.strip().split("=", 1)
+                        secret_data[key.strip()] = value.strip()
+
             for key, value in secret_data.items():
-                # Only override existing fields
-                if hasattr(self, key):
-                    setattr(self, key, value)
+                if hasattr(self, key.lower()):
+                    setattr(self, key.lower(), value)
+                elif hasattr(self, key.upper()):
+                    setattr(self, key.upper(), value)
+                else:
+                    os.environ[key] = value  # fallback
+
             print(f"AWS secrets loaded from {secret_name}")
+
         except Exception as e:
             print(f"Error loading secrets from AWS: {e}")
 

@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from mangum import Mangum
 from starlette.middleware.sessions import SessionMiddleware
+import os
+import requests
 
 import app.api.v1 as v1
 import app.api.v2 as v2
@@ -64,13 +66,22 @@ async def lifespan(app: FastAPI):
 
     fastapi_logger.info("Starting Mira Backend API...")
 
-    # Load AWS secrets if running in Lambda environment
-    import os
+    def running_on_aws_ec2() -> bool:
+        """Detect if code is running on an AWS EC2 instance."""
+        try:
+            # EC2 metadata service is only available inside EC2
+            response = requests.get(
+                "http://169.254.169.254/latest/meta-data/instance-id", timeout=0.1
+            )
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
 
-    if os.environ.get("AWS_EXECUTION_ENV") and not _aws_secrets_loaded:
-        fastapi_logger.info("Detected AWS Lambda environment, loading secrets...")
+    if (
+        os.environ.get("AWS_EXECUTION_ENV") or running_on_aws_ec2()
+    ) and not _aws_secrets_loaded:
+        fastapi_logger.info("Detected AWS environment, loading secrets...")
         settings.load_aws_secrets("mira-secrets")
-        fastapi_logger.info(f"Database URL: {settings.database_url}")
         _aws_secrets_loaded = True
 
     yield
